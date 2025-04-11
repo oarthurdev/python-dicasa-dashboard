@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Import custom modules
 from kommo_api import KommoAPI
-from database import DatabaseClient
+from supabase_db import SupabaseClient
 from gamification import calculate_broker_points
 from data_processor import process_data
 from visualizations import create_heatmap, create_conversion_funnel
@@ -31,49 +31,31 @@ def init_clients():
         access_token=os.getenv("ACCESS_TOKEN_KOMMO")
     )
     
-    database = DatabaseClient(
-        db_url=os.getenv("DATABASE_URL")
+    supabase = SupabaseClient(
+        url=os.getenv("VITE_SUPABASE_URL"),
+        key=os.getenv("VITE_SUPABASE_ANON_KEY")
     )
     
-    return kommo_api, database
+    return kommo_api, supabase
 
-kommo_api, database = init_clients()
+kommo_api, supabase = init_clients()
 
 # Function to load data with caching
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def load_data():
     try:
         with st.spinner("Carregando dados..."):
-            # First check if we have cached data in the database
-            st.text("Verificando cache no banco de dados...")
-            cached_data = database.get_cached_data()
-            
-            if cached_data:
-                st.text("Usando dados em cache do banco de dados...")
-                broker_data, lead_data, activity_data = process_data(
-                    cached_data['brokers'], 
-                    cached_data['leads'], 
-                    cached_data['activities']
-                )
-                
-                # Calculate broker points based on gamification rules
-                st.text("Calculando pontuação...")
-                ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
-                
-                st.success("Dados carregados com sucesso do banco de dados!")
-                return {
-                    'brokers': broker_data,
-                    'leads': lead_data,
-                    'activities': activity_data,
-                    'ranking': ranking_data
-                }
-            
-            # If no cached data, fetch from Kommo API
-            st.text("Buscando dados da API Kommo...")
-            
             # Set a timeout for loading data (120 seconds)
             start_time = datetime.now()
             timeout_seconds = 120
+            
+            # Try to get broker points from Supabase first (this will be faster)
+            broker_points = None
+            try:
+                broker_points = supabase.get_broker_points()
+            except Exception as e:
+                st.warning(f"Não foi possível recuperar pontuação do banco: {str(e)}")
+                # Continue without points data
             
             # Fetch data from Kommo API
             st.text("Buscando usuários...")
@@ -100,17 +82,14 @@ def load_data():
                 st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
                 return None
             
-            # Store data in PostgreSQL database
+            # Store data in Supabase
             if (datetime.now() - start_time).total_seconds() < timeout_seconds - 30:
-                st.text("Armazenando dados no banco de dados...")
+                st.text("Armazenando dados no Supabase...")
                 try:
-                    # Clear existing data first
-                    database.clear_cache()
-                    
                     # Store new data
-                    database.upsert_brokers(brokers)
-                    database.upsert_leads(leads)
-                    database.upsert_activities(activities)
+                    supabase.upsert_brokers(brokers)
+                    supabase.upsert_leads(leads)
+                    supabase.upsert_activities(activities)
                 except Exception as e:
                     st.warning(f"Alerta: Falha ao salvar dados no banco: {str(e)}")
                     # Continue with processing even if database storage fails
@@ -123,13 +102,13 @@ def load_data():
             st.text("Calculando pontuação...")
             ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
             
-            # Store broker points in database
+            # Store broker points in Supabase
             try:
-                database.upsert_broker_points(ranking_data)
+                supabase.upsert_broker_points(ranking_data)
             except Exception as e:
                 st.warning(f"Alerta: Falha ao salvar pontuação no banco: {str(e)}")
             
-            st.success("Dados carregados com sucesso da API!")
+            st.success("Dados carregados com sucesso!")
             return {
                 'brokers': broker_data,
                 'leads': lead_data,
