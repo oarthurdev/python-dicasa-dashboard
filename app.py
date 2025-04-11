@@ -278,7 +278,12 @@ def display_ranking_cards(ranking_data):
 def display_broker_metrics(broker_id, data):
     """Display broker metrics in the dashboard"""
     # Find the broker in the data
-    broker_row = data['ranking'][data['ranking']['id'] == broker_id]
+    broker_points = data.get('ranking', pd.DataFrame())
+    
+    if not broker_points.empty:
+        broker_row = broker_points[broker_points.index == broker_id]
+    else:
+        broker_row = pd.DataFrame()
     
     if broker_row.empty:
         st.info("Dados do corretor não disponíveis.")
