@@ -303,17 +303,111 @@ def display_broker_metrics(broker_id, data):
     with cols[3]:
         st.metric("Vendas Realizadas", vendas_realizadas)
 
-# Function to display the activity heatmap
+# Function to display the activity heatmap with advanced filtering options
 def display_activity_heatmap(broker_id, data):
-    """Display activity heatmap for the broker"""
+    """Display enhanced activity heatmap for the broker with filtering options"""
     broker_activities = data['activities'][data['activities']['user_id'] == broker_id]
     
     if broker_activities.empty:
         st.info("Não há dados de atividades suficientes para gerar o mapa de calor.")
         return
     
-    # Create heatmap
-    heatmap_fig = create_heatmap(broker_activities)
+    # Create filter options for the heatmap
+    st.markdown("##### Filtros para o Mapa de Calor")
+    
+    filter_cols = st.columns([1, 1, 1])
+    
+    with filter_cols[0]:
+        # Filter by activity type
+        activity_types = ['Todos'] + sorted(list(broker_activities['tipo'].unique()))
+        selected_activity_type = st.selectbox(
+            "Tipo de Atividade",
+            options=activity_types,
+            key=f"activity_type_{broker_id}"
+        )
+        
+    with filter_cols[1]:
+        # Filter by date range
+        date_options = [
+            "Todos os períodos",
+            "Últimos 7 dias", 
+            "Últimos 30 dias", 
+            "Últimos 90 dias"
+        ]
+        selected_date_range = st.selectbox(
+            "Período",
+            options=date_options,
+            key=f"date_range_{broker_id}"
+        )
+    
+    with filter_cols[2]:
+        # Filter by lead status
+        lead_status_options = [
+            "Todos os leads",
+            "Leads ativos", 
+            "Leads convertidos", 
+            "Leads perdidos"
+        ]
+        selected_lead_status = st.selectbox(
+            "Status do Lead",
+            options=lead_status_options,
+            key=f"lead_status_{broker_id}"
+        )
+    
+    # Apply filters
+    filtered_activities = broker_activities.copy()
+    
+    # Filter by activity type
+    if selected_activity_type != 'Todos':
+        filtered_activities = filtered_activities[filtered_activities['tipo'] == selected_activity_type]
+    
+    # Filter by date range
+    if selected_date_range != 'Todos os períodos':
+        today = datetime.now()
+        if selected_date_range == 'Últimos 7 dias':
+            date_filter = today - timedelta(days=7)
+        elif selected_date_range == 'Últimos 30 dias':
+            date_filter = today - timedelta(days=30)
+        else:  # Últimos 90 dias
+            date_filter = today - timedelta(days=90)
+            
+        filtered_activities = filtered_activities[filtered_activities['criado_em'] >= date_filter]
+    
+    # Filter by lead status (requires joining with leads data)
+    if selected_lead_status != 'Todos os leads' and 'lead_id' in filtered_activities.columns:
+        broker_leads = data['leads'][data['leads']['responsavel_id'] == broker_id]
+        
+        if selected_lead_status == 'Leads ativos':
+            active_lead_ids = broker_leads[~broker_leads['fechado']]['id'].tolist()
+            filtered_activities = filtered_activities[filtered_activities['lead_id'].isin(active_lead_ids)]
+        elif selected_lead_status == 'Leads convertidos':
+            converted_lead_ids = broker_leads[broker_leads['status'] == 'Ganho']['id'].tolist()
+            filtered_activities = filtered_activities[filtered_activities['lead_id'].isin(converted_lead_ids)]
+        elif selected_lead_status == 'Leads perdidos':
+            lost_lead_ids = broker_leads[broker_leads['status'] == 'Perdido']['id'].tolist()
+            filtered_activities = filtered_activities[filtered_activities['lead_id'].isin(lost_lead_ids)]
+    
+    # Display analysis tips based on the heat map
+    with st.expander("💡 Como interpretar o mapa de calor", expanded=False):
+        st.markdown("""
+        **Cores mais escuras** indicam maior atividade em determinado horário e dia.
+        
+        **Este mapa ajuda a identificar:**
+        - **Gargalos operacionais:** Períodos sem atividades durante o horário comercial
+        - **Oportunidades:** Horários sub-aproveitados que poderiam ter melhor rendimento
+        - **Padrões de comportamento:** Horários de maior produtividade para otimizar agendas
+        
+        **Ações recomendadas:**
+        - Áreas em **vermelho** (Atenção) indicam períodos comerciais sem atividade - reorganize a agenda
+        - Áreas marcadas como **Oportunidade** mostram horários pouco explorados com potencial
+        - Mais de 30% das atividades após as 18h indica necessidade de redistribuição de horários
+        """)
+    
+    # Create heatmap with the filtered data
+    heatmap_fig = create_heatmap(filtered_activities, 
+                                activity_type=selected_activity_type if selected_activity_type != 'Todos' else None)
+    
+    # Show the heatmap
     st.plotly_chart(heatmap_fig, use_container_width=True)
 
 # Function to display the points breakdown chart
