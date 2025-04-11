@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 # Import custom modules
 from kommo_api import KommoAPI
-from supabase_db import SupabaseClient
+from database import DatabaseClient
 from gamification import calculate_broker_points
 from data_processor import process_data
 from visualizations import create_heatmap, create_conversion_funnel
@@ -31,20 +31,46 @@ def init_clients():
         access_token=os.getenv("ACCESS_TOKEN_KOMMO")
     )
     
-    supabase = SupabaseClient(
-        url=os.getenv("VITE_SUPABASE_URL"),
-        key=os.getenv("VITE_SUPABASE_ANON_KEY")
+    database = DatabaseClient(
+        db_url=os.getenv("DATABASE_URL")
     )
     
-    return kommo_api, supabase
+    return kommo_api, database
 
-kommo_api, supabase = init_clients()
+kommo_api, database = init_clients()
 
 # Function to load data with caching
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def load_data():
     try:
-        with st.spinner("Carregando dados do Kommo CRM..."):
+        with st.spinner("Carregando dados..."):
+            # First check if we have cached data in the database
+            st.text("Verificando cache no banco de dados...")
+            cached_data = database.get_cached_data()
+            
+            if cached_data:
+                st.text("Usando dados em cache do banco de dados...")
+                broker_data, lead_data, activity_data = process_data(
+                    cached_data['brokers'], 
+                    cached_data['leads'], 
+                    cached_data['activities']
+                )
+                
+                # Calculate broker points based on gamification rules
+                st.text("Calculando pontuação...")
+                ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
+                
+                st.success("Dados carregados com sucesso do banco de dados!")
+                return {
+                    'brokers': broker_data,
+                    'leads': lead_data,
+                    'activities': activity_data,
+                    'ranking': ranking_data
+                }
+            
+            # If no cached data, fetch from Kommo API
+            st.text("Buscando dados da API Kommo...")
+            
             # Set a timeout for loading data (120 seconds)
             start_time = datetime.now()
             timeout_seconds = 120
@@ -74,13 +100,17 @@ def load_data():
                 st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
                 return None
             
-            # Store data in Supabase (optional - only if time permits)
+            # Store data in PostgreSQL database
             if (datetime.now() - start_time).total_seconds() < timeout_seconds - 30:
-                st.text("Armazenando dados no banco...")
+                st.text("Armazenando dados no banco de dados...")
                 try:
-                    supabase.upsert_brokers(brokers)
-                    supabase.upsert_leads(leads)
-                    supabase.upsert_activities(activities)
+                    # Clear existing data first
+                    database.clear_cache()
+                    
+                    # Store new data
+                    database.upsert_brokers(brokers)
+                    database.upsert_leads(leads)
+                    database.upsert_activities(activities)
                 except Exception as e:
                     st.warning(f"Alerta: Falha ao salvar dados no banco: {str(e)}")
                     # Continue with processing even if database storage fails
@@ -93,7 +123,13 @@ def load_data():
             st.text("Calculando pontuação...")
             ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
             
-            st.success("Dados carregados com sucesso!")
+            # Store broker points in database
+            try:
+                database.upsert_broker_points(ranking_data)
+            except Exception as e:
+                st.warning(f"Alerta: Falha ao salvar pontuação no banco: {str(e)}")
+            
+            st.success("Dados carregados com sucesso da API!")
             return {
                 'brokers': broker_data,
                 'leads': lead_data,
