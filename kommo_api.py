@@ -62,9 +62,12 @@ class KommoAPI:
                 else:
                     raise
     
-    def get_users(self):
+    def get_users(self, active_only=True):
         """
-        Retrieve all users (brokers) from Kommo CRM
+        Retrieve users (brokers) from Kommo CRM
+        
+        Args:
+            active_only (bool): If True, only return active users
         """
         try:
             logger.info("Retrieving users from Kommo CRM")
@@ -85,6 +88,11 @@ class KommoAPI:
             # Process users data into a more usable format
             processed_users = []
             for user in users_data:
+                # Skip inactive users if active_only is True
+                is_active = user.get("rights", {}).get("is_active", False)
+                if active_only and not is_active:
+                    continue
+                    
                 processed_users.append({
                     "id": user.get("id"),
                     "nome": f"{user.get('name', '')} {user.get('lastname', '')}".strip(),
