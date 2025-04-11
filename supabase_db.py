@@ -139,7 +139,24 @@ class SupabaseClient:
                 logger.warning("No activity data to insert")
                 return
             
-            logger.info(f"Upserting {len(activities_df)} activities to Supabase")
+            logger.info(f"Processing {len(activities_df)} activities")
+            
+            # First, get a list of all lead_ids in the leads table
+            try:
+                # Query existing lead IDs from the database to ensure we only insert activities for existing leads
+                leads_result = self.client.table("leads").select("id").execute()
+                if hasattr(leads_result, "error") and leads_result.error:
+                    raise Exception(f"Supabase error querying leads: {leads_result.error}")
+                
+                # Create a set of existing lead IDs for faster lookup
+                existing_lead_ids = set()
+                for lead in leads_result.data:
+                    existing_lead_ids.add(lead['id'])
+                
+                logger.info(f"Found {len(existing_lead_ids)} existing leads in database")
+            except Exception as e:
+                logger.warning(f"Could not query existing leads, proceeding without validation: {str(e)}")
+                existing_lead_ids = None
             
             # Make a copy of the DataFrame to avoid modifying the original
             activities_df_clean = activities_df.copy()
@@ -165,6 +182,57 @@ class SupabaseClient:
             # We need to ensure it's converted to string
             if 'id' in activities_df_clean.columns:
                 activities_df_clean['id'] = activities_df_clean['id'].astype(str)
+            
+            # Get a list of all broker_ids in the brokers table
+            try:
+                # Query existing broker IDs from the database to ensure we only insert activities with valid user_ids
+                brokers_result = self.client.table("brokers").select("id").execute()
+                if hasattr(brokers_result, "error") and brokers_result.error:
+                    raise Exception(f"Supabase error querying brokers: {brokers_result.error}")
+                
+                # Create a set of existing broker IDs for faster lookup
+                existing_broker_ids = set()
+                for broker in brokers_result.data:
+                    existing_broker_ids.add(broker['id'])
+                
+                logger.info(f"Found {len(existing_broker_ids)} existing brokers in database")
+            except Exception as e:
+                logger.warning(f"Could not query existing brokers, proceeding without validation: {str(e)}")
+                existing_broker_ids = None
+            
+            # Filter activities to only include those with existing lead_ids and user_ids
+            filter_needed = False
+            
+            # Filter by lead_id
+            if existing_lead_ids is not None and 'lead_id' in activities_df_clean.columns:
+                filter_needed = True
+                original_count = len(activities_df_clean)
+                activities_df_clean = activities_df_clean[
+                    activities_df_clean['lead_id'].isin(existing_lead_ids) | 
+                    activities_df_clean['lead_id'].isna()
+                ]
+                filtered_count = len(activities_df_clean)
+                if filtered_count < original_count:
+                    logger.warning(f"Filtered out {original_count - filtered_count} activities with non-existent lead_ids")
+            
+            # Filter by user_id
+            if existing_broker_ids is not None and 'user_id' in activities_df_clean.columns:
+                filter_needed = True
+                original_count = len(activities_df_clean)
+                activities_df_clean = activities_df_clean[
+                    activities_df_clean['user_id'].isin(existing_broker_ids) | 
+                    activities_df_clean['user_id'].isna()
+                ]
+                filtered_count = len(activities_df_clean)
+                if filtered_count < original_count:
+                    logger.warning(f"Filtered out {original_count - filtered_count} activities with non-existent user_ids")
+            
+            # If we have no activities after filtering, exit early
+            if activities_df_clean.empty:
+                logger.warning("No valid activities to insert after filtering")
+                return
+            
+            logger.info(f"Upserting {len(activities_df_clean)} activities to Supabase")
             
             # Convert DataFrame to list of dicts
             activities_data = activities_df_clean.to_dict(orient="records")
