@@ -82,6 +82,15 @@ class SupabaseClient:
                 if mask.any():
                     leads_df_clean.loc[mask, col] = None
             
+            # Convert bigint columns from float to int to avoid "invalid input syntax for type bigint" errors
+            bigint_columns = ['id', 'responsavel_id', 'status_id', 'pipeline_id']
+            for col in bigint_columns:
+                if col in leads_df_clean.columns:
+                    # Only convert finite values (NaN/None will be handled separately)
+                    mask = np.isfinite(leads_df_clean[col])
+                    if mask.any():
+                        leads_df_clean.loc[mask, col] = leads_df_clean.loc[mask, col].astype('Int64')
+            
             # Convert DataFrame to list of dicts
             leads_data = leads_df_clean.to_dict(orient="records")
             
@@ -96,11 +105,14 @@ class SupabaseClient:
                 if "atualizado_em" in lead and lead["atualizado_em"] is not None:
                     lead["atualizado_em"] = lead["atualizado_em"].isoformat()
                 
-                # Additional check for any remaining non-JSON compatible values
-                for key, value in lead.items():
+                # Additional check for any remaining non-JSON compatible values and type conversions
+                for key, value in list(lead.items()):  # Create a list to avoid "dictionary changed size during iteration"
                     # Check for NaN, Infinity, -Infinity in float values
                     if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
                         lead[key] = None
+                    # Convert float to int for bigint columns
+                    elif key in bigint_columns and isinstance(value, float) and value.is_integer():
+                        lead[key] = int(value)
             
             # Upsert data to Supabase
             result = self.client.table("leads").upsert(leads_data).execute()
@@ -140,6 +152,20 @@ class SupabaseClient:
                 if mask.any():
                     activities_df_clean.loc[mask, col] = None
             
+            # Convert bigint columns from float to int to avoid "invalid input syntax for type bigint" errors
+            bigint_columns = ['lead_id', 'user_id']
+            for col in bigint_columns:
+                if col in activities_df_clean.columns:
+                    # Only convert finite values (NaN/None will be handled separately)
+                    mask = np.isfinite(activities_df_clean[col])
+                    if mask.any():
+                        activities_df_clean.loc[mask, col] = activities_df_clean.loc[mask, col].astype('Int64')
+            
+            # The 'id' column in activities table is of type TEXT in SQL, but Kommo API might return it as a number
+            # We need to ensure it's converted to string
+            if 'id' in activities_df_clean.columns:
+                activities_df_clean['id'] = activities_df_clean['id'].astype(str)
+            
             # Convert DataFrame to list of dicts
             activities_data = activities_df_clean.to_dict(orient="records")
             
@@ -151,11 +177,14 @@ class SupabaseClient:
                 if "criado_em" in activity and activity["criado_em"] is not None:
                     activity["criado_em"] = activity["criado_em"].isoformat()
                 
-                # Additional check for any remaining non-JSON compatible values
-                for key, value in activity.items():
+                # Additional check for any remaining non-JSON compatible values and type conversions
+                for key, value in list(activity.items()):  # Create a list to avoid "dictionary changed size during iteration"
                     # Check for NaN, Infinity, -Infinity in float values
                     if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
                         activity[key] = None
+                    # Convert float to int for bigint columns
+                    elif key in bigint_columns and isinstance(value, float) and value.is_integer():
+                        activity[key] = int(value)
             
             # Upsert data to Supabase
             result = self.client.table("activities").upsert(activities_data).execute()
@@ -216,6 +245,15 @@ class SupabaseClient:
                 if mask.any():
                     points_df_clean.loc[mask, col] = None
             
+            # Convert bigint columns from float to int to avoid "invalid input syntax for type bigint" errors
+            bigint_columns = ['id']
+            for col in bigint_columns:
+                if col in points_df_clean.columns:
+                    # Only convert finite values (NaN/None will be handled separately)
+                    mask = np.isfinite(points_df_clean[col])
+                    if mask.any():
+                        points_df_clean.loc[mask, col] = points_df_clean.loc[mask, col].astype('Int64')
+            
             # Convert DataFrame to list of dicts
             points_data = points_df_clean.to_dict(orient="records")
             
@@ -223,11 +261,14 @@ class SupabaseClient:
             for point in points_data:
                 point["updated_at"] = datetime.now().isoformat()
                 
-                # Additional check for any remaining non-JSON compatible values
-                for key, value in point.items():
+                # Additional check for any remaining non-JSON compatible values and type conversions
+                for key, value in list(point.items()):  # Create a list to avoid "dictionary changed size during iteration"
                     # Check for NaN, Infinity, -Infinity in float values
                     if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
                         point[key] = None
+                    # Convert float to int for bigint columns
+                    elif key in bigint_columns and isinstance(value, float) and value.is_integer():
+                        point[key] = int(value)
             
             # Upsert data to Supabase
             result = self.client.table("broker_points").upsert(points_data).execute()
