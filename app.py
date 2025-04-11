@@ -501,8 +501,14 @@ def main():
     # Fetch data from Supabase only
     data = get_data_from_supabase()
     
-    if data is None or all(df.empty for df in data.values()):
+    if data is None:
+        st.error("Erro ao conectar com o banco de dados")
+        return
+        
+    # Verifica se pelo menos brokers e ranking têm dados
+    if data['brokers'].empty or data['ranking'].empty:
         st.info("Carregando dados do banco... Por favor, aguarde alguns instantes.")
+        st.info("Se o problema persistir, verifique a conexão com o banco de dados.")
         return
     
     # Create tabs container with custom styling
