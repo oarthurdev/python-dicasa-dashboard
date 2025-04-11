@@ -338,8 +338,19 @@ class SupabaseClient:
                     elif key in bigint_columns and isinstance(value, float) and value.is_integer():
                         point[key] = int(value)
             
-            # Upsert data to Supabase
-            result = self.client.table("broker_points").upsert(points_data).execute()
+            # Upsert data to Supabase preserving existing data
+            for point in points_data:
+                # Check if record exists
+                existing = self.client.table("broker_points").select("*").eq("id", point["id"]).execute()
+                
+                if existing.data:
+                    # Update only if new values are different
+                    update_data = {k: v for k, v in point.items() if k != "id" and v is not None}
+                    if update_data:
+                        result = self.client.table("broker_points").update(update_data).eq("id", point["id"]).execute()
+                else:
+                    # Insert new record
+                    result = self.client.table("broker_points").insert(point).execute()
             
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
