@@ -70,8 +70,19 @@ class SupabaseClient:
             
             logger.info(f"Upserting {len(leads_df)} leads to Supabase")
             
+            # Make a copy of the DataFrame to avoid modifying the original
+            leads_df_clean = leads_df.copy()
+            
+            # Replace infinite values with None (null in JSON)
+            numeric_cols = leads_df_clean.select_dtypes(include=['float', 'int']).columns
+            for col in numeric_cols:
+                # Replace NaN and infinite values with None
+                mask = ~pd.isfinite(leads_df_clean[col])
+                if mask.any():
+                    leads_df_clean.loc[mask, col] = None
+            
             # Convert DataFrame to list of dicts
-            leads_data = leads_df.to_dict(orient="records")
+            leads_data = leads_df_clean.to_dict(orient="records")
             
             # Add updated_at timestamp
             for lead in leads_data:
@@ -83,6 +94,12 @@ class SupabaseClient:
                 
                 if "atualizado_em" in lead and lead["atualizado_em"] is not None:
                     lead["atualizado_em"] = lead["atualizado_em"].isoformat()
+                
+                # Additional check for any remaining non-JSON compatible values
+                for key, value in lead.items():
+                    # Check for NaN, Infinity, -Infinity in float values
+                    if isinstance(value, float) and (pd.isna(value) or pd.isinf(value)):
+                        lead[key] = None
             
             # Upsert data to Supabase
             result = self.client.table("leads").upsert(leads_data).execute()
@@ -111,8 +128,19 @@ class SupabaseClient:
             
             logger.info(f"Upserting {len(activities_df)} activities to Supabase")
             
+            # Make a copy of the DataFrame to avoid modifying the original
+            activities_df_clean = activities_df.copy()
+            
+            # Replace infinite values with None (null in JSON)
+            numeric_cols = activities_df_clean.select_dtypes(include=['float', 'int']).columns
+            for col in numeric_cols:
+                # Replace NaN and infinite values with None
+                mask = ~pd.isfinite(activities_df_clean[col])
+                if mask.any():
+                    activities_df_clean.loc[mask, col] = None
+            
             # Convert DataFrame to list of dicts
-            activities_data = activities_df.to_dict(orient="records")
+            activities_data = activities_df_clean.to_dict(orient="records")
             
             # Add updated_at timestamp and convert datetime objects
             for activity in activities_data:
@@ -121,6 +149,12 @@ class SupabaseClient:
                 # Convert datetime objects to ISO format
                 if "criado_em" in activity and activity["criado_em"] is not None:
                     activity["criado_em"] = activity["criado_em"].isoformat()
+                
+                # Additional check for any remaining non-JSON compatible values
+                for key, value in activity.items():
+                    # Check for NaN, Infinity, -Infinity in float values
+                    if isinstance(value, float) and (pd.isna(value) or pd.isinf(value)):
+                        activity[key] = None
             
             # Upsert data to Supabase
             result = self.client.table("activities").upsert(activities_data).execute()
@@ -170,12 +204,29 @@ class SupabaseClient:
             
             logger.info(f"Upserting {len(points_df)} broker points records to Supabase")
             
+            # Make a copy of the DataFrame to avoid modifying the original
+            points_df_clean = points_df.copy()
+            
+            # Replace infinite values with None (null in JSON)
+            numeric_cols = points_df_clean.select_dtypes(include=['float', 'int']).columns
+            for col in numeric_cols:
+                # Replace NaN and infinite values with None
+                mask = ~pd.isfinite(points_df_clean[col])
+                if mask.any():
+                    points_df_clean.loc[mask, col] = None
+            
             # Convert DataFrame to list of dicts
-            points_data = points_df.to_dict(orient="records")
+            points_data = points_df_clean.to_dict(orient="records")
             
             # Add updated_at timestamp
             for point in points_data:
                 point["updated_at"] = datetime.now().isoformat()
+                
+                # Additional check for any remaining non-JSON compatible values
+                for key, value in point.items():
+                    # Check for NaN, Infinity, -Infinity in float values
+                    if isinstance(value, float) and (pd.isna(value) or pd.isinf(value)):
+                        point[key] = None
             
             # Upsert data to Supabase
             result = self.client.table("broker_points").upsert(points_data).execute()
