@@ -211,7 +211,6 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
             plot_bgcolor='rgba(0,0,0,0)',
             coloraxis_colorbar=dict(
                 title="Atividades",
-                titlefont={'size': 12},
                 tickfont={'size': 10}
             ),
             annotations=annotations,
