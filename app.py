@@ -605,7 +605,7 @@ def main():
     with col2:
         if st.button("↻ Atualizar Dashboard"):
             st.cache_data.clear()
-            st.experimental_rerun()
+            st.rerun()
 
 if __name__ == "__main__":
     main()
