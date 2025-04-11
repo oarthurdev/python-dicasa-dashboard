@@ -109,8 +109,10 @@ class KommoAPI:
             
             leads_data = []
             page = 1
+            max_pages = 5  # Limit to 5 pages maximum (250 leads)
             
             while True:
+                logger.info(f"Fetching leads page {page}")
                 response = self._make_request("leads", params={
                     "page": page, 
                     "limit": 50,
@@ -118,15 +120,19 @@ class KommoAPI:
                 })
                 
                 if not response.get("_embedded", {}).get("leads", []):
+                    logger.info("No more leads found")
                     break
                 
                 leads = response["_embedded"]["leads"]
                 leads_data.extend(leads)
+                logger.info(f"Retrieved {len(leads)} leads (total: {len(leads_data)})")
+                
                 page += 1
                 
-                # Break after 10 pages during development to avoid rate limiting
-                # if page > 10:
-                #     break
+                # Break after specified number of pages to avoid rate limiting
+                if page > max_pages:
+                    logger.info(f"Reached maximum number of pages ({max_pages})")
+                    break
             
             # Process leads data into a more usable format
             processed_leads = []
@@ -176,13 +182,15 @@ class KommoAPI:
             
             activities_data = []
             page = 1
+            max_pages = 5  # Limit to 5 pages (250 events)
             
             # Get current timestamp to filter recent activities
             now = int(time.time())
-            # Get activities from last 30 days
-            filter_from = now - (30 * 24 * 60 * 60)
+            # Get activities from last 7 days instead of 30 to reduce data volume
+            filter_from = now - (7 * 24 * 60 * 60)
             
             while True:
+                logger.info(f"Fetching activities page {page}")
                 response = self._make_request("events", params={
                     "page": page,
                     "limit": 50,
@@ -191,15 +199,19 @@ class KommoAPI:
                 })
                 
                 if not response.get("_embedded", {}).get("events", []):
+                    logger.info("No more activities found")
                     break
                 
                 events = response["_embedded"]["events"]
                 activities_data.extend(events)
+                logger.info(f"Retrieved {len(events)} activities (total: {len(activities_data)})")
+                
                 page += 1
                 
-                # Break after 20 pages during development to avoid rate limiting
-                # if page > 20:
-                #     break
+                # Break after specified number of pages to avoid rate limiting
+                if page > max_pages:
+                    logger.info(f"Reached maximum number of pages ({max_pages})")
+                    break
             
             # Process activities data into a more usable format
             processed_activities = []
@@ -242,19 +254,29 @@ class KommoAPI:
             
             tasks_data = []
             page = 1
+            max_pages = 3  # Limit to 3 pages (150 tasks)
             
             while True:
+                logger.info(f"Fetching tasks page {page}")
                 response = self._make_request("tasks", params={
                     "page": page,
                     "limit": 50
                 })
                 
                 if not response.get("_embedded", {}).get("tasks", []):
+                    logger.info("No more tasks found")
                     break
                 
                 tasks = response["_embedded"]["tasks"]
                 tasks_data.extend(tasks)
+                logger.info(f"Retrieved {len(tasks)} tasks (total: {len(tasks_data)})")
+                
                 page += 1
+                
+                # Break after specified number of pages to avoid rate limiting
+                if page > max_pages:
+                    logger.info(f"Reached maximum number of pages ({max_pages})")
+                    break
             
             # Process tasks data into a more usable format
             processed_tasks = []

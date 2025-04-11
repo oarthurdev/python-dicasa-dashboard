@@ -44,30 +44,64 @@ kommo_api, supabase = init_clients()
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def load_data():
     try:
-        # Fetch data from Kommo API
-        brokers = kommo_api.get_users()
-        leads = kommo_api.get_leads()
-        activities = kommo_api.get_activities()
-        
-        # Store data in Supabase
-        supabase.upsert_brokers(brokers)
-        supabase.upsert_leads(leads)
-        supabase.upsert_activities(activities)
-        
-        # Process data for dashboard
-        broker_data, lead_data, activity_data = process_data(brokers, leads, activities)
-        
-        # Calculate broker points based on gamification rules
-        ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
-        
-        return {
-            'brokers': broker_data,
-            'leads': lead_data,
-            'activities': activity_data,
-            'ranking': ranking_data
-        }
+        with st.spinner("Carregando dados do Kommo CRM..."):
+            # Set a timeout for loading data (120 seconds)
+            start_time = datetime.now()
+            timeout_seconds = 120
+            
+            # Fetch data from Kommo API
+            st.text("Buscando usuários...")
+            brokers = kommo_api.get_users()
+            
+            # Check for timeout
+            if (datetime.now() - start_time).total_seconds() > timeout_seconds:
+                st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
+                return None
+                
+            st.text("Buscando leads...")
+            leads = kommo_api.get_leads()
+            
+            # Check for timeout
+            if (datetime.now() - start_time).total_seconds() > timeout_seconds:
+                st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
+                return None
+                
+            st.text("Buscando atividades...")
+            activities = kommo_api.get_activities()
+            
+            # Check for timeout
+            if (datetime.now() - start_time).total_seconds() > timeout_seconds:
+                st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
+                return None
+            
+            # Store data in Supabase (optional - only if time permits)
+            if (datetime.now() - start_time).total_seconds() < timeout_seconds - 30:
+                st.text("Armazenando dados no banco...")
+                try:
+                    supabase.upsert_brokers(brokers)
+                    supabase.upsert_leads(leads)
+                    supabase.upsert_activities(activities)
+                except Exception as e:
+                    st.warning(f"Alerta: Falha ao salvar dados no banco: {str(e)}")
+                    # Continue with processing even if database storage fails
+            
+            # Process data for dashboard
+            st.text("Processando dados...")
+            broker_data, lead_data, activity_data = process_data(brokers, leads, activities)
+            
+            # Calculate broker points based on gamification rules
+            st.text("Calculando pontuação...")
+            ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
+            
+            st.success("Dados carregados com sucesso!")
+            return {
+                'brokers': broker_data,
+                'leads': lead_data,
+                'activities': activity_data,
+                'ranking': ranking_data
+            }
     except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
+        st.error(f"Erro ao carregar dados: {str(e)}")
         return None
 
 # Function to display broker ranking
