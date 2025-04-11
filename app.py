@@ -1,198 +1,357 @@
 import os
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+import numpy as np
+from datetime import datetime, timedelta
 import plotly.express as px
+import plotly.graph_objects as go
 from dotenv import load_dotenv
+import threading
+import time
+import logging
 
 # Import custom modules
 from kommo_api import KommoAPI
 from supabase_db import SupabaseClient
 from gamification import calculate_broker_points
 from data_processor import process_data
-from visualizations import create_heatmap, create_conversion_funnel
+from visualizations import create_heatmap, create_conversion_funnel, create_points_breakdown_chart
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
 # Initialize Streamlit page configuration
 st.set_page_config(
-    page_title="Dashboard de Corretores Imobiliários",
+    page_title="Dashboard de Corretores", 
     page_icon="🏠",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"  # Menu lateral inicia recolhido
 )
 
-# Initialize API and database clients
-@st.cache_resource
-def init_clients():
-    kommo_api = KommoAPI(
-        api_url=os.getenv("KOMMO_API_URL"),
-        access_token=os.getenv("ACCESS_TOKEN_KOMMO")
-    )
-    
-    supabase = SupabaseClient(
-        url=os.getenv("VITE_SUPABASE_URL"),
-        key=os.getenv("VITE_SUPABASE_ANON_KEY")
-    )
-    
-    return kommo_api, supabase
+# Custom CSS
+st.markdown("""
+<style>
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+    h1 {
+        font-size: 2.2rem !important;
+        font-weight: 600 !important;
+        color: #1E3A8A !important;
+    }
+    h2 {
+        font-size: 1.8rem !important;
+        font-weight: 500 !important;
+        color: #2563EB !important;
+    }
+    .stMetric {
+        background-color: #F3F4F6;
+        padding: 10px 15px;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+    }
+    .stMetric label {
+        font-weight: 600 !important;
+        color: #4B5563 !important;
+    }
+    .stMetric .css-1xarl3l {
+        font-size: 2.2rem !important;
+        font-weight: 700 !important;
+        color: #1E40AF !important;
+    }
+    .streamlit-card {
+        border-radius: 12px !important;
+        border: 1px solid #E5E7EB !important;
+    }
+    .block-container {
+        max-width: 1200px;
+        padding-top: 1rem;
+        padding-right: 1.5rem;
+        padding-left: 1.5rem;
+        padding-bottom: 1rem;
+    }
+    .ranking-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+    }
+    .rank-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1E3A8A;
+    }
+    .broker-name {
+        font-size: 18px;
+        font-weight: 500;
+    }
+    .points-label {
+        font-size: 14px;
+        color: #6B7280;
+    }
+    .points-value {
+        font-size: 20px;
+        font-weight: 600;
+        color: #2563EB;
+    }
+    .card-title {
+        font-weight: 600;
+        color: #1F2937;
+        font-size: 18px;
+        margin-bottom: 10px;
+    }
+    .stat-card {
+        background-color: white;
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+        margin-bottom: 20px;
+    }
+    .tabs-container .stTabs [data-baseweb="tab-list"] {
+        background-color: #F3F4F6;
+        border-radius: 8px;
+        padding: 5px;
+    }
+    .tabs-container .stTabs [data-baseweb="tab"] {
+        padding: 10px 16px;
+        border-radius: 8px;
+    }
+    .tabs-container .stTabs [aria-selected="true"] {
+        background-color: #3B82F6;
+        color: white;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-kommo_api, supabase = init_clients()
-
-# Function to load data with caching
-@st.cache_data(ttl=3600)  # Cache data for 1 hour
-def load_data():
-    try:
-        with st.spinner("Carregando dados..."):
-            # Set a timeout for loading data (120 seconds)
-            start_time = datetime.now()
-            timeout_seconds = 120
+# Create the background data loading thread
+def background_data_loader():
+    """
+    This function runs in the background to periodically load data from the API
+    and save it to the database without showing any loading spinners in the UI
+    """
+    while True:
+        try:
+            logger.info("Background data loading thread started")
             
-            # Try to get broker points from Supabase first (this will be faster)
-            broker_points = None
-            try:
-                broker_points = supabase.get_broker_points()
-            except Exception as e:
-                st.warning(f"Não foi possível recuperar pontuação do banco: {str(e)}")
-                # Continue without points data
+            # Initialize clients
+            kommo_api = KommoAPI(
+                api_url=os.getenv("KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
+                access_token=os.getenv("ACCESS_TOKEN_KOMMO")
+            )
+            
+            supabase = SupabaseClient(
+                url=os.getenv("VITE_SUPABASE_URL"),
+                key=os.getenv("VITE_SUPABASE_ANON_KEY")
+            )
             
             # Fetch data from Kommo API
-            st.text("Buscando usuários...")
+            logger.info("Fetching users from API")
             brokers = kommo_api.get_users()
             
-            # Check for timeout
-            if (datetime.now() - start_time).total_seconds() > timeout_seconds:
-                st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
-                return None
-                
-            st.text("Buscando leads...")
+            logger.info("Fetching leads from API")
             leads = kommo_api.get_leads()
             
-            # Check for timeout
-            if (datetime.now() - start_time).total_seconds() > timeout_seconds:
-                st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
-                return None
-                
-            st.text("Buscando atividades...")
+            logger.info("Fetching activities from API")
             activities = kommo_api.get_activities()
             
-            # Check for timeout
-            if (datetime.now() - start_time).total_seconds() > timeout_seconds:
-                st.error("Tempo limite excedido ao carregar dados. Tente novamente mais tarde.")
-                return None
-            
             # Store data in Supabase
-            if (datetime.now() - start_time).total_seconds() < timeout_seconds - 30:
-                st.text("Armazenando dados no Supabase...")
-                try:
-                    # Store new data
-                    supabase.upsert_brokers(brokers)
-                    supabase.upsert_leads(leads)
-                    supabase.upsert_activities(activities)
-                except Exception as e:
-                    st.warning(f"Alerta: Falha ao salvar dados no banco: {str(e)}")
-                    # Continue with processing even if database storage fails
+            logger.info("Storing data in Supabase")
+            try:
+                # Store new data
+                supabase.upsert_brokers(brokers)
+                supabase.upsert_leads(leads)
+                supabase.upsert_activities(activities)
+            except Exception as e:
+                logger.error(f"Failed to save data to database: {str(e)}")
             
             # Process data for dashboard
-            st.text("Processando dados...")
+            logger.info("Processing data for dashboard")
             broker_data, lead_data, activity_data = process_data(brokers, leads, activities)
             
             # Calculate broker points based on gamification rules
-            st.text("Calculando pontuação...")
+            logger.info("Calculating broker points")
             ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
             
             # Store broker points in Supabase
             try:
                 supabase.upsert_broker_points(ranking_data)
+                logger.info("Broker points saved successfully")
             except Exception as e:
-                st.warning(f"Alerta: Falha ao salvar pontuação no banco: {str(e)}")
+                logger.error(f"Failed to save broker points: {str(e)}")
+                
+            # Sleep for 1 hour before next update
+            logger.info("Background data loading complete, sleeping for 1 hour")
+            time.sleep(3600)  # 1 hour
             
-            st.success("Dados carregados com sucesso!")
-            return {
-                'brokers': broker_data,
-                'leads': lead_data,
-                'activities': activity_data,
-                'ranking': ranking_data
-            }
+        except Exception as e:
+            logger.error(f"Error in background data loading: {str(e)}")
+            # In case of error, wait 5 minutes and try again
+            time.sleep(300)
+
+# Start the background data loading thread when app starts
+# This utilizes st.cache_resource to ensure the thread is only started once
+@st.cache_resource
+def start_background_thread():
+    thread = threading.Thread(target=background_data_loader, daemon=True)
+    thread.start()
+    return "Background thread started"
+
+# Start the background thread
+thread_status = start_background_thread()
+
+# Initialize API and database clients
+@st.cache_resource
+def init_supabase_client():
+    return SupabaseClient(
+        url=os.getenv("VITE_SUPABASE_URL"),
+        key=os.getenv("VITE_SUPABASE_ANON_KEY")
+    )
+
+supabase = init_supabase_client()
+
+# Function to fetch data from Supabase
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_data_from_supabase():
+    """Fetch data from Supabase tables"""
+    try:
+        # Get data from Supabase
+        brokers = supabase.client.table("brokers").select("*").execute()
+        leads = supabase.client.table("leads").select("*").execute()
+        activities = supabase.client.table("activities").select("*").execute()
+        broker_points = supabase.client.table("broker_points").select("*").execute()
+        
+        # Convert to DataFrames
+        brokers_df = pd.DataFrame(brokers.data) if brokers.data else pd.DataFrame()
+        leads_df = pd.DataFrame(leads.data) if leads.data else pd.DataFrame()
+        activities_df = pd.DataFrame(activities.data) if activities.data else pd.DataFrame()
+        broker_points_df = pd.DataFrame(broker_points.data) if broker_points.data else pd.DataFrame()
+        
+        return {
+            'brokers': brokers_df,
+            'leads': leads_df,
+            'activities': activities_df,
+            'ranking': broker_points_df
+        }
     except Exception as e:
-        st.error(f"Erro ao carregar dados: {str(e)}")
+        st.error(f"Erro ao carregar dados do Supabase: {str(e)}")
         return None
 
-# Function to display broker ranking
-def display_ranking(ranking_data):
-    st.header("Ranking de Corretores")
+# Function to display the ranking cards in the exact format shown in the image
+def display_ranking_cards(ranking_data):
+    """Display ranking cards in a grid layout"""
+    if ranking_data.empty:
+        st.info("Dados de ranking não disponíveis.")
+        return
     
     # Sort brokers by points in descending order
     sorted_brokers = ranking_data.sort_values(by='pontos', ascending=False).reset_index(drop=True)
     sorted_brokers.index = sorted_brokers.index + 1  # Start index from 1
     
-    # Create ranking columns
-    col1, col2, col3 = st.columns([1, 2, 1])
+    # Create a grid of cards - 3 per row as shown in the reference image
+    cols = st.columns(3)
     
-    with col2:
-        # Display ranking table
-        ranking_display = sorted_brokers[['nome', 'pontos']].copy()
-        ranking_display.index.name = 'posição'
-        st.dataframe(
-            ranking_display,
-            use_container_width=True,
-            column_config={
-                "nome": "Corretor",
-                "pontos": "Pontuação"
-            },
-            hide_index=False
-        )
+    # Display only top 9 brokers (or fewer if less available)
+    for i, row in enumerate(sorted_brokers.head(9).itertuples()):
+        col_idx = i % 3  # Determine which column to place the card
+        
+        with cols[col_idx]:
+            st.markdown(f"""
+            <div class="ranking-card">
+                <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                    <div class="rank-number" style="margin-right: 15px;">{row.Index}</div>
+                    <div class="broker-name">{row.nome}</div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                    <div class="points-label">Pontuação</div>
+                    <div class="points-value">{int(row.pontos)}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-# Function to display broker details
-def display_broker_details(broker_id, data):
-    broker = data['brokers'][data['brokers']['id'] == broker_id].iloc[0]
-    broker_leads = data['leads'][data['leads']['responsavel_id'] == broker_id]
+# Function to display the broker performance breakdown
+def display_broker_metrics(broker_id, data):
+    """Display broker metrics in the dashboard"""
+    # Find the broker in the data
+    broker_row = data['ranking'][data['ranking']['id'] == broker_id]
+    
+    if broker_row.empty:
+        st.info("Dados do corretor não disponíveis.")
+        return
+    
+    # Create metrics row
+    cols = st.columns(4)
+    
+    # Extract performance metrics
+    leads_respondidos_1h = int(broker_row['leads_respondidos_1h'].values[0]) if 'leads_respondidos_1h' in broker_row.columns else 0
+    leads_visitados = int(broker_row['leads_visitados'].values[0]) if 'leads_visitados' in broker_row.columns else 0
+    propostas_enviadas = int(broker_row['propostas_enviadas'].values[0]) if 'propostas_enviadas' in broker_row.columns else 0
+    vendas_realizadas = int(broker_row['vendas_realizadas'].values[0]) if 'vendas_realizadas' in broker_row.columns else 0
+    
+    # Display metrics
+    with cols[0]:
+        st.metric("Leads Respondidos em 1h", leads_respondidos_1h)
+    with cols[1]:
+        st.metric("Leads Visitados", leads_visitados)
+    with cols[2]:
+        st.metric("Propostas Enviadas", propostas_enviadas)
+    with cols[3]:
+        st.metric("Vendas Realizadas", vendas_realizadas)
+
+# Function to display the activity heatmap
+def display_activity_heatmap(broker_id, data):
+    """Display activity heatmap for the broker"""
     broker_activities = data['activities'][data['activities']['user_id'] == broker_id]
     
-    st.subheader(f"Dashboard Individual: {broker['nome']}")
-    
-    # Create columns for broker information
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.metric("Pontuação Total", data['ranking'][data['ranking']['id'] == broker_id]['pontos'].values[0])
-        st.metric("Posição no Ranking", int(data['ranking'][data['ranking']['id'] == broker_id].index[0]) + 1)
-        st.metric("Total de Leads", len(broker_leads))
-    
-    with col2:
-        # Create conversion funnel
-        funnel_fig = create_conversion_funnel(broker_leads)
-        st.plotly_chart(funnel_fig, use_container_width=True)
-    
-    # Create heatmap of broker activities
-    st.subheader("Mapa de Calor de Atividades")
-    if not broker_activities.empty:
-        heatmap_fig = create_heatmap(broker_activities)
-        st.plotly_chart(heatmap_fig, use_container_width=True)
-    else:
+    if broker_activities.empty:
         st.info("Não há dados de atividades suficientes para gerar o mapa de calor.")
+        return
     
-    # Display alerts
-    st.subheader("Alertas")
+    # Create heatmap
+    heatmap_fig = create_heatmap(broker_activities)
+    st.plotly_chart(heatmap_fig, use_container_width=True)
+
+# Function to display the points breakdown chart
+def display_points_breakdown(broker_id, data):
+    """Display points breakdown chart for the broker"""
+    broker_row = data['ranking'][data['ranking']['id'] == broker_id]
+    
+    if broker_row.empty:
+        st.info("Dados de pontuação não disponíveis.")
+        return
+    
+    # Create points breakdown chart
+    points_fig = create_points_breakdown_chart(broker_row.iloc[0])
+    st.plotly_chart(points_fig, use_container_width=True)
+
+# Function to display alerts for the broker
+def display_broker_alerts(broker_id, data):
+    """Display alerts for the broker"""
+    broker_row = data['ranking'][data['ranking']['id'] == broker_id]
+    
+    if broker_row.empty:
+        st.info("Dados de alertas não disponíveis.")
+        return
     
     # Get alerts from ranking data
     alerts = []
     
-    broker_row = data['ranking'][data['ranking']['id'] == broker_id]
+    if 'leads_sem_interacao_24h' in broker_row.columns and broker_row['leads_sem_interacao_24h'].values[0] > 0:
+        alerts.append(f"⚠️ {int(broker_row['leads_sem_interacao_24h'].values[0])} leads sem interação há mais de 24h")
     
-    if not broker_row.empty:
-        if broker_row['leads_sem_interacao_24h'].values[0] > 0:
-            alerts.append(f"⚠️ {broker_row['leads_sem_interacao_24h'].values[0]} leads sem interação há mais de 24h")
-        
-        if broker_row['leads_respondidos_apos_18h'].values[0] > 0:
-            alerts.append(f"⚠️ {broker_row['leads_respondidos_apos_18h'].values[0]} leads respondidos após 18h")
-        
-        if broker_row['leads_tempo_resposta_acima_12h'].values[0] > 0:
-            alerts.append(f"⚠️ {broker_row['leads_tempo_resposta_acima_12h'].values[0]} leads com tempo médio de resposta acima de 12h")
-        
-        if broker_row['leads_5_dias_sem_mudanca'].values[0] > 0:
-            alerts.append(f"⚠️ {broker_row['leads_5_dias_sem_mudanca'].values[0]} leads com mais de 5 dias sem mudança de etapa")
+    if 'leads_respondidos_apos_18h' in broker_row.columns and broker_row['leads_respondidos_apos_18h'].values[0] > 0:
+        alerts.append(f"⚠️ {int(broker_row['leads_respondidos_apos_18h'].values[0])} leads respondidos após 18h")
+    
+    if 'leads_tempo_resposta_acima_12h' in broker_row.columns and broker_row['leads_tempo_resposta_acima_12h'].values[0] > 0:
+        alerts.append(f"⚠️ {int(broker_row['leads_tempo_resposta_acima_12h'].values[0])} leads com tempo médio de resposta acima de 12h")
+    
+    if 'leads_5_dias_sem_mudanca' in broker_row.columns and broker_row['leads_5_dias_sem_mudanca'].values[0] > 0:
+        alerts.append(f"⚠️ {int(broker_row['leads_5_dias_sem_mudanca'].values[0])} leads com mais de 5 dias sem mudança de etapa")
     
     if alerts:
         for alert in alerts:
@@ -200,44 +359,159 @@ def display_broker_details(broker_id, data):
     else:
         st.success("Não há alertas para este corretor.")
 
+# Function to create conversion funnel with consistent styling
+def create_styled_conversion_funnel(lead_data):
+    """Create a styled conversion funnel visualization"""
+    # Define the pipeline stages in order
+    stages = ["Novo Lead", "Qualificação", "Apresentação", "Proposta", "Negociação", "Fechado"]
+    
+    # Count leads in each stage
+    stage_counts = []
+    for stage in stages:
+        count = len(lead_data[lead_data['etapa'] == stage]) if 'etapa' in lead_data.columns else 0
+        stage_counts.append(count)
+    
+    # Create funnel chart with specific styling to match the reference image
+    fig = go.Figure(go.Funnel(
+        y=stages,
+        x=stage_counts,
+        textposition="inside",
+        textinfo="value",
+        marker=dict(
+            color=["#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE", "#DBEAFE", "#93C5FD"],
+            line=dict(width=1, color=["#2563EB", "#2563EB", "#2563EB", "#2563EB", "#2563EB", "#2563EB"])
+        ),
+        connector=dict(line=dict(width=1))
+    ))
+    
+    fig.update_layout(
+        height=300,
+        margin=dict(t=0, l=5, r=5, b=0),
+        font=dict(size=14),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)'
+    )
+    
+    return fig
+
 # Main application
 def main():
-    st.title("Dashboard de Corretores Imobiliários")
+    # Título da página
+    st.markdown("<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>", unsafe_allow_html=True)
     
-    # Add sidebar for controls
-    with st.sidebar:
-        st.header("Controles")
-        refresh_btn = st.button("Atualizar Dados")
+    # Fetch data from Supabase
+    data = get_data_from_supabase()
+    
+    if data is None or all(df.empty for df in data.values()):
+        st.info("Carregando dados do banco... Por favor, aguarde ou recarregue a página em alguns instantes.")
+        return
+    
+    # Create tabs container with custom styling
+    st.markdown('<div class="tabs-container">', unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["📊 Ranking Geral", "👤 Dashboard Individual"])
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    with tab1:
+        st.markdown("### Ranking de Corretores")
+        st.markdown("Classificação baseada em pontos acumulados por produtividade")
         
-        if refresh_btn:
+        # Display ranking cards
+        display_ranking_cards(data['ranking'])
+        
+        # Additional section for summary statistics
+        st.markdown("### Estatísticas Gerais")
+        
+        # Create summary metrics
+        col1, col2, col3, col4 = st.columns(4)
+        
+        # Calculate summary statistics
+        total_leads = len(data['leads']) if not data['leads'].empty else 0
+        active_brokers = len(data['ranking']) if not data['ranking'].empty else 0
+        avg_points = int(data['ranking']['pontos'].mean()) if not data['ranking'].empty else 0
+        total_sales = int(data['ranking']['vendas_realizadas'].sum()) if 'vendas_realizadas' in data['ranking'].columns and not data['ranking'].empty else 0
+        
+        with col1:
+            st.metric("Total de Leads", total_leads)
+        with col2:
+            st.metric("Corretores Ativos", active_brokers)
+        with col3:
+            st.metric("Pontuação Média", avg_points)
+        with col4:
+            st.metric("Vendas Realizadas", total_sales)
+    
+    with tab2:
+        # Select a broker
+        if data['brokers'].empty:
+            st.info("Nenhum corretor disponível no momento.")
+            return
+        
+        broker_options = data['brokers'][['id', 'nome']].copy()
+        broker_options['display_name'] = broker_options['nome']
+        
+        selected_broker = st.selectbox(
+            "Selecione um corretor",
+            options=broker_options['id'].tolist(),
+            format_func=lambda x: broker_options.loc[broker_options['id'] == x, 'display_name'].iloc[0]
+        )
+        
+        if selected_broker:
+            # Get broker details
+            broker = data['brokers'][data['brokers']['id'] == selected_broker].iloc[0]
+            broker_leads = data['leads'][data['leads']['responsavel_id'] == selected_broker]
+            
+            # Display broker header with ranking position
+            broker_rank = data['ranking'][data['ranking']['id'] == selected_broker].index[0] + 1 if not data['ranking'].empty and selected_broker in data['ranking']['id'].values else "N/A"
+            broker_points = int(data['ranking'][data['ranking']['id'] == selected_broker]['pontos'].values[0]) if not data['ranking'].empty and selected_broker in data['ranking']['id'].values else 0
+            
+            # Header with rank and points
+            st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>{broker['nome']}</h2>
+                <div style="display: flex; align-items: center;">
+                    <div style="margin-right: 20px; text-align: center;">
+                        <div style="font-size: 14px; color: #6B7280;">Ranking</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #1E3A8A;">#{broker_rank}</div>
+                    </div>
+                    <div style="text-align: center;">
+                        <div style="font-size: 14px; color: #6B7280;">Pontuação</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #2563EB;">{broker_points}</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Display performance metrics
+            st.markdown('<div class="card-title">Métricas de Desempenho</div>', unsafe_allow_html=True)
+            display_broker_metrics(selected_broker, data)
+            
+            # Create two columns for the charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Display conversion funnel
+                st.markdown('<div class="card-title">Funil de Conversão</div>', unsafe_allow_html=True)
+                funnel_fig = create_styled_conversion_funnel(broker_leads)
+                st.plotly_chart(funnel_fig, use_container_width=True)
+                
+                # Display alerts
+                st.markdown('<div class="card-title">Alertas</div>', unsafe_allow_html=True)
+                display_broker_alerts(selected_broker, data)
+            
+            with col2:
+                # Display activity heatmap
+                st.markdown('<div class="card-title">Mapa de Calor - Atividades</div>', unsafe_allow_html=True)
+                display_activity_heatmap(selected_broker, data)
+                
+                # Display points breakdown
+                st.markdown('<div class="card-title">Distribuição de Pontos</div>', unsafe_allow_html=True)
+                display_points_breakdown(selected_broker, data)
+                
+    # Add refresh button in the footer
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("↻ Atualizar Dashboard"):
             st.cache_data.clear()
-            st.rerun()
-    
-    # Load data
-    data = load_data()
-    
-    if data is not None:
-        # Display tabs for different views
-        tab1, tab2 = st.tabs(["Ranking Geral", "Dashboard Individual"])
-        
-        with tab1:
-            display_ranking(data['ranking'])
-        
-        with tab2:
-            # Broker selection
-            broker_options = data['brokers'][['id', 'nome']].copy()
-            broker_options['display_name'] = broker_options['nome']
-            
-            selected_broker = st.selectbox(
-                "Selecione um corretor",
-                options=broker_options['id'].tolist(),
-                format_func=lambda x: broker_options.loc[broker_options['id'] == x, 'display_name'].iloc[0]
-            )
-            
-            if selected_broker:
-                display_broker_details(selected_broker, data)
-    else:
-        st.error("Não foi possível carregar os dados. Verifique a conexão com a API e o banco de dados.")
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
