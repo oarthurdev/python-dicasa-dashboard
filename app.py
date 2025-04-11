@@ -526,8 +526,14 @@ def main():
         # Calculate summary statistics
         total_leads = len(data['leads']) if not data['leads'].empty else 0
         active_brokers = len(data['ranking']) if not data['ranking'].empty else 0
-        avg_points = int(data['ranking']['pontos'].mean()) if not data['ranking'].empty else 0
-        total_sales = int(data['ranking']['vendas_realizadas'].sum()) if 'vendas_realizadas' in data['ranking'].columns and not data['ranking'].empty else 0
+        
+        # Calculate average points and total sales from broker_points table
+        if not data['ranking'].empty:
+            avg_points = int(data['ranking']['pontos'].mean())
+            total_sales = int(data['ranking']['vendas_realizadas'].sum()) if 'vendas_realizadas' in data['ranking'].columns else 0
+        else:
+            avg_points = 0
+            total_sales = 0
         
         with col1:
             st.metric("Total de Leads", total_leads)
