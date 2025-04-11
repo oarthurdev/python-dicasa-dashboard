@@ -498,36 +498,8 @@ def main():
     # Título da página
     st.markdown("<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>", unsafe_allow_html=True)
     
-    # Initialize clients
-    kommo_api = KommoAPI(
-        api_url=os.getenv("KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
-        access_token=os.getenv("ACCESS_TOKEN_KOMMO")
-    )
-    
-    # Fetch and process fresh data
-    try:
-        # Fetch data from Kommo API
-        brokers = kommo_api.get_users()
-        leads = kommo_api.get_leads()
-        activities = kommo_api.get_activities()
-        
-        # Process data for dashboard
-        broker_data, lead_data, activity_data = process_data(brokers, leads, activities)
-        
-        # Calculate broker points based on gamification rules
-        ranking_data = calculate_broker_points(broker_data, lead_data, activity_data)
-        
-        # Store data in Supabase
-        supabase.upsert_brokers(brokers)
-        supabase.upsert_leads(leads)
-        supabase.upsert_activities(activities)
-        supabase.upsert_broker_points(ranking_data)
-        
-        # Fetch updated data from Supabase
-        data = get_data_from_supabase()
-    except Exception as e:
-        logger.error(f"Error updating data: {str(e)}")
-        data = get_data_from_supabase()
+    # Fetch data from Supabase only
+    data = get_data_from_supabase()
     
     if data is None or all(df.empty for df in data.values()):
         st.info("Carregando dados do banco... Por favor, aguarde alguns instantes.")
