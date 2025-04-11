@@ -618,7 +618,9 @@ def main():
             st.info("Nenhum corretor disponível no momento.")
             return
 
-        broker_options = data['brokers'][['id', 'nome']].copy()
+        # Filter only active brokers (those with points in ranking)
+        active_broker_ids = data['ranking']['id'].tolist() if not data['ranking'].empty else []
+        broker_options = data['brokers'][data['brokers']['id'].isin(active_broker_ids)][['id', 'nome']].copy()
         broker_options['display_name'] = broker_options['nome']
 
         selected_broker = st.selectbox(
