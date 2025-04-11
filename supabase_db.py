@@ -1,6 +1,7 @@
 import os
 from supabase import create_client
 import pandas as pd
+import numpy as np
 import logging
 from datetime import datetime
 
@@ -77,7 +78,7 @@ class SupabaseClient:
             numeric_cols = leads_df_clean.select_dtypes(include=['float', 'int']).columns
             for col in numeric_cols:
                 # Replace NaN and infinite values with None
-                mask = ~pd.isfinite(leads_df_clean[col])
+                mask = ~np.isfinite(leads_df_clean[col])
                 if mask.any():
                     leads_df_clean.loc[mask, col] = None
             
@@ -98,7 +99,7 @@ class SupabaseClient:
                 # Additional check for any remaining non-JSON compatible values
                 for key, value in lead.items():
                     # Check for NaN, Infinity, -Infinity in float values
-                    if isinstance(value, float) and (pd.isna(value) or pd.isinf(value)):
+                    if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
                         lead[key] = None
             
             # Upsert data to Supabase
@@ -135,7 +136,7 @@ class SupabaseClient:
             numeric_cols = activities_df_clean.select_dtypes(include=['float', 'int']).columns
             for col in numeric_cols:
                 # Replace NaN and infinite values with None
-                mask = ~pd.isfinite(activities_df_clean[col])
+                mask = ~np.isfinite(activities_df_clean[col])
                 if mask.any():
                     activities_df_clean.loc[mask, col] = None
             
@@ -153,7 +154,7 @@ class SupabaseClient:
                 # Additional check for any remaining non-JSON compatible values
                 for key, value in activity.items():
                     # Check for NaN, Infinity, -Infinity in float values
-                    if isinstance(value, float) and (pd.isna(value) or pd.isinf(value)):
+                    if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
                         activity[key] = None
             
             # Upsert data to Supabase
@@ -211,7 +212,7 @@ class SupabaseClient:
             numeric_cols = points_df_clean.select_dtypes(include=['float', 'int']).columns
             for col in numeric_cols:
                 # Replace NaN and infinite values with None
-                mask = ~pd.isfinite(points_df_clean[col])
+                mask = ~np.isfinite(points_df_clean[col])
                 if mask.any():
                     points_df_clean.loc[mask, col] = None
             
@@ -225,7 +226,7 @@ class SupabaseClient:
                 # Additional check for any remaining non-JSON compatible values
                 for key, value in point.items():
                     # Check for NaN, Infinity, -Infinity in float values
-                    if isinstance(value, float) and (pd.isna(value) or pd.isinf(value)):
+                    if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
                         point[key] = None
             
             # Upsert data to Supabase
