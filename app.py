@@ -335,12 +335,11 @@ def display_broker_metrics(broker_id, data):
 def display_activity_heatmap(broker_id, data):
     """Display enhanced activity heatmap for the broker with filtering options"""
 
-    if 'activities' in data.columns:
-        broker_activities = data['activities'][data['activities']['user_id'] ==
-                                               broker_id]
-        # ... rest of your code
+    if 'activities' in data and not data['activities'].empty:
+        broker_activities = data['activities'][data['activities']['user_id'] == broker_id]
     else:
-        print("Error: 'activities' column not found in data.")
+        st.info("Não há dados de atividades disponíveis para este corretor.")
+        return
 
     if broker_activities.empty:
         st.info(
