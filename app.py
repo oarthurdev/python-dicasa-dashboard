@@ -223,7 +223,7 @@ supabase = init_supabase_client()
 
 
 # Function to fetch data from Supabase
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=300, max_entries=1)  # Cache for 5 minutes, limit cache size
 def get_data_from_supabase():
     """Fetch data from Supabase tables"""
     try:
@@ -290,8 +290,40 @@ def display_ranking_cards(ranking_data):
 
 
 # Function to display the broker performance breakdown
+@st.cache_data(ttl=300, max_entries=10)
+def calculate_broker_metrics(broker_id, data):
+    """Calculate broker metrics for caching"""
+    broker_points = data.get('ranking', pd.DataFrame())
+    
+    if not broker_points.empty:
+        broker_row = broker_points[broker_points.index == broker_id]
+        if not broker_row.empty:
+            return {
+                'leads_respondidos_1h': int(broker_row['leads_respondidos_1h'].values[0]) if 'leads_respondidos_1h' in broker_row.columns else 0,
+                'leads_visitados': int(broker_row['leads_visitados'].values[0]) if 'leads_visitados' in broker_row.columns else 0,
+                'propostas_enviadas': int(broker_row['propostas_enviadas'].values[0]) if 'propostas_enviadas' in broker_row.columns else 0,
+                'vendas_realizadas': int(broker_row['vendas_realizadas'].values[0]) if 'vendas_realizadas' in broker_row.columns else 0
+            }
+    return None
+
 def display_broker_metrics(broker_id, data):
     """Display broker metrics in the dashboard"""
+    metrics = calculate_broker_metrics(broker_id, data)
+    
+    if metrics is None:
+        st.info("Dados do corretor não disponíveis.")
+        return
+        
+    cols = st.columns(4)
+    
+    with cols[0]:
+        st.metric("Leads Respondidos em 1h", metrics['leads_respondidos_1h'])
+    with cols[1]:
+        st.metric("Leads Visitados", metrics['leads_visitados'])
+    with cols[2]:
+        st.metric("Propostas Enviadas", metrics['propostas_enviadas'])
+    with cols[3]:
+        st.metric("Vendas Realizadas", metrics['vendas_realizadas'])
     # Find the broker in the data
     broker_points = data.get('ranking', pd.DataFrame())
 
@@ -332,6 +364,34 @@ def display_broker_metrics(broker_id, data):
 
 
 # Function to display the activity heatmap with advanced filtering options
+@st.cache_data(ttl=300, max_entries=10)
+def process_heatmap_data(broker_id, data, activity_type, date_range, lead_status):
+    """Process and cache heatmap data"""
+    if 'activities' not in data or data['activities'].empty:
+        return None
+        
+    broker_activities = data['activities'][data['activities']['user_id'] == broker_id]
+    if broker_activities.empty:
+        return None
+        
+    filtered_activities = broker_activities.copy()
+    
+    # Apply filters
+    if activity_type != 'Todos':
+        filtered_activities = filtered_activities[filtered_activities['tipo'] == activity_type]
+        
+    if date_range != 'Todos os períodos':
+        today = datetime.now()
+        if date_range == 'Últimos 7 dias':
+            date_filter = today - timedelta(days=7)
+        elif date_range == 'Últimos 30 dias':
+            date_filter = today - timedelta(days=30)
+        else:  # Últimos 90 dias
+            date_filter = today - timedelta(days=90)
+        filtered_activities = filtered_activities[filtered_activities['criado_em'] >= date_filter]
+        
+    return filtered_activities
+
 def display_activity_heatmap(broker_id, data):
     """Display enhanced activity heatmap for the broker with filtering options"""
 
