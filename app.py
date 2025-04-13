@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 import threading
 import time
 import logging
+from flask import Flask
 
 # Import custom modules
 from kommo_api import KommoAPI
@@ -25,6 +26,14 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+# Start Flask server in a separate thread
+def start_flask():
+    from flask_server import run_flask
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    logger.info("Flask webhook server started.")
 
 # Initialize Streamlit page configuration
 st.set_page_config(
@@ -761,4 +770,5 @@ def main():
 
 
 if __name__ == "__main__":
+    start_flask()
     main()

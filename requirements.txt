@@ -7,4 +7,4 @@ requests>=2.32.3
 sqlalchemy>=2.0.40
 streamlit>=1.44.1
 supabase>=2.15.0
-
+flask>=2.3.3

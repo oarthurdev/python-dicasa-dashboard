@@ -20,6 +20,7 @@ COPY . .
 
 # Expõe a porta padrão do Streamlit
 EXPOSE 8501
+EXPOSE 5000
 
 # Healthcheck com parâmetros para evitar falsos negativos
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
