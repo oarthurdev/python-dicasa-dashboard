@@ -92,6 +92,11 @@ st.markdown("""
         border-radius: 10px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+    .ranking-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
     }
     .rank-number {
         font-size: 24px;
@@ -101,6 +106,11 @@ st.markdown("""
     .broker-name {
         font-size: 18px;
         font-weight: 500;
+        color: #1F2937;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 150px;
     }
     .points-label {
         font-size: 14px;
@@ -264,6 +274,18 @@ def get_data_from_supabase():
 
 
 # Function to display the ranking cards in the exact format shown in the image
+def get_rank_color(points):
+    """Define cores baseadas na pontuação"""
+    if points >= 500:
+        return "#22C55E", "🏆"  # Verde para pontuação alta
+    elif points >= 300:
+        return "#3B82F6", "⭐"  # Azul para pontuação média-alta
+    elif points >= 100:
+        return "#EAB308", "🌟"  # Amarelo para pontuação média
+    else:
+        return "#6B7280", "🔄"  # Cinza para pontuação baixa
+    
+# Function to display the ranking cards in the exact format shown in the image
 def display_ranking_cards(ranking_data):
     """Display ranking cards in a grid layout"""
     if ranking_data.empty:
@@ -281,17 +303,66 @@ def display_ranking_cards(ranking_data):
     # Display only top 9 brokers (or fewer if less available)
     for i, row in enumerate(sorted_brokers.head(9).itertuples()):
         col_idx = i % 3  # Determine which column to place the card
+        rank_color, rank_icon = get_rank_color(row.pontos)
 
         with cols[col_idx]:
             st.markdown(f"""
-            <div class="ranking-card">
-                <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                    <div class="rank-number" style="margin-right: 15px;">{row.Index}</div>
-                    <div class="broker-name">{row.nome}</div>
+            <div class="ranking-card" style="background: linear-gradient(135deg, white, {rank_color}10); border-left: 4px solid {rank_color};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center;">
+                        <div class="rank-number" style="
+                            background-color: {rank_color}; 
+                            color: white;
+                            width: 30px;
+                            height: 30px;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            margin-right: 12px;
+                            font-weight: bold;
+                            font-size: 16px;">
+                            {row.Index}
+                        </div>
+                        <div style="display: flex; flex-direction: column;">
+                            <div class="broker-name" style="font-weight: 600; color: #1F2937;">{row.nome}</div>
+                            <div style="font-size: 12px; color: {rank_color}; margin-top: 2px;">
+                                {rank_icon} Nível {5-((row.Index-1)//2 if row.Index <= 9 else 1)}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="
+                        background-color: {rank_color}15;
+                        padding: 8px 12px;
+                        border-radius: 12px;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                    ">
+                        <div style="font-size: 11px; color: {rank_color}; font-weight: 500;">PONTOS</div>
+                        <div style="font-size: 18px; color: {rank_color}; font-weight: 700;">{int(row.pontos)}</div>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                    <div class="points-label">Pontuação</div>
-                    <div class="points-value">{int(row.pontos)}</div>
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    background-color: {rank_color}08;
+                    padding: 8px;
+                    border-radius: 8px;
+                    margin-top: 8px;
+                ">
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 11px; color: #6B7280;">Leads</div>
+                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.leads_visitados or 0)}</div>
+                    </div>
+                    <div style="text-align: center; flex: 1; border-left: 1px solid {rank_color}20; border-right: 1px solid {rank_color}20;">
+                        <div style="font-size: 11px; color: #6B7280;">Propostas</div>
+                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.propostas_enviadas or 0)}</div>
+                    </div>
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 11px; color: #6B7280;">Vendas</div>
+                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.vendas_realizadas or 0)}</div>
+                    </div>
                 </div>
             </div>
             """,
