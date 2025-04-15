@@ -216,27 +216,49 @@ def update_broker_points():
 def handle_webhook():
     try:
         webhook_data = request.json
-        logger.debug("Headers recebidos: %s", dict(request.headers))
         logger.info("Webhook recebido: %s", webhook_data)
 
-        # Log request details
-        logger.debug("Method: %s, Path: %s", request.method, request.path)
-        logger.debug("Content-Type: %s", request.content_type)
-        logger.debug("Query params: %s", dict(request.args))
+        # Extract event type and data
+        event_type = webhook_data.get('type')
+        leads_data = webhook_data.get('leads', {})
+        
+        should_update = False
 
-        # Handle PATCH request for lead updates
-        if request.method == 'PATCH':
-            if webhook_data.get('status_id') == 142:  # Status ID para venda fechada
-                # Force immediate sync when receiving webhook
-                success = sync_manager.force_sync()
-                # Update broker points after sync
-                update_broker_points()
-                if success:
-                    # Update points after sync
-                    points_success = update_broker_points()
-                    if points_success:
-                        return jsonify({"status": "success", "message": "Dados sincronizados e pontos atualizados"}), 200
-                return jsonify({"status": "error", "message": "Erro ao sincronizar dados"}), 500
+        # Check event types that require points update
+        if event_type in [
+            'lead_added',               # Novo lead
+            'lead_status_changed',      # Mudança de status do lead
+            'note_created',             # Feedback/notas
+            'task_completed',           # Tarefas concluídas
+            'incoming_chat_message',    # Mensagem recebida
+            'outgoing_chat_message'     # Mensagem enviada
+        ]:
+            should_update = True
+        
+        # Check lead status changes
+        leads_status = leads_data.get('status', [])
+        for status in leads_status:
+            status_id = status.get('status_id')
+            if status_id in [142, 143]:  # Venda fechada ou perdida
+                should_update = True
+                break
+
+        if should_update:
+            # Force immediate sync for affected data
+            success = sync_manager.force_sync()
+            if success:
+                # Calculate and update points
+                points_success = update_broker_points()
+                if points_success:
+                    return jsonify({
+                        "status": "success",
+                        "message": "Dados sincronizados e pontos atualizados"
+                    }), 200
+            
+            return jsonify({
+                "status": "error", 
+                "message": "Erro ao sincronizar dados"
+            }), 500
 
         # Handle POST request (original webhook)
         leads_status = webhook_data.get('leads', {}).get('status', [])

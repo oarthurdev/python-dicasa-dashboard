@@ -30,12 +30,15 @@ class SyncManager:
 
     def sync_data(self) -> bool:
         try:
-            # Sync users/brokers
-            if self.needs_sync('users'):
-                brokers = self.kommo_api.get_users()
-                if not brokers.empty:
-                    self.supabase.upsert_brokers(brokers)
-                self.update_sync_time('users')
+            retry_count = 3
+            for attempt in range(retry_count):
+                try:
+                    # Sync users/brokers with retry
+                    if self.needs_sync('users'):
+                        brokers = self.kommo_api.get_users()
+                        if not brokers.empty:
+                            self.supabase.upsert_brokers(brokers)
+                        self.update_sync_time('users')
 
             # Sync leads
             if self.needs_sync('leads'):
