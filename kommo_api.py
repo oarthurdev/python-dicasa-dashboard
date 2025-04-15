@@ -117,7 +117,7 @@ class KommoAPI:
             
             leads_data = []
             page = 1
-            max_pages = 5  # Limit to 5 pages maximum (250 leads)
+            max_pages = 20  # Increased limit to 1000 leads
             
             while True:
                 logger.info(f"Fetching leads page {page}")
@@ -190,7 +190,7 @@ class KommoAPI:
             
             activities_data = []
             page = 1
-            max_pages = 5  # Limit to 5 pages (250 events)
+            max_pages = 20  # Increased limit to 1000 events
             
             # Get current timestamp to filter recent activities
             now = int(time.time())
