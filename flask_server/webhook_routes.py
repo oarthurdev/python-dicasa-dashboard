@@ -5,9 +5,10 @@ import logging
 from dotenv import load_dotenv
 import pandas as pd
 
-from kommo_api import KommoAPI
-from supabase_db import SupabaseClient
-from sync_manager import SyncManager
+from libs.kommo_api import KommoAPI
+from libs.supabase_db import SupabaseClient
+from libs.sync_manager import SyncManager
+
 
 load_dotenv()
 

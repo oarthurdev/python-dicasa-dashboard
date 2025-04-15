@@ -12,12 +12,10 @@ import logging
 from flask import Flask
 
 # Import custom modules
-from kommo_api import KommoAPI
-from supabase_db import SupabaseClient
+from libs import KommoAPI, SupabaseClient, SyncManager
 from gamification import calculate_broker_points
 from data_processor import process_data
 from visualizations import create_heatmap, create_conversion_funnel, create_points_breakdown_chart
-from sync_manager import SyncManager
 
 # Configure logging
 logging.basicConfig(
