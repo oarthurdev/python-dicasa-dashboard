@@ -217,87 +217,58 @@ def update_broker_points():
 @webhook_bp.route('/kommo', methods=['POST', 'PATCH'])
 def handle_webhook():
     try:
-        if request.is_json:
-            webhook_data = request.get_json()
-        else:
-            # Tenta forçar leitura mesmo sem o cabeçalho correto
-            webhook_data = json.loads(request.data)
+        if not request.data:
+            logger.error("Requisição recebida sem corpo.")
+            return jsonify({"status": "error", "message": "Requisição vazia"}), 400
+
+        try:
+            webhook_data = request.get_json(force=True)
+        except Exception as e:
+            logger.error(f"Erro ao interpretar JSON: {str(e)}")
+            return jsonify({"status": "error", "message": "JSON inválido"}), 400
 
         logger.info("Webhook recebido: %s", webhook_data)
 
-        # Extract event type and data
         event_type = webhook_data.get('type')
         leads_data = webhook_data.get('leads', {})
-        
+        leads_status = leads_data.get('status', [])
         should_update = False
 
-        # Check event types that require points update
         if event_type in [
-            'lead_added',               # Novo lead
-            'lead_status_changed',      # Mudança de status do lead
-            'note_created',             # Feedback/notas
-            'task_completed',           # Tarefas concluídas
-            'incoming_chat_message',    # Mensagem recebida
-            'outgoing_chat_message'     # Mensagem enviada
+            'lead_added',
+            'lead_status_changed',
+            'note_created',
+            'task_completed',
+            'incoming_chat_message',
+            'outgoing_chat_message'
         ]:
             should_update = True
-        
-        # Check lead status changes
-        leads_status = leads_data.get('status', [])
+
         for status in leads_status:
             status_id = status.get('status_id')
             if status_id in [142, 143]:  # Venda fechada ou perdida
                 should_update = True
                 break
 
-        if should_update:
-            # Force immediate sync for affected data
-            success = sync_manager.force_sync()
-            if success:
-                # Calculate and update points
-                points_success = update_broker_points()
-                if points_success:
-                    return jsonify({
-                        "status": "success",
-                        "message": "Dados sincronizados e pontos atualizados"
-                    }), 200
-            
-            return jsonify({
-                "status": "error", 
-                "message": "Erro ao sincronizar dados"
-            }), 500
-
-        # Handle POST request (original webhook)
-        leads_status = webhook_data.get('leads', {}).get('status', [])
-        logger.debug("Status dos leads: %s", leads_status)
-
-        # Verificar se é uma venda fechada
         is_sale = any(
-            status.get('status_id') == 142 and  # Status ID para venda fechada
-            status.get('responsible_user_id')    # Tem um corretor responsável
+            status.get('status_id') == 142 and status.get('responsible_user_id')
             for status in leads_status
         )
 
-        # Sempre atualizar pontos quando receber um webhook de venda
-        if is_sale or webhook_data.get('type') in [
-            'lead_status_changed',
-            'task_completed',
-            'note_created',
-            'incoming_chat_message',
-            'outgoing_chat_message'
-        ]:
-            logger.debug("Evento requer atualização de pontos: is_sale=%s, type=%s", 
-                        is_sale, webhook_data.get('type'))
-            # Force immediate sync when receiving webhook
+        if should_update or is_sale:
+            logger.debug("Evento requer atualização: is_sale=%s, type=%s", is_sale, event_type)
             success = sync_manager.force_sync()
             if success:
-                # Update points after sync
                 points_success = update_broker_points()
                 if points_success:
                     return jsonify({
                         "status": "success",
                         "message": "Dados sincronizados e pontos atualizados"
                     }), 200
+                return jsonify({
+                    "status": "error",
+                    "message": "Erro ao atualizar pontos"
+                }), 500
             return jsonify({
                 "status": "error",
                 "message": "Erro ao sincronizar dados"
