@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+
 # Start Flask server in a separate thread
 def start_flask():
     from flask_server import run_flask
@@ -36,6 +37,7 @@ def start_flask():
     flask_thread.start()
     logger.info("Flask webhook server started.")
 
+
 def background_data_loader():
     """
     This function runs in the background to continuously monitor Kommo API
@@ -43,15 +45,12 @@ def background_data_loader():
     """
     try:
         # Initialize clients
-        kommo_api = KommoAPI(
-            api_url=os.getenv("KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
-            access_token=os.getenv("ACCESS_TOKEN_KOMMO")
-        )
+        kommo_api = KommoAPI(api_url=os.getenv(
+            "KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
+                             access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
 
-        supabase = SupabaseClient(
-            url=os.getenv("VITE_SUPABASE_URL"),
-            key=os.getenv("VITE_SUPABASE_ANON_KEY")
-        )
+        supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
+                                  key=os.getenv("VITE_SUPABASE_ANON_KEY"))
 
         sync_manager = SyncManager(kommo_api, supabase)
 
@@ -68,15 +67,16 @@ def background_data_loader():
     except Exception as e:
         logger.error(f"Failed to initialize background sync: {str(e)}")
 
+
 # Initialize API and database clients
 @st.cache_resource
 def init_supabase_client():
-    return SupabaseClient(
-        url=os.getenv("VITE_SUPABASE_URL"),
-        key=os.getenv("VITE_SUPABASE_ANON_KEY")
-    )
+    return SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
+                          key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+
 
 supabase = init_supabase_client()
+
 
 # Start the background thread when app starts
 @st.cache_resource
@@ -84,6 +84,7 @@ def start_background_thread():
     thread = threading.Thread(target=background_data_loader, daemon=True)
     thread.start()
     return "Background thread started"
+
 
 # Start the background thread
 thread_status = start_background_thread()
@@ -194,7 +195,7 @@ st.markdown("""
     }
 </style>
 """,
-    unsafe_allow_html=True)
+            unsafe_allow_html=True)
 
 
 # Function to fetch data from Supabase
@@ -323,7 +324,7 @@ def display_ranking_cards(ranking_data):
                 </div>
             </div>
             """,
-                    unsafe_allow_html=True)
+                        unsafe_allow_html=True)
 
 
 # Function to display the broker performance breakdown
@@ -336,12 +337,21 @@ def calculate_broker_metrics(broker_id, data):
         broker_row = broker_points[broker_points.index == broker_id]
         if not broker_row.empty:
             return {
-                'leads_respondidos_1h': int(broker_row['leads_respondidos_1h'].values[0]) if 'leads_respondidos_1h' in broker_row.columns else 0,
-                'leads_visitados': int(broker_row['leads_visitados'].values[0]) if 'leads_visitados' in broker_row.columns else 0,
-                'propostas_enviadas': int(broker_row['propostas_enviadas'].values[0]) if 'propostas_enviadas' in broker_row.columns else 0,
-                'vendas_realizadas': int(broker_row['vendas_realizadas'].values[0]) if 'vendas_realizadas' in broker_row.columns else 0
+                'leads_respondidos_1h':
+                int(broker_row['leads_respondidos_1h'].values[0])
+                if 'leads_respondidos_1h' in broker_row.columns else 0,
+                'leads_visitados':
+                int(broker_row['leads_visitados'].values[0])
+                if 'leads_visitados' in broker_row.columns else 0,
+                'propostas_enviadas':
+                int(broker_row['propostas_enviadas'].values[0])
+                if 'propostas_enviadas' in broker_row.columns else 0,
+                'vendas_realizadas':
+                int(broker_row['vendas_realizadas'].values[0])
+                if 'vendas_realizadas' in broker_row.columns else 0
             }
     return None
+
 
 def display_broker_metrics(broker_id, data):
     """Display broker metrics in the dashboard"""
@@ -402,12 +412,14 @@ def display_broker_metrics(broker_id, data):
 
 # Function to display the activity heatmap with advanced filtering options
 @st.cache_data(ttl=300, max_entries=10)
-def process_heatmap_data(broker_id, data, activity_type, date_range, lead_status):
+def process_heatmap_data(broker_id, data, activity_type, date_range,
+                         lead_status):
     """Process and cache heatmap data"""
     if 'activities' not in data or data['activities'].empty:
         return None
 
-    broker_activities = data['activities'][data['activities']['user_id'] == broker_id]
+    broker_activities = data['activities'][data['activities']['user_id'] ==
+                                           broker_id]
     if broker_activities.empty:
         return None
 
@@ -415,7 +427,8 @@ def process_heatmap_data(broker_id, data, activity_type, date_range, lead_status
 
     # Apply filters
     if activity_type != 'Todos':
-        filtered_activities = filtered_activities[filtered_activities['tipo'] == activity_type]
+        filtered_activities = filtered_activities[filtered_activities['tipo']
+                                                  == activity_type]
 
     if date_range != 'Todos os períodos':
         today = datetime.now()
@@ -425,15 +438,18 @@ def process_heatmap_data(broker_id, data, activity_type, date_range, lead_status
             date_filter = today - timedelta(days=30)
         else:  # Últimos 90 dias
             date_filter = today - timedelta(days=90)
-        filtered_activities = filtered_activities[filtered_activities['criado_em'] >= date_filter]
+        filtered_activities = filtered_activities[
+            filtered_activities['criado_em'] >= date_filter]
 
     return filtered_activities
+
 
 def display_activity_heatmap(broker_id, data):
     """Display enhanced activity heatmap for the broker with filtering options"""
 
     if 'activities' in data and not data['activities'].empty:
-        broker_activities = data['activities'][data['activities']['user_id'] == broker_id]
+        broker_activities = data['activities'][data['activities']['user_id'] ==
+                                               broker_id]
     else:
         st.info("Não há dados de atividades disponíveis para este corretor.")
         return
@@ -716,8 +732,10 @@ def main():
             return
 
         # Filter only active brokers (those with points in ranking)
-        active_broker_ids = data['ranking']['id'].tolist() if not data['ranking'].empty else []
-        broker_options = data['brokers'][data['brokers']['id'].isin(active_broker_ids)][['id', 'nome']].copy()
+        active_broker_ids = data['ranking']['id'].tolist(
+        ) if not data['ranking'].empty else []
+        broker_options = data['brokers'][data['brokers']['id'].isin(
+            active_broker_ids)][['id', 'nome']].copy()
         broker_options['display_name'] = broker_options['nome']
 
         selected_broker = st.selectbox(
@@ -798,5 +816,5 @@ def main():
 
 
 if __name__ == "__main__":
-    start_flask()
+    # start_flask()
     main()

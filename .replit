@@ -1,11 +1,12 @@
-modules = ["python-3.11"]
+modules = ["python-3.12", "bash", "nix"]
+run = "python app.py"
 
 [nix]
 channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["streamlit", "run", "app.py", "--server.port", "5000"]
+run = ["sh", "-c", "python app.py"]
 
 [workflows]
 runButton = "Project"
@@ -37,3 +38,7 @@ waitForPort = 5000
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 8080
