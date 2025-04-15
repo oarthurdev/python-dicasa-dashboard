@@ -8,5 +8,5 @@ RUN pip install --no-cache-dir flask
 
 EXPOSE 5000
 
-CMD ["python", "flask_server.py"]
+CMD ["python", "main.py"]
 
