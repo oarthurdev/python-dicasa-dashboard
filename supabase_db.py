@@ -91,6 +91,20 @@ class SupabaseClient:
                     if mask.any():
                         leads_df_clean.loc[mask, col] = leads_df_clean.loc[mask, col].astype('Int64')
 
+            # Get existing broker IDs from the database
+            brokers_result = self.client.table("brokers").select("id").execute()
+            if hasattr(brokers_result, "error") and brokers_result.error:
+                raise Exception(f"Supabase error querying brokers: {brokers_result.error}")
+
+            # Create set of valid broker IDs
+            valid_broker_ids = {broker['id'] for broker in brokers_result.data}
+
+            # Filter leads to only include those with valid responsavel_id
+            leads_df_clean = leads_df_clean[
+                leads_df_clean['responsavel_id'].isin(valid_broker_ids) | 
+                leads_df_clean['responsavel_id'].isna()
+            ]
+
             # Convert DataFrame to list of dicts
             leads_data = leads_df_clean.to_dict(orient="records")
 
