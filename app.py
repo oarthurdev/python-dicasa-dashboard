@@ -17,6 +17,7 @@ from supabase_db import SupabaseClient
 from gamification import calculate_broker_points
 from data_processor import process_data
 from visualizations import create_heatmap, create_conversion_funnel, create_points_breakdown_chart
+from sync_manager import SyncManager
 
 # Configure logging
 logging.basicConfig(
@@ -35,13 +36,57 @@ def start_flask():
     flask_thread.start()
     logger.info("Flask webhook server started.")
 
-# Initialize Streamlit page configuration
-st.set_page_config(
-    page_title="Dashboard de Corretores",
-    page_icon="🏠",
-    layout="wide",
-    initial_sidebar_state="collapsed"  # Menu lateral inicia recolhido
-)
+def background_data_loader():
+    """
+    This function runs in the background to continuously monitor Kommo API
+    for changes and update the database accordingly
+    """
+    try:
+        # Initialize clients
+        kommo_api = KommoAPI(
+            api_url=os.getenv("KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
+            access_token=os.getenv("ACCESS_TOKEN_KOMMO")
+        )
+
+        supabase = SupabaseClient(
+            url=os.getenv("VITE_SUPABASE_URL"),
+            key=os.getenv("VITE_SUPABASE_ANON_KEY")
+        )
+
+        sync_manager = SyncManager(kommo_api, supabase)
+
+        while True:
+            try:
+                logger.info("Checking for updates from Kommo API")
+                sync_manager.sync_data()
+                time.sleep(300)  # Check every 5 minutes
+
+            except Exception as e:
+                logger.error(f"Error in background sync: {str(e)}")
+                time.sleep(5)  # Wait before retrying on error
+
+    except Exception as e:
+        logger.error(f"Failed to initialize background sync: {str(e)}")
+
+# Initialize API and database clients
+@st.cache_resource
+def init_supabase_client():
+    return SupabaseClient(
+        url=os.getenv("VITE_SUPABASE_URL"),
+        key=os.getenv("VITE_SUPABASE_ANON_KEY")
+    )
+
+supabase = init_supabase_client()
+
+# Start the background thread when app starts
+@st.cache_resource
+def start_background_thread():
+    thread = threading.Thread(target=background_data_loader, daemon=True)
+    thread.start()
+    return "Background thread started"
+
+# Start the background thread
+thread_status = start_background_thread()
 
 # Custom CSS
 st.markdown("""
@@ -149,96 +194,7 @@ st.markdown("""
     }
 </style>
 """,
-            unsafe_allow_html=True)
-
-
-# Create the background data loading thread
-def background_data_loader():
-    """
-    This function runs in the background to periodically load data from the API
-    and save it to the database without showing any loading spinners in the UI
-    """
-    while True:
-        try:
-            logger.info("Background data loading thread started")
-
-            # Initialize clients
-            kommo_api = KommoAPI(api_url=os.getenv(
-                "KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
-                                 access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
-
-            supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-                                      key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-
-            # Fetch data from Kommo API
-            logger.info("Fetching users from API")
-            brokers = kommo_api.get_users()
-
-            logger.info("Fetching leads from API")
-            leads = kommo_api.get_leads()
-
-            logger.info("Fetching activities from API")
-            activities = kommo_api.get_activities()
-
-            # Store data in Supabase
-            logger.info("Storing data in Supabase")
-            try:
-                # Store new data
-                supabase.upsert_brokers(brokers)
-                supabase.upsert_leads(leads)
-                supabase.upsert_activities(activities)
-            except Exception as e:
-                logger.error(f"Failed to save data to database: {str(e)}")
-
-            # Process data for dashboard
-            logger.info("Processing data for dashboard")
-            broker_data, lead_data, activity_data = process_data(
-                brokers, leads, activities)
-
-            # Calculate broker points based on gamification rules
-            logger.info("Calculating broker points")
-            ranking_data = calculate_broker_points(broker_data, lead_data,
-                                                   activity_data)
-
-            # Store broker points in Supabase
-            try:
-                supabase.upsert_broker_points(ranking_data)
-                logger.info("Broker points saved successfully")
-            except Exception as e:
-                logger.error(f"Failed to save broker points: {str(e)}")
-
-            # Sleep for 1 hour before next update
-            logger.info(
-                "Background data loading complete, sleeping for 1 hour")
-            time.sleep(3600)  # 1 hour
-
-        except Exception as e:
-            logger.error(f"Error in background data loading: {str(e)}")
-            # In case of error, wait 5 minutes and try again
-            time.sleep(300)
-
-
-# Start the background data loading thread when app starts
-# This utilizes st.cache_resource to ensure the thread is only started once
-@st.cache_resource
-def start_background_thread():
-    thread = threading.Thread(target=background_data_loader, daemon=True)
-    thread.start()
-    return "Background thread started"
-
-
-# Start the background thread
-thread_status = start_background_thread()
-
-
-# Initialize API and database clients
-@st.cache_resource
-def init_supabase_client():
-    return SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-                          key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-
-
-supabase = init_supabase_client()
+    unsafe_allow_html=True)
 
 
 # Function to fetch data from Supabase
@@ -284,7 +240,8 @@ def get_rank_color(points):
         return "#EAB308", "🌟"  # Amarelo para pontuação média
     else:
         return "#6B7280", "🔄"  # Cinza para pontuação baixa
-    
+
+
 # Function to display the ranking cards in the exact format shown in the image
 def display_ranking_cards(ranking_data):
     """Display ranking cards in a grid layout"""
@@ -366,7 +323,7 @@ def display_ranking_cards(ranking_data):
                 </div>
             </div>
             """,
-                        unsafe_allow_html=True)
+                    unsafe_allow_html=True)
 
 
 # Function to display the broker performance breakdown
@@ -374,7 +331,7 @@ def display_ranking_cards(ranking_data):
 def calculate_broker_metrics(broker_id, data):
     """Calculate broker metrics for caching"""
     broker_points = data.get('ranking', pd.DataFrame())
-    
+
     if not broker_points.empty:
         broker_row = broker_points[broker_points.index == broker_id]
         if not broker_row.empty:
@@ -389,13 +346,13 @@ def calculate_broker_metrics(broker_id, data):
 def display_broker_metrics(broker_id, data):
     """Display broker metrics in the dashboard"""
     metrics = calculate_broker_metrics(broker_id, data)
-    
+
     if metrics is None:
         st.info("Dados do corretor não disponíveis.")
         return
-        
+
     cols = st.columns(4)
-    
+
     with cols[0]:
         st.metric("Leads Respondidos em 1h", metrics['leads_respondidos_1h'])
     with cols[1]:
@@ -449,17 +406,17 @@ def process_heatmap_data(broker_id, data, activity_type, date_range, lead_status
     """Process and cache heatmap data"""
     if 'activities' not in data or data['activities'].empty:
         return None
-        
+
     broker_activities = data['activities'][data['activities']['user_id'] == broker_id]
     if broker_activities.empty:
         return None
-        
+
     filtered_activities = broker_activities.copy()
-    
+
     # Apply filters
     if activity_type != 'Todos':
         filtered_activities = filtered_activities[filtered_activities['tipo'] == activity_type]
-        
+
     if date_range != 'Todos os períodos':
         today = datetime.now()
         if date_range == 'Últimos 7 dias':
@@ -469,7 +426,7 @@ def process_heatmap_data(broker_id, data, activity_type, date_range, lead_status
         else:  # Últimos 90 dias
             date_filter = today - timedelta(days=90)
         filtered_activities = filtered_activities[filtered_activities['criado_em'] >= date_filter]
-        
+
     return filtered_activities
 
 def display_activity_heatmap(broker_id, data):
@@ -566,12 +523,12 @@ def display_activity_heatmap(broker_id, data):
     with st.expander("💡 Como interpretar o mapa de calor", expanded=False):
         st.markdown("""
         **Cores mais escuras** indicam maior atividade em determinado horário e dia.
-        
+
         **Este mapa ajuda a identificar:**
         - **Gargalos operacionais:** Períodos sem atividades durante o horário comercial
         - **Oportunidades:** Horários sub-aproveitados que poderiam ter melhor rendimento
         - **Padrões de comportamento:** Horários de maior produtividade para otimizar agendas
-        
+
         **Ações recomendadas:**
         - Áreas em **vermelho** (Atenção) indicam períodos comerciais sem atividade - reorganize a agenda
         - Áreas marcadas como **Oportunidade** mostram horários pouco explorados com potencial
