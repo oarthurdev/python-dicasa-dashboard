@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: streamlit-app
+    env: docker
+    repo: https://github.com/oarthurdeb/python-dicasa-dashboard
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    buildFilter:
+      paths:
+        - ./**
+    envVars:
+      - key: PORT
+        value: 80
+
+  - type: web
+    name: flask-server
+    env: docker
+    repo: https://github.com/oarthurdeb/python-dicasa-dashboard
+    plan: free
+    region: oregon
+    dockerfilePath: flask_server/Dockerfile
+    buildFilter:
+      paths:
+        - flask_server/**
+
