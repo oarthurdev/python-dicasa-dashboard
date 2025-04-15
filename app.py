@@ -816,5 +816,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # start_flask()
+    start_flask()
     main()
