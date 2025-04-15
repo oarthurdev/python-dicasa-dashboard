@@ -4,22 +4,20 @@ services:
     env: docker
     plan: free
     dockerfilePath: ./Dockerfile
-    buildContext: .
     autoDeploy: true
+    domains:
+      - dashboard.dicasaimobiliaria.com.br
     envVars:
       - key: PORT
         value: 8501
     healthCheckPath: /_stcore/health
-    ports:
-      - 8501
 
   - type: web
     name: flask-server
     env: docker
     plan: free
     dockerfilePath: ./flask_server.Dockerfile
-    buildContext: .
     autoDeploy: true
-    ports:
-      - 5000
+    domains:
+      - webhook.dicasaimobiliaria.com.br
 
