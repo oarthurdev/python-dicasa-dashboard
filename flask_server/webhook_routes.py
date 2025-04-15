@@ -1,6 +1,7 @@
 import datetime
 from flask import Blueprint, request, jsonify
 import os
+import json
 import logging
 from dotenv import load_dotenv
 import pandas as pd
@@ -216,7 +217,12 @@ def update_broker_points():
 @webhook_bp.route('/kommo', methods=['POST', 'PATCH'])
 def handle_webhook():
     try:
-        webhook_data = request.json
+        if request.is_json:
+            webhook_data = request.get_json()
+        else:
+            # Tenta forçar leitura mesmo sem o cabeçalho correto
+            webhook_data = json.loads(request.data)
+
         logger.info("Webhook recebido: %s", webhook_data)
 
         # Extract event type and data
