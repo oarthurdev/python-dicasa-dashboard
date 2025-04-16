@@ -99,7 +99,7 @@ class KommoAPI:
     def get_users(self, active_only=True):
         """
         Retrieve users (brokers) from Kommo CRM
-        
+
         Args:
             active_only (bool): If True, only return active users
         """
