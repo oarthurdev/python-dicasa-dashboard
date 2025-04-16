@@ -64,31 +64,43 @@ def background_data_loader():
     for changes and update the database accordingly
     """
     try:
-        # Initialize clients
-        kommo_api = KommoAPI(api_url=os.getenv(
-            "KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
-                             access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
-
+        kommo_api = KommoAPI(api_url=os.getenv("KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
+                            access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+        
         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-                                  key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-
+                                key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+        
         sync_manager = SyncManager(kommo_api, supabase)
+        last_sync_time = None
 
-        # Verifica se a tabela broker_points já tem dados
+        # Initial check for broker_points data
         existing = supabase.client.table("broker_points").select("*").limit(1).execute()
-
-        if existing.data and len(existing.data) > 0:
-            logger.info("Registros encontrados na broker_points. Atualizando pontos...")
-            supabase.update_broker_points()
-        else:
-            logger.info("Nenhum registro encontrado em broker_points. Inicializando...")
+        if not existing.data:
+            logger.info("Inicializando broker_points...")
             supabase.initialize_broker_points()
 
         while True:
             try:
-                logger.info("Checking for updates from Kommo API")
-                sync_manager.sync_data()
-                time.sleep(300)  # Check every 5 minutes
+                current_time = datetime.now()
+                
+                # Only sync if more than 5 minutes have passed since last sync
+                if not last_sync_time or (current_time - last_sync_time).total_seconds() > 300:
+                    logger.info("Checking for updates from Kommo API")
+                    sync_manager.sync_data()
+                    
+                    # Calculate points after syncing data
+                    brokers = kommo_api.get_users()
+                    leads = kommo_api.get_leads()
+                    activities = kommo_api.get_activities()
+                    
+                    if not brokers.empty and not leads.empty and not activities.empty:
+                        points_df = calculate_broker_points(brokers, leads, activities)
+                        supabase.upsert_broker_points(points_df)
+                        logger.info("Broker points updated successfully")
+                    
+                    last_sync_time = current_time
+                
+                time.sleep(60)  # Check every minute for sync timing
 
             except Exception as e:
                 logger.error(f"Error in background sync: {str(e)}")
