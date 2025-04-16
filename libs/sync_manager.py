@@ -16,6 +16,11 @@ class SyncManager:
             'leads': None,
             'activities': None
         }
+        self.cache = {
+            'users': None,
+            'leads': None,
+            'activities': None
+        }
         self.sync_interval = 300  # seconds (5 minutes)
 
     def needs_sync(self, resource: str) -> bool:
@@ -32,25 +37,28 @@ class SyncManager:
             retry_count = 3
             for attempt in range(retry_count):
                 try:
-                    # Sync users/brokers with retry
+                    # Sync users/brokers with retry and cache
                     if self.needs_sync('users'):
                         brokers = self.kommo_api.get_users()
-                        if not brokers.empty:
+                        if not brokers.empty and (self.cache['users'] is None or not brokers.equals(self.cache['users'])):
                             self.supabase.upsert_brokers(brokers)
+                            self.cache['users'] = brokers
                         self.update_sync_time('users')
 
-                    # Sync leads
+                    # Sync leads with cache
                     if self.needs_sync('leads'):
                         leads = self.kommo_api.get_leads()
-                        if not leads.empty:
+                        if not leads.empty and (self.cache['leads'] is None or not leads.equals(self.cache['leads'])):
                             self.supabase.upsert_leads(leads)
+                            self.cache['leads'] = leads
                         self.update_sync_time('leads')
 
-                    # Sync activities
+                    # Sync activities with cache
                     if self.needs_sync('activities'):
                         activities = self.kommo_api.get_activities()
-                        if not activities.empty:
+                        if not activities.empty and (self.cache['activities'] is None or not activities.equals(self.cache['activities'])):
                             self.supabase.upsert_activities(activities)
+                            self.cache['activities'] = activities
                         self.update_sync_time('activities')
 
                     return True

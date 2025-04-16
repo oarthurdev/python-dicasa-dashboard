@@ -66,10 +66,10 @@ def background_data_loader():
     try:
         kommo_api = KommoAPI(api_url=os.getenv("KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
                             access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
-        
+
         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
                                 key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-        
+
         sync_manager = SyncManager(kommo_api, supabase)
         last_sync_time = None
 
@@ -82,25 +82,25 @@ def background_data_loader():
         while True:
             try:
                 current_time = datetime.now()
-                
+
                 # Only sync if more than 5 minutes have passed since last sync
                 if not last_sync_time or (current_time - last_sync_time).total_seconds() > 300:
                     logger.info("Checking for updates from Kommo API")
                     sync_manager.sync_data()
-                    
+
                     # Calculate points after syncing data
                     brokers = kommo_api.get_users()
                     leads = kommo_api.get_leads()
                     activities = kommo_api.get_activities()
-                    
+
                     if not brokers.empty and not leads.empty and not activities.empty:
                         points_df = calculate_broker_points(brokers, leads, activities)
                         supabase.upsert_broker_points(points_df)
                         logger.info("Broker points updated successfully")
-                    
+
                     last_sync_time = current_time
-                
-                time.sleep(60)  # Check every minute for sync timing
+
+                time.sleep(600)  # Check every 10 minutes for sync timing
 
             except Exception as e:
                 logger.error(f"Error in background sync: {str(e)}")
@@ -228,6 +228,135 @@ st.markdown("""
 </style>
 """,
             unsafe_allow_html=True)
+
+
+# Function to fetch data from Supabase
+@st.cache_data(ttl=300, max_entries=1)  # Cache for 5 minutes, limit cache size
+def get_data_from_supabase():
+    """Fetch data from Supabase tables"""
+    try:
+        # Get data from Supabase
+        brokers = supabase.client.table("brokers").select("*").execute()
+        leads = supabase.client.table("leads").select("*").execute()
+        activities = supabase.client.table("activities").select("*").execute()
+        broker_points = supabase.client.table("broker_points").select(
+            "*").execute()
+
+        # Convert to DataFrames
+        brokers_df = pd.DataFrame(
+            brokers.data) if brokers.data else pd.DataFrame()
+        leads_df = pd.DataFrame(leads.data) if leads.data else pd.DataFrame()
+        activities_df = pd.DataFrame(
+            activities.data) if activities.data else pd.DataFrame()
+        broker_points_df = pd.DataFrame(
+            broker_points.data) if broker_points.data else pd.DataFrame()
+
+        return {
+            'brokers': brokers_df,
+            'leads': leads_df,
+            'activities': activities_df,
+            'ranking': broker_points_df
+        }
+    except Exception as e:
+        st.error(f"Erro ao carregar dados do Supabase: {str(e)}")
+        return None
+
+
+# Function to display the ranking cards in the exact format shown in the image
+def get_rank_color(points):
+    """Define cores baseadas na pontuação"""
+    if points >= 500:
+        return "#22C55E", "🏆"  # Verde para pontuação alta
+    elif points >= 300:
+        return "#3B82F6", "⭐"  # Azul para pontuação média-alta
+    elif points >= 100:
+        return "#EAB308", "🌟"  # Amarelo para pontuação média
+    else:
+        return "#6B7280", "🔄"  # Cinza para pontuação baixa
+
+
+# Function to display the ranking cards in the exact format shown in the image
+def display_ranking_cards(ranking_data):
+    """Display ranking cards in a grid layout"""
+    if ranking_data.empty:
+        st.info("Dados de ranking não disponíveis.")
+        return
+
+    # Sort brokers by points in descending order
+    sorted_brokers = ranking_data.sort_values(
+        by='pontos', ascending=False).reset_index(drop=True)
+    sorted_brokers.index = sorted_brokers.index + 1  # Start index from 1
+
+    # Create a grid of cards - 3 per row as shown in the reference image
+    cols = st.columns(3)
+
+    # Display only top 9 brokers (or fewer if less available)
+    for i, row in enumerate(sorted_brokers.head(9).itertuples()):
+        col_idx = i % 3  # Determine which column to place the card
+        rank_color, rank_icon = get_rank_color(row.pontos)
+
+        with cols[col_idx]:
+            st.markdown(f"""
+            <div class="ranking-card" style="background: linear-gradient(135deg, white, {rank_color}10); border-left: 4px solid {rank_color};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center;">
+                        <div class="rank-number" style="
+                            background-color: {rank_color}; 
+                            color: white;
+                            width: 30px;
+                            height: 30px;
+                            border-radius: 50%;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            margin-right: 12px;
+                            font-weight: bold;
+                            font-size: 16px;">
+                            {row.Index}
+                        </div>
+                        <div style="display: flex; flex-direction: column;">
+                            <div class="broker-name" style="font-weight: 600; color: #1F2937;">{row.nome}</div>
+                            <div style="font-size: 12px; color: {rank_color}; margin-top: 2px;">
+                                {rank_icon} Nível {5-((row.Index-1)//2 if row.Index <= 9 else 1)}
+                            </div>
+                        </div>
+                    </div>
+                    <div style="
+                        background-color: {rank_color}15;
+                        padding: 8px 12px;
+                        border-radius: 12px;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                    ">
+                        <div style="font-size: 11px; color: {rank_color}; font-weight: 500;">PONTOS</div>
+                        <div style="font-size: 18px; color: {rank_color}; font-weight: 700;">{int(row.pontos)}</div>
+                    </div>
+                </div>
+                <div style="
+                    display: flex;
+                    justify-content: space-between;
+                    background-color: {rank_color}08;
+                    padding: 8px;
+                    border-radius: 8px;
+                    margin-top: 8px;
+                ">
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 11px; color: #6B7280;">Leads</div>
+                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.leads_visitados or 0)}</div>
+                    </div>
+                    <div style="text-align: center; flex: 1; border-left: 1px solid {rank_color}20; border-right: 1px solid {rank_color}20;">
+                        <div style="font-size: 11px; color: #6B7280;">Propostas</div>
+                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.propostas_enviadas or 0)}</div>
+                    </div>
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 11px; color: #6B7280;">Vendas</div>
+                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.vendas_realizadas or 0)}</div>
+                    </div>
+                </div>
+            </div>
+            """,
+                        unsafe_allow_html=True)
 
 
 # Function to fetch data from Supabase
@@ -606,7 +735,7 @@ def display_points_breakdown(broker_id, data):
     st.plotly_chart(points_fig, use_container_width=True)
 
 
-# Function to display alerts for the broker
+#Function to display the alerts for the broker
 def display_broker_alerts(broker_id, data):
     """Display alerts for the broker"""
     broker_row = data['ranking'][data['ranking']['id'] == broker_id]
