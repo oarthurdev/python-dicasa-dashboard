@@ -410,16 +410,10 @@ class SupabaseClient:
     def update_broker_points(self):
         """
         Atualiza a tabela broker_points no Supabase com base nas regras de gamificação.
-
-        Args:
-            supabase_db: instância de conexão com o banco Supabase, que deve ter os métodos:
-                - get_users()
-                - get_leads()
-                - get_activities()
-                - upsert_broker_points(dataframe)
         """
         import logging
         from gamification import calculate_broker_points
+        import time
 
         logger = logging.getLogger(__name__)
 
@@ -429,20 +423,65 @@ class SupabaseClient:
             # Recupera dados necessários
             from .kommo_api import KommoAPI
             kommo_api = KommoAPI()
-            brokers = kommo_api.get_users()
-            leads = kommo_api.get_leads()
-            activities = kommo_api.get_activities()
+            
+            # Tenta buscar os dados com retry em caso de erro
+            max_retries = 3
+            retry_delay = 5  # segundos
+
+            for attempt in range(max_retries):
+                try:
+                    brokers = kommo_api.get_users()
+                    leads = kommo_api.get_leads()
+                    activities = kommo_api.get_activities()
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.warning(f"Tentativa {attempt + 1} falhou: {str(e)}. Tentando novamente em {retry_delay} segundos...")
+                    time.sleep(retry_delay)
 
             if brokers.empty or leads.empty or activities.empty:
                 logger.warning("Dados insuficientes para cálculo de pontos. Verifique se todas as tabelas estão preenchidas.")
                 return
 
-            # Calcula os pontos
-            points_df = calculate_broker_points(brokers, leads, activities)
+            # Filtra apenas corretores ativos
+            active_brokers = brokers[brokers['cargo'] == 'Corretor']
+            if active_brokers.empty:
+                logger.warning("Nenhum corretor ativo encontrado.")
+                return
 
-            # Atualiza o banco
-            self.upsert_broker_points(points_df)
-            logger.info("Tabela broker_points atualizada com sucesso.")
+            # Calcula os pontos
+            points_df = calculate_broker_points(active_brokers, leads, activities)
+
+            # Garante que todos os campos necessários existam
+            required_fields = [
+                'leads_respondidos_1h', 'leads_visitados', 'propostas_enviadas',
+                'vendas_realizadas', 'leads_atualizados_mesmo_dia', 'feedbacks_positivos',
+                'resposta_rapida_3h', 'todos_leads_respondidos', 'cadastro_completo',
+                'acompanhamento_pos_venda', 'leads_sem_interacao_24h', 'leads_ignorados_48h',
+                'leads_com_reclamacao', 'leads_perdidos', 'leads_respondidos_apos_18h',
+                'leads_tempo_resposta_acima_12h', 'leads_5_dias_sem_mudanca'
+            ]
+
+            for field in required_fields:
+                if field not in points_df.columns:
+                    points_df[field] = 0
+
+            # Adiciona timestamp de atualização
+            points_df['updated_at'] = pd.Timestamp.now()
+
+            # Atualiza o banco com retry em caso de erro
+            for attempt in range(max_retries):
+                try:
+                    self.upsert_broker_points(points_df)
+                    logger.info(f"Tabela broker_points atualizada com sucesso. {len(points_df)} registros atualizados.")
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.warning(f"Tentativa de upsert {attempt + 1} falhou: {str(e)}. Tentando novamente em {retry_delay} segundos...")
+                    time.sleep(retry_delay)
 
         except Exception as e:
             logger.error(f"Erro ao atualizar pontos dos corretores: {e}")
+            raise
