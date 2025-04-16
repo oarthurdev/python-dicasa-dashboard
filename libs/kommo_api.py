@@ -111,41 +111,41 @@ class KommoAPI:
     
     def get_leads(self):
         """
-        Retrieve leads from Kommo CRM filtering only pipeline_id = 8865067,
-        using parallel requests for better performance.
+        Retrieve leads from Kommo CRM filtering only pipeline_id = 8865067
+        with rate limiting
         """
         try:
             logger.info("Retrieving leads from Kommo CRM (pipeline_id = 8865067)")
             
-            max_pages = 100  # Segurança para não varrer tudo
-            workers = 8      # Threads simultâneas
-            stop_after = 10  # Quantidade de páginas vazias seguidas
-
             filtered_leads = []
+            page = 1
             empty_streak = 0
+            stop_after = 3  # Para após 3 páginas vazias consecutivas
 
-            def fetch_page(page):
+            while True:
+                # Rate limiting - espera 1 segundo entre requests
+                time.sleep(1)
+                
                 response = self._make_request("leads", params={
                     "page": page,
                     "limit": 50,
                     "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 })
+                
                 leads = response.get("_embedded", {}).get("leads", [])
-                return [lead for lead in leads if lead.get("pipeline_id") == 8865067]
-
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {executor.submit(fetch_page, i): i for i in range(1, max_pages + 1)}
-
-                for future in as_completed(futures):
-                    leads = future.result()
-                    if leads:
-                        filtered_leads.extend(leads)
-                        empty_streak = 0
-                    else:
-                        empty_streak += 1
-                        if empty_streak >= stop_after:
-                            logger.info(f"Parando busca: {stop_after} páginas seguidas sem leads úteis.")
-                            break
+                filtered_page_leads = [lead for lead in leads if lead.get("pipeline_id") == 8865067]
+                
+                if not filtered_page_leads:
+                    empty_streak += 1
+                    if empty_streak >= stop_after:
+                        logger.info(f"Parando busca: {stop_after} páginas vazias consecutivas")
+                        break
+                else:
+                    empty_streak = 0
+                    filtered_leads.extend(filtered_page_leads)
+                
+                page += 1
+                logger.info(f"Processada página {page-1}, encontrados {len(filtered_page_leads)} leads")
 
             logger.info(f"Total de leads com pipeline 8865067: {len(filtered_leads)}")
 
