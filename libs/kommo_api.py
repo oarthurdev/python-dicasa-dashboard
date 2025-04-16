@@ -16,14 +16,16 @@ class KommoAPI:
 
     def __init__(self, api_url=None, access_token=None):
         self.api_url = api_url or os.getenv("KOMMO_API_URL")
-        self.access_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
+        raw_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
 
-        if not self.api_url or not self.access_token:
+        if not self.api_url or not raw_token:
             raise ValueError("API URL and access token must be provided")
 
-        # Validate token format
-        if not self.access_token.strip().startswith("Bearer "):
-            self.access_token = f"Bearer {self.access_token.strip()}"
+        # Remove any existing "Bearer " prefix and whitespace
+        clean_token = raw_token.replace("Bearer", "").strip()
+        self.access_token = f"Bearer {clean_token}"
+
+        logger.info(f"Initializing KommoAPI with URL: {self.api_url}")
 
         # Ensure API URL does not end with slash
         if self.api_url.endswith('/'):
@@ -37,10 +39,13 @@ class KommoAPI:
         try:
             response = requests.get(
                 f"{self.api_url}/api/v4/account",
-                headers={"Authorization": self.access_token}
+                headers={"Authorization": self.access_token},
+                timeout=30
             )
 
-            if response.status_code == 403:
+            if response.status_code in [401, 403]:
+                logger.error(f"Token validation failed with status code: {response.status_code}")
+                logger.error(f"Response content: {response.text}")
                 raise ValueError(
                     "Invalid or expired access token. Please check your credentials."
                 )
