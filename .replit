@@ -1,12 +1,12 @@
 modules = ["python-3.12", "bash", "nix"]
-run = "python app.py"
+run = "docker-compose up --build"
 
 [nix]
 channel = "stable-24_05"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["sh", "-c", "python app.py"]
+run = ["sh", "-c", "docker-compose up --build"]
 
 [workflows]
 runButton = "Project"
