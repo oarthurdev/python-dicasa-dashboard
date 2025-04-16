@@ -13,7 +13,6 @@ from flask import Flask
 
 # Import custom modules
 from libs import KommoAPI, SupabaseClient, SyncManager
-from gamification import calculate_broker_points
 from data_processor import process_data
 from visualizations import create_heatmap, create_conversion_funnel, create_points_breakdown_chart
 
@@ -26,6 +25,38 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# def background_data_loader_once():
+#     """
+#     Runs the sync process once to fetch initial data from Kommo and update Supabase.
+#     """
+#     try:
+#         # Initialize clients
+#         kommo_api = KommoAPI(api_url=os.getenv(
+#             "KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
+#                              access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+
+#         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
+#                                   key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+
+#         sync_manager = SyncManager(kommo_api, supabase)
+
+#         logger.info("Running initial data sync with Kommo API")
+#         sync_manager.sync_data()
+
+#     except Exception as e:
+#         logger.error(f"Failed to run initial data sync: {str(e)}")
+
+
+# Initialize API and database clients
+@st.cache_resource
+def init_supabase_client():
+    return SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
+                          key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+
+
+supabase = init_supabase_client()
+
+supabase.initialize_broker_points()
 
 def background_data_loader():
     """
@@ -43,6 +74,16 @@ def background_data_loader():
 
         sync_manager = SyncManager(kommo_api, supabase)
 
+        # Verifica se a tabela broker_points já tem dados
+        existing = supabase.client.table("broker_points").select("*").limit(1).execute()
+
+        if existing.data and len(existing.data) > 0:
+            logger.info("Registros encontrados na broker_points. Atualizando pontos...")
+            supabase.update_broker_points()
+        else:
+            logger.info("Nenhum registro encontrado em broker_points. Inicializando...")
+            supabase.initialize_broker_points()
+
         while True:
             try:
                 logger.info("Checking for updates from Kommo API")
@@ -55,16 +96,6 @@ def background_data_loader():
 
     except Exception as e:
         logger.error(f"Failed to initialize background sync: {str(e)}")
-
-
-# Initialize API and database clients
-@st.cache_resource
-def init_supabase_client():
-    return SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-                          key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-
-
-supabase = init_supabase_client()
 
 
 # Start the background thread when app starts
@@ -805,4 +836,5 @@ def main():
 
 
 if __name__ == "__main__":
+    # background_data_loader_once()
     main()

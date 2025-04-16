@@ -71,64 +71,54 @@ class SupabaseClient:
 
             logger.info(f"Upserting {len(leads_df)} leads to Supabase")
 
-            # Make a copy of the DataFrame to avoid modifying the original
             leads_df_clean = leads_df.copy()
-
-            # Replace infinite values with None (null in JSON)
+            
+            # Replace infinite values with None
             numeric_cols = leads_df_clean.select_dtypes(include=['float', 'int']).columns
             for col in numeric_cols:
-                # Replace NaN and infinite values with None
                 mask = ~np.isfinite(leads_df_clean[col])
                 if mask.any():
                     leads_df_clean.loc[mask, col] = None
 
-            # Convert bigint columns from float to int to avoid "invalid input syntax for type bigint" errors
+            # Convert bigint-compatible columns
             bigint_columns = ['id', 'responsavel_id', 'status_id', 'pipeline_id']
             for col in bigint_columns:
                 if col in leads_df_clean.columns:
-                    # Only convert finite values (NaN/None will be handled separately)
                     mask = np.isfinite(leads_df_clean[col])
                     if mask.any():
                         leads_df_clean.loc[mask, col] = leads_df_clean.loc[mask, col].astype('Int64')
 
-            # Get existing broker IDs from the database
+            # Get valid broker IDs from database
             brokers_result = self.client.table("brokers").select("id").execute()
             if hasattr(brokers_result, "error") and brokers_result.error:
                 raise Exception(f"Supabase error querying brokers: {brokers_result.error}")
 
-            # Create set of valid broker IDs
             valid_broker_ids = {broker['id'] for broker in brokers_result.data}
 
-            # Filter leads to only include those with valid responsavel_id
+            # Filtro combinado: pipeline_id E responsavel_id válido
             leads_df_clean = leads_df_clean[
-                leads_df_clean['responsavel_id'].isin(valid_broker_ids) | 
-                leads_df_clean['responsavel_id'].isna()
+                (leads_df_clean['pipeline_id'] == 8865067) &
+                (leads_df_clean['responsavel_id'].isin(valid_broker_ids) | leads_df_clean['responsavel_id'].isna())
             ]
 
-            # Convert DataFrame to list of dicts
+            # Convert to dict format
             leads_data = leads_df_clean.to_dict(orient="records")
 
-            # Add updated_at timestamp
             for lead in leads_data:
                 lead["updated_at"] = datetime.now().isoformat()
 
-                # Convert datetime objects to ISO format
                 if "criado_em" in lead and lead["criado_em"] is not None:
                     lead["criado_em"] = lead["criado_em"].isoformat()
-
                 if "atualizado_em" in lead and lead["atualizado_em"] is not None:
                     lead["atualizado_em"] = lead["atualizado_em"].isoformat()
 
-                # Additional check for any remaining non-JSON compatible values and type conversions
-                for key, value in list(lead.items()):  # Create a list to avoid "dictionary changed size during iteration"
-                    # Check for NaN, Infinity, -Infinity in float values
+                for key, value in list(lead.items()):
                     if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
                         lead[key] = None
-                    # Convert float to int for bigint columns
                     elif key in bigint_columns and isinstance(value, float) and value.is_integer():
                         lead[key] = int(value)
 
-            # Upsert data to Supabase
+            # Upsert to Supabase
             result = self.client.table("leads").upsert(leads_data).execute()
 
             if hasattr(result, "error") and result.error:
@@ -304,86 +294,148 @@ class SupabaseClient:
 
     def upsert_broker_points(self, points_df):
         """
-        Insert or update broker points in the Supabase database
+        Atualiza ou insere os dados na tabela broker_points no Supabase.
 
         Args:
-            points_df (pandas.DataFrame): DataFrame containing broker points data
+            points_df (pandas.DataFrame): DataFrame contendo os dados de pontuação dos corretores.
         """
+        import numpy as np
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         try:
             if points_df.empty:
-                logger.warning("No broker points data to insert")
+                logger.warning("Nenhum dado de pontos para inserir.")
                 return
 
-            logger.info(f"Upserting {len(points_df)} broker points records to Supabase")
+            logger.info(f"Upsert de {len(points_df)} registros na tabela broker_points.")
 
-            # Make a copy of the DataFrame to avoid modifying the original
-            points_df_clean = points_df.copy()
+            # Faz uma cópia limpa para evitar modificações indesejadas
+            df_clean = points_df.copy()
 
-            # Replace infinite values with None (null in JSON)
-            numeric_cols = points_df_clean.select_dtypes(include=['float', 'int']).columns
+            # Trata valores infinitos ou inválidos
+            numeric_cols = df_clean.select_dtypes(include=['float', 'int']).columns
             for col in numeric_cols:
-                # Replace NaN and infinite values with None
-                mask = ~np.isfinite(points_df_clean[col])
+                mask = ~np.isfinite(df_clean[col])
                 if mask.any():
-                    points_df_clean.loc[mask, col] = None
+                    df_clean.loc[mask, col] = None
 
-            # Convert bigint columns from float to int to avoid "invalid input syntax for type bigint" errors
-            bigint_columns = ['id']
-            for col in bigint_columns:
-                if col in points_df_clean.columns:
-                    # Only convert finite values (NaN/None will be handled separately)
-                    mask = np.isfinite(points_df_clean[col])
-                    if mask.any():
-                        points_df_clean.loc[mask, col] = points_df_clean.loc[mask, col].astype('Int64')
+            # Realiza o upsert na tabela broker_points
+            response = self.client.table("broker_points").upsert(df_clean.to_dict("records")).execute()
 
-            # Get brokers list to filter only "Corretor"
-            brokers_result = self.client.table("brokers").select("id").eq("cargo", "Corretor").execute()
+            logger.info("Tabela broker_points atualizada com sucesso.")
+            return response
+
+        except Exception as e:
+            logger.error(f"Erro ao fazer upsert em broker_points: {e}")
+            raise
+
+
+    def initialize_broker_points(self):
+        """
+        Cria registros na tabela broker_points para todos os corretores cadastrados,
+        com os campos de pontuação zerados. Evita duplicações.
+        """
+        try:
+            # Buscar corretores com cargo "Corretor"
+            brokers_result = self.client.table("brokers").select("id, nome").eq("cargo", "Corretor").execute()
             if hasattr(brokers_result, "error") and brokers_result.error:
-                raise Exception(f"Supabase error querying brokers: {brokers_result.error}")
+                raise Exception(f"Erro ao buscar corretores: {brokers_result.error}")
 
-            # Create set of broker IDs
-            corretor_ids = {broker['id'] for broker in brokers_result.data}
+            brokers = brokers_result.data
+            if not brokers:
+                logger.warning("Nenhum corretor encontrado para inicializar broker_points.")
+                return
 
-            # Filter points to include only corretores
-            points_df_clean = points_df_clean[points_df_clean['id'].isin(corretor_ids)]
+            broker_ids = [b["id"] for b in brokers]
 
+            # Buscar IDs já existentes na tabela broker_points
+            existing_result = self.client.table("broker_points").select("id").in_("id", broker_ids).execute()
+            existing_ids = {r["id"] for r in existing_result.data} if existing_result.data else set()
 
-            # Convert DataFrame to list of dicts
-            points_data = points_df_clean.to_dict(orient="records")
+            # Filtrar somente os que ainda não existem
+            new_brokers = [b for b in brokers if b["id"] not in existing_ids]
 
-            # Add updated_at timestamp
-            for point in points_data:
-                point["updated_at"] = datetime.now().isoformat()
+            if not new_brokers:
+                logger.info("Todos os corretores já possuem entrada em broker_points.")
+                return
 
-                # Additional check for any remaining non-JSON compatible values and type conversions
-                for key, value in list(point.items()):  # Create a list to avoid "dictionary changed size during iteration"
-                    # Check for NaN, Infinity, -Infinity in float values
-                    if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
-                        point[key] = None
-                    # Convert float to int for bigint columns
-                    elif key in bigint_columns and isinstance(value, float) and value.is_integer():
-                        point[key] = int(value)
+            # Criar registros com pontuação zero
+            now = datetime.now().isoformat()
+            new_records = [{
+                "id": b["id"],
+                "nome": b["nome"],
+                'leads_respondidos_1h': 0,
+                'leads_visitados': 0,
+                'propostas_enviadas': 0,
+                'vendas_realizadas': 0,
+                'leads_atualizados_mesmo_dia': 0,
+                'feedbacks_positivos': 0,
+                'resposta_rapida_3h': 0,
+                'todos_leads_respondidos': 0,
+                'cadastro_completo': 0,
+                'acompanhamento_pos_venda': 0,
+                'leads_sem_interacao_24h': 0,
+                'leads_ignorados_48h': 0,
+                'leads_com_reclamacao': 0,
+                'leads_perdidos': 0,
+                'leads_respondidos_apos_18h': 0,
+                'leads_tempo_resposta_acima_12h': 0,
+                'leads_5_dias_sem_mudanca': 0,
+                "pontos": 0,
+                "updated_at": now
+            } for b in new_brokers]
 
-            # Upsert data to Supabase preserving existing data
-            for point in points_data:
-                # Check if record exists
-                existing = self.client.table("broker_points").select("*").eq("id", point["id"]).execute()
-
-                if existing.data:
-                    # Update only if new values are different
-                    update_data = {k: v for k, v in point.items() if k != "id" and v is not None}
-                    if update_data:
-                        result = self.client.table("broker_points").update(update_data).eq("id", point["id"]).execute()
-                else:
-                    # Insert new record
-                    result = self.client.table("broker_points").insert(point).execute()
+            # Inserir no banco
+            result = self.client.table("broker_points").insert(new_records).execute()
 
             if hasattr(result, "error") and result.error:
-                raise Exception(f"Supabase error: {result.error}")
+                raise Exception(f"Erro ao inserir broker_points: {result.error}")
 
-            logger.info("Broker points upserted successfully")
+            logger.info(f"{len(new_records)} registros criados em broker_points com sucesso.")
             return result
 
         except Exception as e:
-            logger.error(f"Failed to upsert broker points: {str(e)}")
+            logger.error(f"Erro ao inicializar broker_points: {str(e)}")
             raise
+
+    def update_broker_points(self):
+        """
+        Atualiza a tabela broker_points no Supabase com base nas regras de gamificação.
+
+        Args:
+            supabase_db: instância de conexão com o banco Supabase, que deve ter os métodos:
+                - get_users()
+                - get_leads()
+                - get_activities()
+                - upsert_broker_points(dataframe)
+        """
+        import logging
+        from gamification import calculate_broker_points
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            logger.info("Iniciando atualização dos pontos dos corretores...")
+
+            # Recupera dados necessários
+            from .kommo_api import KommoAPI
+            kommo_api = KommoAPI()
+            brokers = kommo_api.get_users()
+            leads = kommo_api.get_leads()
+            activities = kommo_api.get_activities()
+
+            if brokers.empty or leads.empty or activities.empty:
+                logger.warning("Dados insuficientes para cálculo de pontos. Verifique se todas as tabelas estão preenchidas.")
+                return
+
+            # Calcula os pontos
+            points_df = calculate_broker_points(brokers, leads, activities)
+
+            # Atualiza o banco
+            self.upsert_broker_points(points_df)
+            logger.info("Tabela broker_points atualizada com sucesso.")
+
+        except Exception as e:
+            logger.error(f"Erro ao atualizar pontos dos corretores: {e}")

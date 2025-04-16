@@ -2,6 +2,7 @@ import os
 import requests
 import pandas as pd
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import logging
 
@@ -76,7 +77,7 @@ class KommoAPI:
             page = 1
             
             while True:
-                response = self._make_request("users", params={"page": page, "limit": 50})
+                response = self._make_request("users", params={"page": page, "limit": 5000})
                 
                 if not response.get("_embedded", {}).get("users", []):
                     break
@@ -110,56 +111,54 @@ class KommoAPI:
     
     def get_leads(self):
         """
-        Retrieve all leads from Kommo CRM with their pipeline stages
+        Retrieve leads from Kommo CRM filtering only pipeline_id = 8865067,
+        using parallel requests for better performance.
         """
         try:
-            logger.info("Retrieving leads from Kommo CRM")
+            logger.info("Retrieving leads from Kommo CRM (pipeline_id = 8865067)")
             
-            leads_data = []
-            page = 1
-            max_pages = 20  # Increased limit to 1000 leads
-            
-            while True:
-                logger.info(f"Fetching leads page {page}")
+            max_pages = 100  # Segurança para não varrer tudo
+            workers = 8      # Threads simultâneas
+            stop_after = 10  # Quantidade de páginas vazias seguidas
+
+            filtered_leads = []
+            empty_streak = 0
+
+            def fetch_page(page):
                 response = self._make_request("leads", params={
-                    "page": page, 
+                    "page": page,
                     "limit": 50,
                     "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 })
-                
-                if not response.get("_embedded", {}).get("leads", []):
-                    logger.info("No more leads found")
-                    break
-                
-                leads = response["_embedded"]["leads"]
-                leads_data.extend(leads)
-                logger.info(f"Retrieved {len(leads)} leads (total: {len(leads_data)})")
-                
-                page += 1
-                
-                # Break after specified number of pages to avoid rate limiting
-                if page > max_pages:
-                    logger.info(f"Reached maximum number of pages ({max_pages})")
-                    break
-            
-            # Process leads data into a more usable format
+                leads = response.get("_embedded", {}).get("leads", [])
+                return [lead for lead in leads if lead.get("pipeline_id") == 8865067]
+
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(fetch_page, i): i for i in range(1, max_pages + 1)}
+
+                for future in as_completed(futures):
+                    leads = future.result()
+                    if leads:
+                        filtered_leads.extend(leads)
+                        empty_streak = 0
+                    else:
+                        empty_streak += 1
+                        if empty_streak >= stop_after:
+                            logger.info(f"Parando busca: {stop_after} páginas seguidas sem leads úteis.")
+                            break
+
+            logger.info(f"Total de leads com pipeline 8865067: {len(filtered_leads)}")
+
             processed_leads = []
-            for lead in leads_data:
-                # Extract responsible user (broker) ID
-                responsavel_id = None
-                if lead.get("responsible_user_id"):
-                    responsavel_id = lead.get("responsible_user_id")
-                
-                # Get contact name if available
-                contato_nome = None
+            for lead in filtered_leads:
+                responsavel_id = lead.get("responsible_user_id")
+                contato_nome = ""
                 if lead.get("_embedded", {}).get("contacts"):
-                    first_contact = lead["_embedded"]["contacts"][0]
-                    contato_nome = first_contact.get("name", "")
-                
-                # Process creation and update timestamps
+                    contato_nome = lead["_embedded"]["contacts"][0].get("name", "")
+
                 created_at = datetime.fromtimestamp(lead.get("created_at", 0)) if lead.get("created_at") else None
                 updated_at = datetime.fromtimestamp(lead.get("updated_at", 0)) if lead.get("updated_at") else None
-                
+
                 processed_leads.append({
                     "id": lead.get("id"),
                     "nome": lead.get("name"),
@@ -172,69 +171,73 @@ class KommoAPI:
                     "criado_em": created_at,
                     "atualizado_em": updated_at,
                     "fechado": lead.get("closed_at") is not None,
-                    "status": lead.get("status_id") == 142 and "Ganho" or (lead.get("status_id") == 143 and "Perdido" or "Em progresso")
+                    "status": (
+                        "Ganho" if lead.get("status_id") == 142
+                        else "Perdido" if lead.get("status_id") == 143
+                        else "Em progresso"
+                    )
                 })
-            
+
             return pd.DataFrame(processed_leads)
-        
+
         except Exception as e:
             logger.error(f"Failed to retrieve leads: {str(e)}")
             raise
     
     def get_activities(self):
         """
-        Retrieve all activities from Kommo CRM
+        Retrieve all activities from Kommo CRM using parallel requests
         """
         try:
-            logger.info("Retrieving activities from Kommo CRM")
-            
-            activities_data = []
-            page = 1
-            max_pages = 20  # Increased limit to 1000 events
-            
-            # Get current timestamp to filter recent activities
+            logger.info("Retrieving activities from Kommo CRM (paralelo)")
+
+            max_pages = 200  # Máximo de páginas a tentar
+            workers = 8       # Threads simultâneas
+            stop_after = 10   # Early-stop: para se X páginas vierem vazias
+            empty_streak = 0
+
             now = int(time.time())
-            # Get activities from last 7 days instead of 30 to reduce data volume
             filter_from = now - (7 * 24 * 60 * 60)
-            
-            while True:
-                logger.info(f"Fetching activities page {page}")
+
+            activities_data = []
+
+            def fetch_page(page):
                 response = self._make_request("events", params={
                     "page": page,
-                    "limit": 50,
+                    "limit": 500,
                     "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
                     "filter[created_at][from]": filter_from,
                 })
-                
-                if not response.get("_embedded", {}).get("events", []):
-                    logger.info("No more activities found")
-                    break
-                
-                events = response["_embedded"]["events"]
-                activities_data.extend(events)
-                logger.info(f"Retrieved {len(events)} activities (total: {len(activities_data)})")
-                
-                page += 1
-                
-                # Break after specified number of pages to avoid rate limiting
-                if page > max_pages:
-                    logger.info(f"Reached maximum number of pages ({max_pages})")
-                    break
-            
-            # Process activities data into a more usable format
+                return response.get("_embedded", {}).get("events", [])
+
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = {executor.submit(fetch_page, i): i for i in range(1, max_pages + 1)}
+
+                for future in as_completed(futures):
+                    events = future.result()
+                    if events:
+                        activities_data.extend(events)
+                        empty_streak = 0
+                    else:
+                        empty_streak += 1
+                        if empty_streak >= stop_after:
+                            logger.info(f"Parando busca: {stop_after} páginas seguidas sem atividades.")
+                            break
+
+            logger.info(f"Total de atividades recuperadas: {len(activities_data)}")
+
+            # Processamento
             processed_activities = []
             for activity in activities_data:
-                # Convert timestamp to datetime
                 created_at = datetime.fromtimestamp(activity.get("created_at", 0)) if activity.get("created_at") else None
-                
-                # Map event type to activity type
+
                 activity_type = {
                     "lead_status_changed": "mudança_status",
                     "incoming_chat_message": "mensagem_recebida",
                     "outgoing_chat_message": "mensagem_enviada",
                     "task_completed": "tarefa_concluida"
                 }.get(activity.get("type"), "outro")
-                
+
                 processed_activities.append({
                     "id": activity.get("id"),
                     "lead_id": activity.get("entity_id") if activity.get("entity_type") == "lead" else None,
@@ -246,9 +249,9 @@ class KommoAPI:
                     "dia_semana": created_at.strftime("%A") if created_at else None,
                     "hora": created_at.hour if created_at else None
                 })
-            
+
             return pd.DataFrame(processed_activities)
-        
+
         except Exception as e:
             logger.error(f"Failed to retrieve activities: {str(e)}")
             raise
@@ -268,7 +271,7 @@ class KommoAPI:
                 logger.info(f"Fetching tasks page {page}")
                 response = self._make_request("tasks", params={
                     "page": page,
-                    "limit": 50
+                    "limit": 5000
                 })
                 
                 if not response.get("_embedded", {}).get("tasks", []):

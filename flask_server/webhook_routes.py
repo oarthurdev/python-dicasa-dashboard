@@ -13,7 +13,13 @@ from libs.sync_manager import SyncManager
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
+# Logger separado para Webhooks
+webhook_logger = logging.getLogger("webhook_logger")
+webhook_logger.setLevel(logging.INFO)
+webhook_handler = logging.FileHandler("webhook.log")
+webhook_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+webhook_logger.addHandler(webhook_handler)
+
 webhook_bp = Blueprint('webhook', __name__, url_prefix='/webhook')
 
 kommo_api = KommoAPI(
@@ -210,7 +216,7 @@ def update_broker_points():
 
         return True
     except Exception as e:
-        logger.error(f"Erro ao atualizar pontos: {str(e)}")
+        webhook_logger.error(f"Erro ao atualizar pontos: {str(e)}")
         return False
 
 
@@ -218,67 +224,74 @@ def update_broker_points():
 def handle_webhook():
     try:
         if not request.data:
-            logger.error("Requisição recebida sem corpo.")
-            return jsonify({"status": "error", "message": "Requisição vazia"}), 400
+            webhook_logger.error("Requisição sem corpo recebida.")
+            return jsonify({"status": "error", "message": "Requisição sem dados"}), 400
 
         try:
             webhook_data = request.get_json(force=True)
         except Exception as e:
-            logger.error(f"Erro ao interpretar JSON: {str(e)}")
+            webhook_logger.error(f"Erro ao carregar JSON: {str(e)}")
             return jsonify({"status": "error", "message": "JSON inválido"}), 400
 
-        logger.info("Webhook recebido: %s", webhook_data)
+        webhook_logger.info("Webhook recebido: %s", json.dumps(webhook_data, indent=2))
 
+        # Validações mínimas
         event_type = webhook_data.get('type')
-        leads_data = webhook_data.get('leads', {})
-        leads_status = leads_data.get('status', [])
-        should_update = False
+        if not event_type:
+            return jsonify({"status": "ignored", "message": "Evento sem tipo"}), 200
 
-        if event_type in [
+        # Verifica se é um tipo de evento que merece ação
+        eventos_relevantes = {
             'lead_added',
             'lead_status_changed',
             'note_created',
             'task_completed',
             'incoming_chat_message',
             'outgoing_chat_message'
-        ]:
-            should_update = True
+        }
 
-        for status in leads_status:
-            status_id = status.get('status_id')
-            if status_id in [142, 143]:  # Venda fechada ou perdida
-                should_update = True
-                break
+        leads_status = webhook_data.get('leads', {}).get('status', [])
+        should_update = event_type in eventos_relevantes
 
+        # Se status do lead for "ganho" ou "perdido", força atualização
+        status_ids_relevantes = [142, 143]  # 142 = ganho, 143 = perdido
         is_sale = any(
             status.get('status_id') == 142 and status.get('responsible_user_id')
             for status in leads_status
         )
+        should_update = should_update or any(
+            status.get('status_id') in status_ids_relevantes
+            for status in leads_status
+        )
 
         if should_update or is_sale:
-            logger.debug("Evento requer atualização: is_sale=%s, type=%s", is_sale, event_type)
-            success = sync_manager.force_sync()
-            if success:
-                points_success = update_broker_points()
-                if points_success:
+            webhook_logger.debug(f"Sincronizando dados: evento={event_type}, is_sale={is_sale}")
+            if sync_manager.force_sync():
+                if update_broker_points():
                     return jsonify({
                         "status": "success",
                         "message": "Dados sincronizados e pontos atualizados"
                     }), 200
+                else:
+                    return jsonify({
+                        "status": "error",
+                        "message": "Erro ao atualizar pontos"
+                    }), 500
+            else:
                 return jsonify({
                     "status": "error",
-                    "message": "Erro ao atualizar pontos"
+                    "message": "Erro ao sincronizar dados"
                 }), 500
-            return jsonify({
-                "status": "error",
-                "message": "Erro ao sincronizar dados"
-            }), 500
 
         return jsonify({
             "status": "success",
-            "message": "Evento processado"
+            "message": "Evento irrelevante processado com sucesso"
         }), 200
 
     except Exception as e:
-        logger.error(f"Erro ao processar webhook: {str(e)}")
+        webhook_logger.exception("Erro interno no processamento do webhook")
         return jsonify({"status": "error", "message": str(e)}), 500
+    
+@webhook_bp.route('/health', methods=['GET'])
+def webhook_health_check():
+    return jsonify({"status": "ok", "message": "Webhook ativo e saudável"}), 200
