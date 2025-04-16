@@ -37,8 +37,15 @@ class SupabaseClient:
 
             logger.info(f"Upserting {len(brokers_df)} brokers to Supabase")
 
+            # Filtrar apenas corretores
+            brokers_df_filtered = brokers_df[brokers_df['cargo'] == 'Corretor'].copy()
+            
+            if brokers_df_filtered.empty:
+                logger.warning("No brokers with 'Corretor' role found")
+                return
+
             # Convert DataFrame to list of dicts
-            brokers_data = brokers_df.to_dict(orient="records")
+            brokers_data = brokers_df_filtered.to_dict(orient="records")
 
             # Add updated_at timestamp
             for broker in brokers_data:
