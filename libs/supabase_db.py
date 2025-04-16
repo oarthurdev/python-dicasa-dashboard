@@ -446,17 +446,18 @@ class SupabaseClient:
                 "updated_at": now
             } for b in new_brokers]
 
-            # Inserir no banco
-            result = self.client.table("broker_points").insert(
-                new_records).execute()
+            # Inserir no banco usando upsert para evitar duplicatas
+            if new_records:
+                result = self.client.table("broker_points").upsert(
+                    new_records, on_conflict="id").execute()
 
-            if hasattr(result, "error") and result.error:
-                raise Exception(
-                    f"Erro ao inserir broker_points: {result.error}")
+                if hasattr(result, "error") and result.error:
+                    raise Exception(
+                        f"Erro ao inserir broker_points: {result.error}")
 
-            logger.info(
-                f"{len(new_records)} registros criados em broker_points com sucesso."
-            )
+                logger.info(
+                    f"{len(new_records)} registros criados em broker_points com sucesso."
+                )
             return result
 
         except Exception as e:
