@@ -186,43 +186,43 @@ class KommoAPI:
     
     def get_activities(self):
         """
-        Retrieve all activities from Kommo CRM using parallel requests
+        Retrieve all activities from Kommo CRM with rate limiting
         """
         try:
-            logger.info("Retrieving activities from Kommo CRM (paralelo)")
-
-            max_pages = 200  # Máximo de páginas a tentar
-            workers = 8       # Threads simultâneas
-            stop_after = 10   # Early-stop: para se X páginas vierem vazias
+            logger.info("Retrieving activities from Kommo CRM")
+            
+            activities_data = []
+            page = 1
             empty_streak = 0
-
+            stop_after = 3  # Para após 3 páginas vazias consecutivas
+            
             now = int(time.time())
             filter_from = now - (7 * 24 * 60 * 60)
-
-            activities_data = []
-
-            def fetch_page(page):
+            
+            while True:
+                # Rate limiting - espera 1 segundo entre requests
+                time.sleep(1)
+                
                 response = self._make_request("events", params={
                     "page": page,
                     "limit": 500,
                     "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
                     "filter[created_at][from]": filter_from,
                 })
-                return response.get("_embedded", {}).get("events", [])
-
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                futures = {executor.submit(fetch_page, i): i for i in range(1, max_pages + 1)}
-
-                for future in as_completed(futures):
-                    events = future.result()
-                    if events:
-                        activities_data.extend(events)
-                        empty_streak = 0
-                    else:
-                        empty_streak += 1
-                        if empty_streak >= stop_after:
-                            logger.info(f"Parando busca: {stop_after} páginas seguidas sem atividades.")
-                            break
+                
+                events = response.get("_embedded", {}).get("events", [])
+                
+                if not events:
+                    empty_streak += 1
+                    if empty_streak >= stop_after:
+                        logger.info(f"Parando busca: {stop_after} páginas vazias consecutivas")
+                        break
+                else:
+                    empty_streak = 0
+                    activities_data.extend(events)
+                    
+                page += 1
+                logger.info(f"Processada página {page-1}, encontrados {len(events)} eventos")
 
             logger.info(f"Total de atividades recuperadas: {len(activities_data)}")
 
