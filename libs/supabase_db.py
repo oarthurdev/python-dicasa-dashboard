@@ -373,8 +373,15 @@ class SupabaseClient:
                     df_clean.loc[mask, col] = None
 
             # Realiza o upsert na tabela broker_points
-            response = self.client.table("broker_points").upsert(
-                df_clean.to_dict("records")).execute()
+            records = df_clean.to_dict("records")
+            for record in records:
+                for key, value in record.items():
+                    if isinstance(value, pd.Timestamp):
+                        record[key] = value.isoformat()
+
+            # Realiza o upsert com os dados tratados
+            response = self.client.table("broker_points").upsert(records).execute()
+
 
             logger.info("Tabela broker_points atualizada com sucesso.")
             return response

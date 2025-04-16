@@ -16,42 +16,14 @@ class KommoAPI:
 
     def __init__(self, api_url=None, access_token=None):
         self.api_url = api_url or os.getenv("KOMMO_API_URL")
-        raw_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
-
-        if not self.api_url or not raw_token:
+        self.access_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
+        
+        if not self.api_url or not self.access_token:
             raise ValueError("API URL and access token must be provided")
-
-        # Remove any existing "Bearer " prefix and whitespace
-        clean_token = raw_token.replace("Bearer", "").strip()
-        self.access_token = f"Bearer {clean_token}"
-
-        logger.info(f"Initializing KommoAPI with URL: {self.api_url}")
-
+        
         # Ensure API URL does not end with slash
         if self.api_url.endswith('/'):
             self.api_url = self.api_url[:-1]
-
-        # Validate token on initialization
-        self._validate_token()
-
-    def _validate_token(self):
-        """Validate the access token by making a test request"""
-        try:
-            response = requests.get(
-                f"{self.api_url}/api/v4/account",
-                headers={"Authorization": self.access_token},
-                timeout=30
-            )
-
-            if response.status_code in [401, 403]:
-                logger.error(f"Token validation failed with status code: {response.status_code}")
-                logger.error(f"Response content: {response.text}")
-                raise ValueError(
-                    "Invalid or expired access token. Please check your credentials."
-                )
-        except Exception as e:
-            logger.error(f"Failed to validate token: {str(e)}")
-            raise
 
     def _make_request(self,
                       endpoint,
@@ -171,7 +143,7 @@ class KommoAPI:
             filtered_leads = []
             page = 1
             empty_streak = 0
-            stop_after = 3  # Para após 3 páginas vazias consecutivas
+            stop_after = 10  # Para após 3 páginas vazias consecutivas
 
             while True:
                 # Rate limiting - espera 1 segundo entre requests
@@ -183,7 +155,8 @@ class KommoAPI:
                         "page":
                         page,
                         "limit":
-                        50,
+                        250,
+                        "filter[pipeline_id]": 8865067,
                         "with":
                         "contacts,pipeline_id,loss_reason,catalog_elements,company"
                     })

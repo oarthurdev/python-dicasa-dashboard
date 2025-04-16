@@ -1,4 +1,5 @@
 import os
+import requests
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 import threading
 import time
 import logging
-from flask import Flask
+from flask import Flask, jsonify
 
 # Import custom modules
 from libs import KommoAPI, SupabaseClient, SyncManager
@@ -46,6 +47,11 @@ load_dotenv()
 #     except Exception as e:
 #         logger.error(f"Failed to run initial data sync: {str(e)}")
 
+# No início do app
+@st.cache_resource
+def start_auto_update_thread():
+    thread = threading.Thread(target=auto_update_broker_points, daemon=True)
+    thread.start()
 
 # Initialize API and database clients
 @st.cache_resource
@@ -84,25 +90,25 @@ def background_data_loader():
 
         while True:
             try:
+                # Calculate points after syncing data
+                brokers = kommo_api.get_users()
+                leads = kommo_api.get_leads()
+                activities = kommo_api.get_activities()
+
+                if not brokers.empty and not leads.empty and not activities.empty:
+                    supabase.update_broker_points()
+                    logger.info("Broker points updated successfully")
+
                 current_time = datetime.now()
 
                 # Only sync if more than 5 minutes have passed since last sync
                 if not last_sync_time or (
                         current_time - last_sync_time).total_seconds() > 300:
                     logger.info("Checking for updates from Kommo API")
-                    sync_manager.sync_data()
+                    sync_manager.sync_from_cache(brokers, leads, activities)
 
-                    # Calculate points after syncing data
-                    brokers = kommo_api.get_users()
-                    leads = kommo_api.get_leads()
-                    activities = kommo_api.get_activities()
-
-                    if not brokers.empty and not leads.empty and not activities.empty:
-                        points_df = calculate_broker_points(
-                            brokers, leads, activities)
-                        supabase.upsert_broker_points(points_df)
-                        logger.info("Broker points updated successfully")
-
+                    logger.info("Data sync completed successfully")
+                    
                     last_sync_time = current_time
 
                 time.sleep(600)  # Check every 10 minutes for sync timing
@@ -236,7 +242,7 @@ st.markdown("""
 
 
 # Function to fetch data from Supabase
-@st.cache_data(ttl=300, max_entries=1)  # Cache for 5 minutes, limit cache size
+@st.cache_data(ttl=10, max_entries=1)  # Cache for 5 minutes, limit cache size
 def get_data_from_supabase():
     """Fetch data from Supabase tables"""
     try:
@@ -281,119 +287,87 @@ def get_rank_color(points):
 
 
 # Function to display the ranking cards in the exact format shown in the image
-def display_ranking_cards(ranking_data):
-    """Display ranking cards in a grid layout"""
-    if ranking_data.empty:
-        st.info("Dados de ranking não disponíveis.")
-        return
+# def display_ranking_cards(ranking_data):
+#     """Display ranking cards in a grid layout"""
+#     if ranking_data.empty:
+#         st.info("Dados de ranking não disponíveis.")
+#         return
 
-    # Sort brokers by points in descending order
-    sorted_brokers = ranking_data.sort_values(
-        by='pontos', ascending=False).reset_index(drop=True)
-    sorted_brokers.index = sorted_brokers.index + 1  # Start index from 1
+#     # Sort brokers by points in descending order
+#     sorted_brokers = ranking_data.sort_values(
+#         by='pontos', ascending=False).reset_index(drop=True)
+#     sorted_brokers.index = sorted_brokers.index + 1  # Start index from 1
 
-    # Create a grid of cards - 3 per row as shown in the reference image
-    cols = st.columns(3)
+#     # Create a grid of cards - 3 per row as shown in the reference image
+#     cols = st.columns(3)
 
-    # Display only top 9 brokers (or fewer if less available)
-    for i, row in enumerate(sorted_brokers.head(9).itertuples()):
-        col_idx = i % 3  # Determine which column to place the card
-        rank_color, rank_icon = get_rank_color(row.pontos)
+#     # Display only top 9 brokers (or fewer if less available)
+#     for i, row in enumerate(sorted_brokers.head(9).itertuples()):
+#         col_idx = i % 3  # Determine which column to place the card
+#         rank_color, rank_icon = get_rank_color(row.pontos)
 
-        with cols[col_idx]:
-            st.markdown(f"""
-            <div class="ranking-card" style="background: linear-gradient(135deg, white, {rank_color}10); border-left: 4px solid {rank_color};">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <div style="display: flex; align-items: center;">
-                        <div class="rank-number" style="
-                            background-color: {rank_color}; 
-                            color: white;
-                            width: 30px;
-                            height: 30px;
-                            border-radius: 50%;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            margin-right: 12px;
-                            font-weight: bold;
-                            font-size: 16px;">
-                            {row.Index}
-                        </div>
-                        <div style="display: flex; flex-direction: column;">
-                            <div class="broker-name" style="font-weight: 600; color: #1F2937;">{row.nome}</div>
-                            <div style="font-size: 12px; color: {rank_color}; margin-top: 2px;">
-                                {rank_icon} Nível {5-((row.Index-1)//2 if row.Index <= 9 else 1)}
-                            </div>
-                        </div>
-                    </div>
-                    <div style="
-                        background-color: {rank_color}15;
-                        padding: 8px 12px;
-                        border-radius: 12px;
-                        display: flex;
-                        flex-direction: column;
-                        align-items: center;
-                    ">
-                        <div style="font-size: 11px; color: {rank_color}; font-weight: 500;">PONTOS</div>
-                        <div style="font-size: 18px; color: {rank_color}; font-weight: 700;">{int(row.pontos)}</div>
-                    </div>
-                </div>
-                <div style="
-                    display: flex;
-                    justify-content: space-between;
-                    background-color: {rank_color}08;
-                    padding: 8px;
-                    border-radius: 8px;
-                    margin-top: 8px;
-                ">
-                    <div style="text-align: center; flex: 1;">
-                        <div style="font-size: 11px; color: #6B7280;">Leads</div>
-                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.leads_visitados or 0)}</div>
-                    </div>
-                    <div style="text-align: center; flex: 1; border-left: 1px solid {rank_color}20; border-right: 1px solid {rank_color}20;">
-                        <div style="font-size: 11px; color: #6B7280;">Propostas</div>
-                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.propostas_enviadas or 0)}</div>
-                    </div>
-                    <div style="text-align: center; flex: 1;">
-                        <div style="font-size: 11px; color: #6B7280;">Vendas</div>
-                        <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.vendas_realizadas or 0)}</div>
-                    </div>
-                </div>
-            </div>
-            """,
-                        unsafe_allow_html=True)
-
-
-# Function to fetch data from Supabase
-@st.cache_data(ttl=300, max_entries=1)  # Cache for 5 minutes, limit cache size
-def get_data_from_supabase():
-    """Fetch data from Supabase tables"""
-    try:
-        # Get data from Supabase
-        brokers = supabase.client.table("brokers").select("*").execute()
-        leads = supabase.client.table("leads").select("*").execute()
-        activities = supabase.client.table("activities").select("*").execute()
-        broker_points = supabase.client.table("broker_points").select(
-            "*").execute()
-
-        # Convert to DataFrames
-        brokers_df = pd.DataFrame(
-            brokers.data) if brokers.data else pd.DataFrame()
-        leads_df = pd.DataFrame(leads.data) if leads.data else pd.DataFrame()
-        activities_df = pd.DataFrame(
-            activities.data) if activities.data else pd.DataFrame()
-        broker_points_df = pd.DataFrame(
-            broker_points.data) if broker_points.data else pd.DataFrame()
-
-        return {
-            'brokers': brokers_df,
-            'leads': leads_df,
-            'activities': activities_df,
-            'ranking': broker_points_df
-        }
-    except Exception as e:
-        st.error(f"Erro ao carregar dados do Supabase: {str(e)}")
-        return None
+#         with cols[col_idx]:
+#             st.markdown(f"""
+#             <div class="ranking-card" style="background: linear-gradient(135deg, white, {rank_color}10); border-left: 4px solid {rank_color};">
+#                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+#                     <div style="display: flex; align-items: center;">
+#                         <div class="rank-number" style="
+#                             background-color: {rank_color}; 
+#                             color: white;
+#                             width: 30px;
+#                             height: 30px;
+#                             border-radius: 50%;
+#                             display: flex;
+#                             align-items: center;
+#                             justify-content: center;
+#                             margin-right: 12px;
+#                             font-weight: bold;
+#                             font-size: 16px;">
+#                             {row.Index}
+#                         </div>
+#                         <div style="display: flex; flex-direction: column;">
+#                             <div class="broker-name" style="font-weight: 600; color: #1F2937;">{row.nome}</div>
+#                             <div style="font-size: 12px; color: {rank_color}; margin-top: 2px;">
+#                                 {rank_icon} Nível {5-((row.Index-1)//2 if row.Index <= 9 else 1)}
+#                             </div>
+#                         </div>
+#                     </div>
+#                     <div style="
+#                         background-color: {rank_color}15;
+#                         padding: 8px 12px;
+#                         border-radius: 12px;
+#                         display: flex;
+#                         flex-direction: column;
+#                         align-items: center;
+#                     ">
+#                         <div style="font-size: 11px; color: {rank_color}; font-weight: 500;">PONTOS</div>
+#                         <div style="font-size: 18px; color: {rank_color}; font-weight: 700;">{int(row.pontos)}</div>
+#                     </div>
+#                 </div>
+#                 <div style="
+#                     display: flex;
+#                     justify-content: space-between;
+#                     background-color: {rank_color}08;
+#                     padding: 8px;
+#                     border-radius: 8px;
+#                     margin-top: 8px;
+#                 ">
+#                     <div style="text-align: center; flex: 1;">
+#                         <div style="font-size: 11px; color: #6B7280;">Leads</div>
+#                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.leads_visitados or 0)}</div>
+#                     </div>
+#                     <div style="text-align: center; flex: 1; border-left: 1px solid {rank_color}20; border-right: 1px solid {rank_color}20;">
+#                         <div style="font-size: 11px; color: #6B7280;">Propostas</div>
+#                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.propostas_enviadas or 0)}</div>
+#                     </div>
+#                     <div style="text-align: center; flex: 1;">
+#                         <div style="font-size: 11px; color: #6B7280;">Vendas</div>
+#                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.vendas_realizadas or 0)}</div>
+#                     </div>
+#                 </div>
+#             </div>
+#             """,
+#                         unsafe_allow_html=True)
 
 
 # Function to display the ranking cards in the exact format shown in the image
@@ -413,7 +387,7 @@ def get_rank_color(points):
 def display_ranking_cards(ranking_data):
     """Display ranking cards in a grid layout"""
     if ranking_data.empty:
-        st.info("Dados de ranking não disponíveis.")
+        st.info("📭 Nenhum dado de pontuação ainda. Acompanhe em breve o desempenho dos corretores.")
         return
 
     # Sort brokers by points in descending order
@@ -833,21 +807,20 @@ def main():
         unsafe_allow_html=True)
 
     # Fetch data from Supabase only
-    data = get_data_from_supabase()
+    with st.spinner("🔄 Carregando dados... Aguarde enquanto sincronizamos com o sistema."):
+        data = get_data_from_supabase()
 
     if data is None:
         st.error("Erro ao conectar com o banco de dados")
         return
 
-    # Verifica se pelo menos brokers e ranking têm dados
-    if data['brokers'].empty or data['ranking'].empty:
-        st.info(
-            "Carregando dados do banco... Por favor, aguarde alguns instantes."
-        )
-        st.info(
-            "Se o problema persistir, verifique a conexão com o banco de dados."
-        )
-        return
+    if data['brokers'].empty:
+        st.warning("Nenhum corretor cadastrado no sistema.")
+        return  # esse é crítico, pois sem brokers nada funciona
+
+    # mas deixa o ranking seguir mesmo se estiver vazio
+    if data['ranking'].empty:
+        st.info("🔄 Os pontos ainda estão sendo calculados. Assim que estiverem prontos, o ranking será exibido aqui.")
 
     # Create tabs container with custom styling
     st.markdown('<div class="tabs-container">', unsafe_allow_html=True)
@@ -986,7 +959,43 @@ def main():
                     unsafe_allow_html=True)
                 display_points_breakdown(selected_broker, data)
 
+def update_broker_points():
+    try:
+        logger.info("Recalculando pontos dos corretores via endpoint...")
+
+        kommo_api = KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
+                             access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+
+        supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
+                                  key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+
+        brokers = kommo_api.get_users()
+        leads = kommo_api.get_leads()
+        activities = kommo_api.get_activities()
+
+        if not brokers.empty and not leads.empty and not activities.empty:
+            from gamification import calculate_broker_points
+            points_df = calculate_broker_points(brokers, leads, activities)
+            supabase.upsert_broker_points(points_df)
+            logger.info("Pontos atualizados com sucesso via endpoint.")
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        logger.error(f"Erro ao atualizar pontos via endpoint: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+        
+def auto_update_broker_points():
+    while True:
+        try:
+            logger.info("[Auto Update] Atualizando pontos dos corretores")
+            supabase.update_broker_points()
+            st.rerun()
+        except Exception as e:
+            logger.error(f"[Auto Update] Erro ao atualizar pontos: {str(e)}")
+        time.sleep(10)
 
 if __name__ == "__main__":
     # background_data_loader_once()
+    start_auto_update_thread()
     main()

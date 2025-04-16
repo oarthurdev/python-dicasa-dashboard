@@ -32,6 +32,23 @@ class SyncManager:
     def update_sync_time(self, resource: str):
         self.last_sync[resource] = datetime.now()
 
+    def sync_from_cache(self, brokers, leads, activities):
+        if self.needs_sync('users') and brokers is not None:
+            self.supabase.upsert_brokers(brokers)
+            self.supabase.initialize_broker_points()
+            self.cache['users'] = brokers
+            self.update_sync_time('users')
+
+        if self.needs_sync('leads') and leads is not None:
+            self.supabase.upsert_leads(leads)
+            self.cache['leads'] = leads
+            self.update_sync_time('leads')
+
+        if self.needs_sync('activities') and activities is not None:
+            self.supabase.upsert_activities(activities)
+            self.cache['activities'] = activities
+            self.update_sync_time('activities')
+            
     def sync_data(self) -> bool:
         try:
             retry_count = 3
@@ -51,6 +68,9 @@ class SyncManager:
                     # Sync leads with cache
                     if self.needs_sync('leads'):
                         leads = self.kommo_api.get_leads()
+
+                        leads = leads[leads['pipeline_id'] == 8865067]
+
                         if not leads.empty and (self.cache['leads'] is None or not leads.equals(self.cache['leads'])):
                             self.supabase.upsert_leads(leads)
                             self.cache['leads'] = leads
