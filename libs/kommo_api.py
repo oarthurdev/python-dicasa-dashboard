@@ -37,8 +37,8 @@ class KommoAPI:
         try:
             response = requests.get(f"{self.api_url}/api/v4/account",
                                     headers={
-                                        "Authorization":
-                                        os.environ.get("ACCESS_TOKEN_KOMMO")
+                                        "authorization":
+                                        (os.getenv("ACCESS_TOKEN_KOMMO") or "")
                                     })
 
             if response.status_code == 403:
