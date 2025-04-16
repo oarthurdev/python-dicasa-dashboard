@@ -35,11 +35,10 @@ class KommoAPI:
     def _validate_token(self):
         """Validate the access token by making a test request"""
         try:
-            response = requests.get(f"{self.api_url}/api/v4/account",
-                                    headers={
-                                        "authorization":
-                                        (os.getenv("ACCESS_TOKEN_KOMMO") or "")
-                                    })
+            response = requests.get(
+                f"{self.api_url}/api/v4/account",
+                headers={"Authorization": self.access_token}
+            )
 
             if response.status_code == 403:
                 raise ValueError(
