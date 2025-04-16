@@ -40,8 +40,11 @@ class SyncManager:
                     # Sync users/brokers with retry and cache
                     if self.needs_sync('users'):
                         brokers = self.kommo_api.get_users()
-                        if not brokers.empty and (self.cache['users'] is None or not brokers.equals(self.cache['users'])):
+                        if not brokers.empty:
+                            # First ensure brokers are saved
                             self.supabase.upsert_brokers(brokers)
+                            # Then initialize broker points if needed
+                            self.supabase.initialize_broker_points()
                             self.cache['users'] = brokers
                         self.update_sync_time('users')
 

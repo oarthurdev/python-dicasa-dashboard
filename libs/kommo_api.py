@@ -21,9 +21,29 @@ class KommoAPI:
         if not self.api_url or not self.access_token:
             raise ValueError("API URL and access token must be provided")
 
+        # Validate token format
+        if not self.access_token.strip().startswith("Bearer "):
+            self.access_token = f"Bearer {self.access_token.strip()}"
+
         # Ensure API URL does not end with slash
         if self.api_url.endswith('/'):
             self.api_url = self.api_url[:-1]
+
+        # Validate token on initialization
+        self._validate_token()
+
+    def _validate_token(self):
+        """Validate the access token by making a test request"""
+        try:
+            response = requests.get(
+                f"{self.api_url}/api/v4/account",
+                headers={"Authorization": self.access_token}
+            )
+            if response.status_code == 403:
+                raise ValueError("Invalid or expired access token. Please check your credentials.")
+        except Exception as e:
+            logger.error(f"Failed to validate token: {str(e)}")
+            raise
 
     def _make_request(self,
                       endpoint,
