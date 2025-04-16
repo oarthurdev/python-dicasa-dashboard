@@ -58,23 +58,26 @@ supabase = init_supabase_client()
 
 supabase.initialize_broker_points()
 
+
 def background_data_loader():
     """
     This function runs in the background to continuously monitor Kommo API
     for changes and update the database accordingly
     """
     try:
-        kommo_api = KommoAPI(api_url=os.getenv("KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
-                            access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+        kommo_api = KommoAPI(api_url=os.getenv(
+            "KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
+                             access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
 
         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-                                key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+                                  key=os.getenv("VITE_SUPABASE_ANON_KEY"))
 
         sync_manager = SyncManager(kommo_api, supabase)
         last_sync_time = None
 
         # Initial check for broker_points data
-        existing = supabase.client.table("broker_points").select("*").limit(1).execute()
+        existing = supabase.client.table("broker_points").select("*").limit(
+            1).execute()
         if not existing.data:
             logger.info("Inicializando broker_points...")
             supabase.initialize_broker_points()
@@ -84,7 +87,8 @@ def background_data_loader():
                 current_time = datetime.now()
 
                 # Only sync if more than 5 minutes have passed since last sync
-                if not last_sync_time or (current_time - last_sync_time).total_seconds() > 300:
+                if not last_sync_time or (
+                        current_time - last_sync_time).total_seconds() > 300:
                     logger.info("Checking for updates from Kommo API")
                     sync_manager.sync_data()
 
@@ -94,7 +98,8 @@ def background_data_loader():
                     activities = kommo_api.get_activities()
 
                     if not brokers.empty and not leads.empty and not activities.empty:
-                        points_df = calculate_broker_points(brokers, leads, activities)
+                        points_df = calculate_broker_points(
+                            brokers, leads, activities)
                         supabase.upsert_broker_points(points_df)
                         logger.info("Broker points updated successfully")
 
@@ -906,11 +911,17 @@ def main():
                                                      'display_name'].iloc[0])
 
         if selected_broker:
-            # Get broker details
             broker = data['brokers'][data['brokers']['id'] ==
                                      selected_broker].iloc[0]
-            broker_leads = data['leads'][data['leads']['responsavel_id'] ==
-                                         selected_broker]
+
+            # Get broker details
+            if 'responsavel_id' in data['leads'].columns:
+                broker_leads = data['leads'][data['leads']['responsavel_id'] ==
+                                             selected_broker]
+            else:
+                print(
+                    "Column 'responsavel_id' does not exist in the DataFrame.")
+                broker_leads = None  # Handle the case when the column does not exist
 
             # Display broker header with ranking position
             broker_rank = data['ranking'][
