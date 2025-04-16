@@ -35,12 +35,16 @@ class KommoAPI:
     def _validate_token(self):
         """Validate the access token by making a test request"""
         try:
-            response = requests.get(
-                f"{self.api_url}/api/v4/account",
-                headers={"Authorization": self.access_token}
-            )
+            response = requests.get(f"{self.api_url}/api/v4/account",
+                                    headers={
+                                        "Authorization":
+                                        os.environ.get("ACCESS_TOKEN_KOMMO")
+                                    })
+
             if response.status_code == 403:
-                raise ValueError("Invalid or expired access token. Please check your credentials.")
+                raise ValueError(
+                    "Invalid or expired access token. Please check your credentials."
+                )
         except Exception as e:
             logger.error(f"Failed to validate token: {str(e)}")
             raise
