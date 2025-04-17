@@ -836,8 +836,6 @@ def get_view_manager():
 
 
 def display_login_page():
-    st.set_page_config(page_title="Login - Dicasa Dashboard", layout="wide")
-    
     # Include Bootstrap CSS and custom styles
     st.markdown("""
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -865,7 +863,8 @@ def display_login_page():
         <div class="login-container">
             <div class="login-card">
                 <div class="text-center mb-4">
-    """, unsafe_allow_html=True)
+    """,
+                unsafe_allow_html=True)
 
     # Logo
     try:
@@ -877,17 +876,18 @@ def display_login_page():
     st.markdown("""
                 <h4 class="mb-4">Acesse sua conta</h4>
             </div>
-    """, unsafe_allow_html=True)
+    """,
+                unsafe_allow_html=True)
 
     # Form inputs with Bootstrap form-floating for better styling
-    email = st.text_input("Email", 
-                         placeholder="Digite seu email",
-                         help="Digite seu email corporativo")
-    
+    email = st.text_input("Email",
+                          placeholder="Digite seu email",
+                          help="Digite seu email corporativo")
+
     senha = st.text_input("Senha",
-                         type="password",
-                         placeholder="Digite sua senha",
-                         help="Digite sua senha")
+                          type="password",
+                          placeholder="Digite sua senha",
+                          help="Digite sua senha")
 
     # Login button with Bootstrap styling
     if st.button("Entrar", type="primary", use_container_width=True):
@@ -910,7 +910,8 @@ def display_login_page():
                 </div>
             </div>
         </div>
-    """, unsafe_allow_html=True)
+    """,
+                unsafe_allow_html=True)
 
 
 def main():
