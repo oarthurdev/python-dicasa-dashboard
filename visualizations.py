@@ -61,7 +61,8 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
             'Sunday': 'Domingo'
         }
 
-        # Garante que dia_semana não é nulo e faz o mapeamento
+        # Garante que criado_em é datetime e dia_semana não é nulo
+        filtered['criado_em'] = pd.to_datetime(filtered['criado_em'])
         filtered['dia_semana'] = filtered['dia_semana'].fillna(filtered['criado_em'].dt.strftime('%A').str.upper())
 
         logger.info("[HEATMAP] Traduzindo dias da semana")
