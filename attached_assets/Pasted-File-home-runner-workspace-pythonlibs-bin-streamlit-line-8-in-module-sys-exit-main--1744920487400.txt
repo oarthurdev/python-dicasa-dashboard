@@ -1,0 +1,30 @@
+File "/home/runner/workspace/.pythonlibs/bin/streamlit", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/click/core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/click/core.py", line 1082, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/click/core.py", line 1697, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/click/core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/click/core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/streamlit/web/cli.py", line 210, in main_run
+    bootstrap.load_config_options(flag_options=kwargs)
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/streamlit/web/bootstrap.py", line 286, in load_config_options
+    config.get_config_options(force_reparse=True, options_from_flags=options_from_flags)
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/streamlit/config.py", line 1539, in get_config_options
+    _update_config_with_toml(file_contents, filename)
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/streamlit/config.py", line 1375, in _update_config_with_toml
+    parsed_config_file = toml.loads(raw_toml)
+                         ^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/workspace/.pythonlibs/lib/python3.12/site-packages/toml/decoder.py", line 213, in loads
+    raise TomlDecodeError("Key name found without value."
+toml.decoder.TomlDecodeError: Key name found without value. Reached end of line. (line 13 column 2 char 214)
