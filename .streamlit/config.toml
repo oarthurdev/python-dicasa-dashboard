@@ -10,7 +10,7 @@ backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f0f2f6"
 textColor = "#262730"
 font = "sans serif"
-
+t
 [browser]
 serverAddress = "0.0.0.0"
 gatherUsageStats = false

@@ -799,7 +799,8 @@ def display_general_ranking(data):
     st.markdown("### Estatísticas Gerais")
     col1, col2, col3, col4 = st.columns(4)
 
-    total_leads = len(data['leads']) if not data['leads'].empty else 0
+    total_leads = len(data['leads'][data['leads']['pipeline_id'] == 8865067]) \
+        if not data['leads'].empty else 0
     active_brokers = len(data['ranking']) if not data['ranking'].empty else 0
     avg_points = int(
         data['ranking']['pontos'].mean()) if not data['ranking'].empty else 0
@@ -942,8 +943,8 @@ def main():
     if not st.session_state.get("background_started"):
         brokers_df = data['brokers']
         if 'cargo' in brokers_df.columns:
-            active_brokers = brokers_df[brokers_df['cargo'] == 'Corretor'][
-                'id'].tolist()
+            active_brokers = brokers_df[brokers_df['cargo'] ==
+                                        'Corretor']['id'].tolist()
         else:
             # Se não houver coluna cargo, considera todos os brokers como ativos
             active_brokers = brokers_df['id'].tolist()
