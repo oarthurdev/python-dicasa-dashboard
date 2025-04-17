@@ -834,9 +834,8 @@ def get_view_manager():
 
 
 def display_login_page():
-    st.markdown(
-        "<h1 style='text-align: center;'>Login</h1>",
-        unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>Login</h1>",
+                unsafe_allow_html=True)
 
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
@@ -844,8 +843,10 @@ def display_login_page():
     if st.button("Login"):
         try:
             response = supabase.client.auth.sign_in_with_password({
-                "email": email,
-                "password": password
+                "email":
+                email,
+                "password":
+                password
             })
             if response.user:
                 st.session_state["authenticated"] = True
@@ -861,23 +862,6 @@ def main():
     # Inicializar estado de autenticação se necessário
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
-
-    # Layout do header com opção de login/logout
-    col1, col2, col3 = st.columns([8,2,2])
-    with col1:
-        st.markdown(
-            "<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>",
-            unsafe_allow_html=True)
-    with col3:
-        if st.session_state["authenticated"]:
-            if st.button("Logout"):
-                supabase.client.auth.sign_out()
-                st.session_state["authenticated"] = False
-                st.rerun()
-        else:
-            if st.button("Login"):
-                st.query_params["page"] = "login"
-                st.rerun()
 
     # Verificar se é a página de login
     current_page = st.query_params.get("page", "ranking")
@@ -922,17 +906,11 @@ def main():
         st.query_params.update({"page": "ranking"})
 
     # Header with logout button
-    col1, col2, col3 = st.columns([8,2,2])
+    col1, col2, col3 = st.columns([8, 2, 2])
     with col1:
         st.markdown(
-            "<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>",
+            "<h1 style='text-align: center !important;'>Dashboard de Desempenho - Corretores</h1>",
             unsafe_allow_html=True)
-    with col3:
-        if st.button("Logout"):
-            supabase.client.auth.sign_out()
-            st.session_state["authenticated"] = False
-            st.query_params["page"] = "login"
-            st.rerun()
 
     # Fetch data from Supabase
     data = get_data_from_supabase()
