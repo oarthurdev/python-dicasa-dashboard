@@ -114,18 +114,35 @@ def background_data_loader():
 st.markdown("""
 <style>
     .stApp {
-        background: linear-gradient(120deg, #fdfbfb 0%, #f5f7fa 100%);
+        background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
         min-height: 100vh;
+        font-family: 'Inter', sans-serif;
     }
     .main .block-container {
-        padding: 2rem;
+        padding: 2.5rem;
         max-width: 1400px;
-        margin: 2rem auto;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(8px);
-        border-radius: 16px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-        border: 1px solid rgba(255, 255, 255, 0.8);
+        margin: 1.5rem auto;
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(10px);
+        border-radius: 24px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.9);
+    }
+    .stApp > header {
+        background-color: transparent !important;
+    }
+    .stButton > button {
+        border-radius: 12px;
+        padding: 0.5rem 1.5rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+        background: linear-gradient(135deg, #3B82F6, #2563EB);
+        border: none;
+        color: white;
+    }
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(37, 99, 235, 0.2);
     }
     h1 {
         font-size: 2.4rem !important;
@@ -150,15 +167,33 @@ st.markdown("""
         margin: 1rem 0 !important;
     }
     .stMetric {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-        transition: transform 0.2s ease-in-out;
+        background: linear-gradient(145deg, #ffffff, #f8fafc);
+        padding: 1.8rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        transition: all 0.3s ease;
+        border: 1px solid rgba(226, 232, 240, 0.8);
     }
     .stMetric:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        transform: translateY(-3px);
+        box-shadow: 0 12px 25px rgba(0,0,0,0.07);
+        border-color: rgba(59, 130, 246, 0.3);
+    }
+    .stMetric label {
+        font-size: 0.875rem !important;
+        font-weight: 600 !important;
+        color: #64748B !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.5rem;
+    }
+    .stMetric [data-testid="stMetricValue"] {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        background: linear-gradient(45deg, #1E40AF, #3B82F6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        margin-top: 0.25rem;
     }
     .stMetric label {
         font-size: 1rem !important;
@@ -195,14 +230,34 @@ st.markdown("""
         padding-bottom: 1rem;
     }
     .ranking-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-        margin-bottom: 1.5rem;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        border: 1px solid #E2E8F0;
-        backdrop-filter: blur(10px);
+        background: linear-gradient(145deg, #ffffff, #f8fafc);
+        padding: 1.8rem;
+        border-radius: 20px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+        margin-bottom: 2rem;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        position: relative;
+        overflow: hidden;
+    }
+    .ranking-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #3B82F6, #2563EB);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    .ranking-card:hover::before {
+        opacity: 1;
+    }
+    .ranking-card:hover {
+        transform: translateY(-4px) scale(1.02);
+        box-shadow: 0 20px 30px rgba(0,0,0,0.1);
+        border-color: rgba(59, 130, 246, 0.2);
     }
     .ranking-card:hover {
         transform: translateY(-4px) scale(1.01);
