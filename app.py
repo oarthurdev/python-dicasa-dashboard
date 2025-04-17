@@ -8,7 +8,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 import threading
-import time
 import logging
 from flask import Flask, jsonify
 
@@ -99,16 +98,6 @@ def background_data_loader():
     except Exception as e:
         logger.error(f"Failed to initialize background sync: {str(e)}")
 
-
-# # Start the background thread when app starts
-# @st.cache_resource
-# def start_background_thread():
-#     thread = threading.Thread(target=background_data_loader, daemon=True)
-#     thread.start()
-#     return "Background thread started"
-
-# # Start the background thread
-# thread_status = start_background_thread()
 
 # Custom CSS
 st.markdown("""
@@ -751,7 +740,7 @@ def display_broker_dashboard(broker_id, data):
             </div>
             <div style="text-align: center;">
                 <div style="font-size: 14px; color: #6B7280;">Pontuação</div>
-                <div style="font-size: 24px; font-weight: bold; color: #2563EB;">{broker_points}</div>
+                <div<div style="font-size: 24px; font-weight: bold; color: #2563EB;">{broker_points}</div>
             </div>
         </div>
     </div>
@@ -844,59 +833,14 @@ def get_view_manager():
     return ViewManager(rotation_interval=5)
 
 
-# def handle_page_rotation():
-#     """Gerencia a rotação de páginas"""
-#     view_manager = get_view_manager()
-
-#     # Inicializar página e corretores ativos
-#     if "current_page" not in st.session_state:
-#         st.session_state["current_page"] = "ranking"
-
-#     # Inicializar lista de corretores ativos se não existir
-#     if "active_brokers" not in st.session_state:
-#         st.session_state["active_brokers"] = []
-
-#     view_manager.set_active_brokers(st.session_state["active_brokers"])
-
-#     logger.info(
-#         f"[View Manager] Página atual: {st.session_state['current_page']}")
-#     logger.info(
-#         f"[View Manager] Corretores ativos: {st.session_state['active_brokers']}"
-#     )
-
-#     # Verificar e executar rotação
-#     next_page = view_manager.rotate_if_needed()
-#     if next_page and next_page != st.session_state["current_page"]:
-#         st.session_state["current_page"] = next_page
-#         st.query_params["page"] = next_page
-#         st.rerun()
-
-# def rotate_views_loop():
-#     view_manager = get_view_manager()
-
-#     while True:
-#         try:
-#             if "active_brokers" in st.session_state:
-#                 view_manager.set_active_brokers(st.session_state["active_brokers"])
-#                 next_page = view_manager.rotate_if_needed()
-
-#                 if next_page and next_page != st.session_state.get("current_page"):
-#                     st.session_state["next_page"] = next_page
-
-#             time.sleep(1)
-#         except Exception as e:
-#             logger.error(f"[Rotação Thread] Erro: {e}")
-#             time.sleep(5)
-
-
 def display_login_page():
     st.markdown(
         "<h1 style='text-align: center;'>Login</h1>",
         unsafe_allow_html=True)
-    
+
     email = st.text_input("Email")
     password = st.text_input("Password", type="password")
-    
+
     if st.button("Login"):
         try:
             response = supabase.client.auth.sign_in_with_password({
@@ -912,22 +856,33 @@ def display_login_page():
         except Exception as e:
             st.error(f"Erro no login: {str(e)}")
 
+
 def main():
-    # Check authentication
+    # Inicializar estado de autenticação se necessário
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
 
-    # Check if login page is requested
+    # Layout do header com opção de login/logout
+    col1, col2, col3 = st.columns([8,2,2])
+    with col1:
+        st.markdown(
+            "<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>",
+            unsafe_allow_html=True)
+    with col3:
+        if st.session_state["authenticated"]:
+            if st.button("Logout"):
+                supabase.client.auth.sign_out()
+                st.session_state["authenticated"] = False
+                st.rerun()
+        else:
+            if st.button("Login"):
+                st.query_params["page"] = "login"
+                st.rerun()
+
+    # Verificar se é a página de login
     current_page = st.query_params.get("page", "ranking")
-    
     if current_page == "login":
         display_login_page()
-        return
-    
-    # Redirect to login if not authenticated
-    if not st.session_state["authenticated"]:
-        st.query_params["page"] = "login"
-        st.rerun()
         return
 
     def rotate_views_on_reload():
