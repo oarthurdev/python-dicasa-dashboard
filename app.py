@@ -872,35 +872,36 @@ def display_login_page():
 
     # st.container()
 
-    # Centraliza tudo horizontalmente
+    # Criar uma única coluna centralizada que ocupa 50% da largura
     col1, col2, col3 = st.columns([1, 2, 1])
-
+    
     with col2:
-        # Centraliza logo com tamanho 250x250
-        try:
-            logo = Image.open(
-                "logo_dicasa.png")  # Ou o arquivo que você acabou de subir
-            st.image(logo, width=250)
-        except Exception:
-            st.markdown('<p class="text-muted text-center">[Logo]</p>',
+        container = st.container()
+        with container:
+            # Centraliza logo com tamanho 250x250
+            try:
+                logo = Image.open("logo_dicasa.png")
+                st.image(logo, width=250, use_column_width=True)
+            except Exception:
+                st.markdown('<p class="text-muted text-center">[Logo]</p>',
+                            unsafe_allow_html=True)
+
+            # Espaço entre logo e formulário
+            st.markdown("<div style='margin-top: 30px;'></div>",
                         unsafe_allow_html=True)
 
-        # Espaço entre logo e formulário
-        st.markdown("<div style='margin-top: 30px;'></div>",
-                    unsafe_allow_html=True)
+            # Container do formulário centralizado
+            st.markdown("""
+                <div style="width: 100%; margin: 0 auto; padding: 30px; background-color: #ffffff; 
+                            border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+            """,
+                        unsafe_allow_html=True)
 
-        # Container do formulário com largura máxima de 600px e centralizado
-        st.markdown("""
-            <div style="max-width: 600px; margin: 0 auto; padding: 30px; background-color: #ffffff; 
-                        border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
-        """,
-                    unsafe_allow_html=True)
+            st.markdown(
+                '<h4 class="text-center mb-4" style="text-align: center;">Acesse sua conta</h4>',
+                unsafe_allow_html=True)
 
-        st.markdown(
-            '<h4 class="text-center mb-4" style="text-align: center;">Acesse sua conta</h4>',
-            unsafe_allow_html=True)
-
-        with st.form("login_form"):
+            with st.form("login_form", clear_on_submit=True):
             email = st.text_input("Email",
                                   placeholder="Digite seu email",
                                   help="Digite seu email corporativo")
