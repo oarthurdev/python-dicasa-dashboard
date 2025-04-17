@@ -104,11 +104,17 @@ def background_data_loader():
 # Custom CSS
 st.markdown("""
 <style>
+    .stApp {
+        background: linear-gradient(135deg, #EBF4FF 0%, #E6FFFA 100%);
+    }
     .main .block-container {
         padding: 2rem;
         max-width: 1400px;
         margin: 0 auto;
-        background: linear-gradient(to bottom, #F8FAFC, #F1F5F9);
+        background: rgba(255, 255, 255, 0.9);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.12);
     }
     h1 {
         font-size: 2.4rem !important;
