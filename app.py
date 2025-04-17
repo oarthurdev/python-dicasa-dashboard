@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import threading
 import logging
 from flask import Flask, jsonify
+from PIL import Image
 
 # Import custom modules
 from libs import KommoAPI, SupabaseClient, SyncManager
@@ -817,11 +818,12 @@ def auto_update_broker_points():
             logger.info("[Auto Update] Atualizando pontos dos corretores")
             supabase.update_broker_points()
             logger.info("[Auto Update] Pontos atualizados com sucesso")
-            st.rerun()
             logger.info(
                 "[Auto Update] Aguardando 5 minutos para a próxima atualização"
             )
             time.sleep(300)
+
+            st.rerun()
         except Exception as e:
             logger.error(f"[Auto Update] Erro ao atualizar pontos: {str(e)}")
         time.sleep(10)
@@ -836,73 +838,78 @@ def get_view_manager():
 def display_login_page():
     st.markdown("""
     <style>
-        .login-container {
-            max-width: 400px;
-            margin: 2rem auto;
-            padding: 2rem;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+         .centered-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
         }
-        .login-logo {
-            display: block;
-            margin: 0 auto 2rem;
-            width: 200px;
+    
+        .logo {
+            width: 30%;
+            max-width: 200px;
+            height: auto;
+            margin-bottom: 2rem;
         }
-        .login-title {
-            color: #2563EB;
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-            text-align: center;
-        }
-        .stButton > button {
+    
+        .input-container {
             width: 100%;
-            background: linear-gradient(135deg, #3B82F6, #2563EB);
-            color: white;
+            max-width: 400px;
+        }
+    
+        .stTextInput > div > input,
+        .stTextInput input[type="password"] {
             padding: 0.75rem;
-            border-radius: 8px;
-            border: none;
-            font-weight: 600;
-            margin-top: 1rem;
+            font-size: 1rem;
         }
-        .stButton > button:hover {
-            background: linear-gradient(135deg, #2563EB, #1D4ED8);
-            transform: translateY(-1px);
-        }
-        [data-testid="stTextInput"] {
-            background: #F3F4F6;
-            border-radius: 8px;
-            padding: 0.5rem;
-            margin-bottom: 1rem;
+    
+        button[kind="primary"] {
+            width: 100%;
+            font-size: 1rem;
+            padding: 0.75rem;
         }
     </style>
-    <div class="login-container">
-        <img src="attached_assets/logo_dicasa.png" alt="DiCasa Logo" class="login-logo">
-        <h1 class="login-title">Bem-vindo ao DiCasa</h1>
-    </div>
-    """, unsafe_allow_html=True)
+    """,
+                unsafe_allow_html=True)
 
     with st.container():
+        st.markdown('<div class="centered-container">', unsafe_allow_html=True)
+
+        imagem = Image.open("logo_dicasa.png")
+        st.image(imagem,
+                 use_container_width=False,
+                 output_format='PNG',
+                 caption="",
+                 width=200)
+
+        st.markdown('<div class="input-container">', unsafe_allow_html=True)
+
         email = st.text_input("Email", placeholder="Digite seu email")
-        password = st.text_input("Senha", type="password", placeholder="Digite sua senha")
+        password = st.text_input("Senha",
+                                 type="password",
+                                 placeholder="Digite sua senha")
 
         if st.button("Entrar"):
-        try:
-            response = supabase.client.auth.sign_in_with_password({
-                "email":
-                email,
-                "password":
-                password
-            })
-            if response.user:
-                st.session_state["authenticated"] = True
-                st.query_params["page"] = "ranking"
-                st.rerun()
-            else:
-                st.error("Login falhou. Verifique suas credenciais.")
-        except Exception as e:
-            st.error(f"Erro no login: {str(e)}")
+            try:
+                response = supabase.client.auth.sign_in_with_password({
+                    "email":
+                    email,
+                    "password":
+                    password
+                })
+                if response.user:
+                    st.session_state["authenticated"] = True
+                    st.query_params["page"] = "ranking"
+                    st.rerun()
+                else:
+                    st.error("Login falhou. Verifique suas credenciais.")
+            except Exception as e:
+                st.error(f"Erro no login: {str(e)}")
+
+        st.markdown('</div>', unsafe_allow_html=True)  # fecha .input-container
+        st.markdown('</div>',
+                    unsafe_allow_html=True)  # fecha .centered-container
 
 
 def main():
