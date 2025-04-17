@@ -841,17 +841,23 @@ def display_login_page():
         [data-testid="stAppViewContainer"] {
             background: linear-gradient(135deg, #0099ff05 0%, #0099ff15 100%);
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         [data-testid="stVerticalBlock"] {
-            padding-top: 5vh;
             margin: 0 auto;
-            max-width: 400px;
+            width: 100%;
+            max-width: 480px;
+            padding: 0 20px;
         }
 
         [data-testid="stImage"] {
-            margin: 0 auto 1.5rem;
+            margin: 0 auto 2rem;
             display: block;
+            width: 160px !important;
+            height: auto !important;
             filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
             transition: transform 0.3s ease;
         }
@@ -865,15 +871,10 @@ def display_login_page():
             padding: 2.5rem;
             border-radius: 16px;
             box-shadow: 0 10px 25px rgba(0, 153, 255, 0.1);
-            margin-top: 1rem;
             border: 1px solid rgba(0, 153, 255, 0.1);
             backdrop-filter: blur(10px);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-
-        .login-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 35px rgba(0, 153, 255, 0.15);
+            width: 100%;
         }
 
         .welcome-text {
@@ -881,18 +882,24 @@ def display_login_page():
             color: #1a1a1a;
             font-size: 1.5rem;
             font-weight: 600;
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stButton {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin-top: 1.5rem;
         }
 
         .stButton > button {
-            width: 100%;
+            width: 80%;
             background: linear-gradient(135deg, #0099ff, #0077cc);
             color: white;
             padding: 0.875rem;
             border-radius: 12px;
             border: none;
             font-weight: 600;
-            margin-top: 1.5rem;
             transition: all 0.3s ease;
             font-size: 1rem;
             text-transform: uppercase;
@@ -904,7 +911,16 @@ def display_login_page():
             box-shadow: 0 5px 15px rgba(0, 153, 255, 0.3);
         }
 
+        .stTextInput {
+            width: 100%;
+        }
+
+        .stTextInput > div {
+            width: 100%;
+        }
+
         .stTextInput > div > input {
+            width: 100%;
             background: #f8f9fa;
             border: 2px solid #e9ecef;
             border-radius: 12px;
@@ -930,26 +946,13 @@ def display_login_page():
         ::placeholder {
             color: #adb5bd;
         }
-
-        .error-message {
-            background: #fff5f5;
-            color: #e53e3e;
-            padding: 1rem;
-            border-radius: 8px;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-            border: 1px solid #fed7d7;
-        }
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 2, 1])
+    imagem = Image.open("logo_dicasa.png")
+    st.image(imagem)
     
-    with col2:
-        imagem = Image.open("logo_dicasa.png")
-        st.image(imagem, width=180)
-        
-        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+    st.markdown('<div class="login-card">', unsafe_allow_html=True)
         st.markdown('<div class="welcome-text">Bem-vindo(a) de volta!</div>', unsafe_allow_html=True)
         
         email = st.text_input("Email", placeholder="Digite seu email")
