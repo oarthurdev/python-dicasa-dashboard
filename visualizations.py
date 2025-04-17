@@ -61,18 +61,25 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
             'Sunday': 'Domingo'
         }
 
-        # Define as categorias primeiro
+        # Define as categorias e ordem
         day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
-
-        # Garante que criado_em é datetime e extrai o dia da semana
+        
+        # Garante que criado_em é datetime
         filtered['criado_em'] = pd.to_datetime(filtered['criado_em'])
-        filtered['dia_semana'] = filtered['dia_semana'].fillna(filtered['criado_em'].dt.strftime('%A').str.upper())
-
-        logger.info("[HEATMAP] Traduzindo dias da semana")
-        filtered['dia_semana'] = filtered['dia_semana'].astype(str).str.strip()
+        
+        # Converte dia_semana para string e uppercase
+        filtered['dia_semana'] = filtered['dia_semana'].astype(str).str.strip().str.upper()
+        
+        # Se dia_semana for NaN ou 'NAN', usa criado_em
+        filtered.loc[filtered['dia_semana'].isin(['NAN', 'NAN ']), 'dia_semana'] = filtered['criado_em'].dt.strftime('%A').str.upper()
+        
+        # Traduz dias para português
         filtered['dia_semana'] = filtered['dia_semana'].map(dias_traducao)
-
-        # Aplica as categorias após a tradução
+        
+        # Garante que todos os dias estejam na lista de categorias antes de converter
+        filtered.loc[~filtered['dia_semana'].isin(day_order), 'dia_semana'] = day_order[0]
+        
+        # Converte para categoria após garantir valores válidos
         filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
 
         logger.info(f"[HEATMAP] Valores únicos de dia_semana após tradução: {filtered['dia_semana'].unique()}")
