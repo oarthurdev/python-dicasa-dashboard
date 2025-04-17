@@ -836,115 +836,86 @@ def get_view_manager():
 
 
 def display_login_page():
-    # CSS
+    # Include Bootstrap CSS
     st.markdown("""
-    <style>
-    body {
-        margin: 0;
-        padding: 0;
-        background: linear-gradient(135deg, #e0f7ff, #f8f9fa);
-        font-family: 'Segoe UI', sans-serif;
-    }
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            .login-page {
+                min-height: 100vh;
+                background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .login-card {
+                background: white;
+                border-radius: 1rem;
+                box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+                padding: 2rem;
+                width: 100%;
+                max-width: 400px;
+            }
+            .form-control {
+                border-radius: 0.5rem;
+                padding: 0.75rem 1rem;
+            }
+            .btn-primary {
+                border-radius: 0.5rem;
+                padding: 0.75rem 1rem;
+                width: 100%;
+                background: #0d6efd;
+                border: none;
+                font-weight: 600;
+            }
+            .btn-primary:hover {
+                background: #0b5ed7;
+                transform: translateY(-1px);
+                box-shadow: 0 0.25rem 0.5rem rgba(13, 110, 253, 0.2);
+            }
+            .forgot-link {
+                color: #6c757d;
+                text-decoration: none;
+                font-size: 0.875rem;
+            }
+            .forgot-link:hover {
+                color: #0d6efd;
+                text-decoration: underline;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
-    .login-container {
-        max-width: 420px;
-        margin: 4rem auto;
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 3rem 2rem;
-        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05);
-        text-align: center;
-    }
+    # Login page layout
+    st.markdown("""
+        <div class="login-page">
+            <div class="login-card">
+                <div class="text-center mb-4">
+    """, unsafe_allow_html=True)
 
-    .login-logo {
-        width: 100px;
-        margin-bottom: 1rem;
-    }
-
-    .login-title {
-        font-size: 1.8rem;
-        font-weight: 600;
-        color: #212529;
-        margin-bottom: 2rem;
-    }
-
-    .stTextInput input {
-        padding: 0.9rem 1rem;
-        border: 2px solid #dee2e6;
-        border-radius: 10px;
-        background-color: #f8f9fa;
-        font-size: 1rem;
-        margin-bottom: 1rem;
-        transition: border-color 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .stTextInput input:focus {
-        border-color: #0099ff;
-        box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.15);
-        background-color: #ffffff;
-    }
-
-    .stButton button {
-        background: linear-gradient(135deg, #0099ff, #006bb3);
-        color: white;
-        font-weight: bold;
-        padding: 0.9rem;
-        border: none;
-        border-radius: 12px;
-        width: 100%;
-        font-size: 1rem;
-        margin-top: 1rem;
-        transition: all 0.3s ease;
-    }
-
-    .stButton button:hover {
-        box-shadow: 0 4px 14px rgba(0, 153, 255, 0.3);
-        transform: translateY(-2px);
-    }
-
-    .forgot-password {
-        font-size: 0.9rem;
-        color: #666;
-        margin-top: 1rem;
-        display: block;
-        text-align: center;
-        text-decoration: none;
-    }
-
-    .forgot-password:hover {
-        text-decoration: underline;
-        color: #0099ff;
-    }
-    </style>
-    """,
-                unsafe_allow_html=True)
-
-    # Layout HTML estruturado
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-
-    # Logo (substitua pelo caminho do seu logo)
+    # Logo
     try:
         logo = Image.open("logo_dicasa.png")
         st.image(logo, width=100)
     except:
-        st.markdown(
-            '<div style="font-size:0.9rem;color:#999;margin-bottom:1rem;">[Logo aqui]</div>',
-            unsafe_allow_html=True)
+        st.markdown('<p class="text-muted">[Logo]</p>', unsafe_allow_html=True)
 
-    # Título
-    st.markdown('<div class="login-title">Acesse sua conta</div>',
-                unsafe_allow_html=True)
+    st.markdown("""
+                <h4 class="mb-4">Acesse sua conta</h4>
+            </div>
+    """, unsafe_allow_html=True)
 
-    # Inputs
-    email = st.text_input("Email", placeholder="Digite seu email")
+    # Form inputs
+    email = st.text_input("Email", 
+                         placeholder="Digite seu email",
+                         help="Digite seu email corporativo")
+    
     senha = st.text_input("Senha",
-                          type="password",
-                          placeholder="Digite sua senha")
+                         type="password",
+                         placeholder="Digite sua senha",
+                         help="Digite sua senha")
 
-    # Botão
-    if st.button("Entrar"):
+    # Login button with Bootstrap styling
+    if st.button("Entrar", type="primary"):
         if email and senha:
-            # Autenticação fake (exemplo)
             if email == "admin@teste.com" and senha == "123456":
                 st.success("Login realizado com sucesso!")
                 st.session_state["authenticated"] = True
@@ -955,11 +926,14 @@ def display_login_page():
         else:
             st.warning("Preencha todos os campos.")
 
-    # Link "Esqueci minha senha"
-    st.markdown('<a class="forgot-password" href="#">Esqueci minha senha</a>',
-                unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Forgot password link
+    st.markdown("""
+            <div class="text-center mt-3">
+                <a href="#" class="forgot-link">Esqueci minha senha</a>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def main():
