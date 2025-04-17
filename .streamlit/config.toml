@@ -1,11 +1,22 @@
 [server]
 headless = true
 address = "0.0.0.0"
-port = 5000
+port = 8501
 
 [theme]
-primaryColor = "#007BFF"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F0F2F6"
+base = "light"
+primaryColor = "#0099ff"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
 textColor = "#262730"
 font = "sans serif"
+
+[browser]
+serverAddress = "0.0.0.0"
+gatherUsageStats = false
+
+[ui]
+hideTopBar = true
+
+[client]
+toolbarMode = "minimal"

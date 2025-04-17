@@ -27,8 +27,17 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+hide_streamlit_style = """
+            <style>
+                /* Hide the Streamlit header and menu */
+                header {visibility: hidden;}
+            </style>
+            """
+
 st.set_page_config(page_title="Dicasa - Dashboard de Desempenho",
                    layout="wide")
+
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 
 @st.cache_resource
