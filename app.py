@@ -836,144 +836,130 @@ def get_view_manager():
 
 
 def display_login_page():
+    # CSS
     st.markdown("""
     <style>
-        [data-testid="stAppViewContainer"] {
-            background: linear-gradient(135deg, #0099ff05 0%, #0099ff15 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        
-        [data-testid="stVerticalBlock"] {
-            margin: 0 auto;
-            width: 100%;
-            max-width: 480px;
-            padding: 0 20px;
-        }
+    body {
+        margin: 0;
+        padding: 0;
+        background: linear-gradient(135deg, #e0f7ff, #f8f9fa);
+        font-family: 'Segoe UI', sans-serif;
+    }
 
-        [data-testid="stImage"] {
-            margin: 0 auto 2rem;
-            display: block;
-            width: 160px !important;
-            height: auto !important;
-            filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
-            transition: transform 0.3s ease;
-        }
+    .login-container {
+        max-width: 420px;
+        margin: 4rem auto;
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 3rem 2rem;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.05);
+        text-align: center;
+    }
 
-        [data-testid="stImage"]:hover {
-            transform: translateY(-5px);
-        }
+    .login-logo {
+        width: 100px;
+        margin-bottom: 1rem;
+    }
 
-        .login-card {
-            background: white;
-            padding: 2.5rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0, 153, 255, 0.1);
-            border: 1px solid rgba(0, 153, 255, 0.1);
-            backdrop-filter: blur(10px);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-            width: 100%;
-        }
+    .login-title {
+        font-size: 1.8rem;
+        font-weight: 600;
+        color: #212529;
+        margin-bottom: 2rem;
+    }
 
-        .welcome-text {
-            text-align: center;
-            color: #1a1a1a;
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 2rem;
-        }
+    .stTextInput input {
+        padding: 0.9rem 1rem;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        background-color: #f8f9fa;
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
 
-        .stButton {
-            display: flex;
-            justify-content: center;
-            width: 100%;
-            margin-top: 1.5rem;
-        }
+    .stTextInput input:focus {
+        border-color: #0099ff;
+        box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.15);
+        background-color: #ffffff;
+    }
 
-        .stButton > button {
-            width: 80%;
-            background: linear-gradient(135deg, #0099ff, #0077cc);
-            color: white;
-            padding: 0.875rem;
-            border-radius: 12px;
-            border: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            font-size: 1rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+    .stButton button {
+        background: linear-gradient(135deg, #0099ff, #006bb3);
+        color: white;
+        font-weight: bold;
+        padding: 0.9rem;
+        border: none;
+        border-radius: 12px;
+        width: 100%;
+        font-size: 1rem;
+        margin-top: 1rem;
+        transition: all 0.3s ease;
+    }
 
-        .stButton > button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 153, 255, 0.3);
-        }
+    .stButton button:hover {
+        box-shadow: 0 4px 14px rgba(0, 153, 255, 0.3);
+        transform: translateY(-2px);
+    }
 
-        .stTextInput {
-            width: 100%;
-        }
+    .forgot-password {
+        font-size: 0.9rem;
+        color: #666;
+        margin-top: 1rem;
+        display: block;
+        text-align: center;
+        text-decoration: none;
+    }
 
-        .stTextInput > div {
-            width: 100%;
-        }
-
-        .stTextInput > div > input {
-            width: 100%;
-            background: #f8f9fa;
-            border: 2px solid #e9ecef;
-            border-radius: 12px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .stTextInput > div > input:focus {
-            border-color: #0099ff;
-            box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.1);
-            background: white;
-        }
-
-        .stTextInput > label {
-            color: #495057;
-            font-weight: 500;
-            font-size: 0.9rem;
-            margin-bottom: 0.5rem;
-        }
-
-        ::placeholder {
-            color: #adb5bd;
-        }
+    .forgot-password:hover {
+        text-decoration: underline;
+        color: #0099ff;
+    }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+                unsafe_allow_html=True)
 
-    imagem = Image.open("logo_dicasa.png")
-    st.image(imagem)
-    
-    st.markdown('<div class="login-card">', unsafe_allow_html=True)
-        st.markdown('<div class="welcome-text">Bem-vindo(a) de volta!</div>', unsafe_allow_html=True)
-        
-        email = st.text_input("Email", placeholder="Digite seu email")
-        password = st.text_input("Senha", type="password", placeholder="Digite sua senha")
+    # Layout HTML estruturado
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
 
-        if st.button("Entrar"):
-            try:
-                response = supabase.client.auth.sign_in_with_password({
-                    "email": email,
-                    "password": password
-                })
-                if response.user:
-                    st.session_state["authenticated"] = True
-                    st.query_params["page"] = "ranking"
-                    st.rerun()
-                else:
-                    st.error("Login falhou. Verifique suas credenciais.")
-            except Exception as e:
-                st.error(f"Erro no login: {str(e)}")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+    # Logo (substitua pelo caminho do seu logo)
+    try:
+        logo = Image.open("logo_dicasa.png")
+        st.image(logo, width=100)
+    except:
+        st.markdown(
+            '<div style="font-size:0.9rem;color:#999;margin-bottom:1rem;">[Logo aqui]</div>',
+            unsafe_allow_html=True)
+
+    # Título
+    st.markdown('<div class="login-title">Acesse sua conta</div>',
+                unsafe_allow_html=True)
+
+    # Inputs
+    email = st.text_input("Email", placeholder="Digite seu email")
+    senha = st.text_input("Senha",
+                          type="password",
+                          placeholder="Digite sua senha")
+
+    # Botão
+    if st.button("Entrar"):
+        if email and senha:
+            # Autenticação fake (exemplo)
+            if email == "admin@teste.com" and senha == "123456":
+                st.success("Login realizado com sucesso!")
+                st.session_state["authenticated"] = True
+                st.query_params["page"] = "ranking"
+                st.rerun()
+            else:
+                st.error("Credenciais inválidas. Tente novamente.")
+        else:
+            st.warning("Preencha todos os campos.")
+
+    # Link "Esqueci minha senha"
+    st.markdown('<a class="forgot-password" href="#">Esqueci minha senha</a>',
+                unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 def main():
