@@ -940,8 +940,14 @@ def main():
 
     # Iniciar threads de background se ainda não iniciados
     if not st.session_state.get("background_started"):
-        st.session_state["active_brokers"] = data['brokers'][
-            data['brokers']['cargo'] == 'Corretor']['id'].tolist()
+        brokers_df = data['brokers']
+        if 'cargo' in brokers_df.columns:
+            active_brokers = brokers_df[brokers_df['cargo'] == 'Corretor'][
+                'id'].tolist()
+        else:
+            # Se não houver coluna cargo, considera todos os brokers como ativos
+            active_brokers = brokers_df['id'].tolist()
+        st.session_state["active_brokers"] = active_brokers
 
         # st.session_state["rotation_thread"] = threading.Thread(
         #     target=rotate_views_loop, daemon=True)
