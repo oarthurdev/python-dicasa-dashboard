@@ -874,9 +874,9 @@ def display_login_page():
 
     try:
         logo = Image.open("logo_dicasa.png")
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.image(logo, width=250)
+        st.container()
+        st.image(logo, width=250, use_column_width=False)
+        st.container()
     except Exception:
         st.markdown('<p class="text-muted text-center">[Logo]</p>',
                     unsafe_allow_html=True)
