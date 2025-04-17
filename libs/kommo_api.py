@@ -17,10 +17,10 @@ class KommoAPI:
     def __init__(self, api_url=None, access_token=None):
         self.api_url = api_url or os.getenv("KOMMO_API_URL")
         self.access_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
-        
+
         if not self.api_url or not self.access_token:
             raise ValueError("API URL and access token must be provided")
-        
+
         # Ensure API URL does not end with slash
         if self.api_url.endswith('/'):
             self.api_url = self.api_url[:-1]
@@ -134,21 +134,36 @@ class KommoAPI:
     def get_leads(self):
         """
         Retrieve leads from Kommo CRM filtering only pipeline_id = 8865067
-        with rate limiting
+        and map status_id to status name (etapa)
         """
         try:
+            logger.info("Buscando etapas do pipeline 8865067")
+            pipeline_response = self._make_request("leads/pipelines")
+            pipelines = pipeline_response.get("_embedded",
+                                              {}).get("pipelines", [])
+
+            status_map = {}
+            for pipeline in pipelines:
+                if pipeline.get("id") == 8865067:
+                    for status in pipeline.get("_embedded",
+                                               {}).get("statuses", []):
+                        status_id = status.get("id")
+                        status_name = status.get("name")
+                        status_map[status_id] = status_name
+                    break
+
+            logger.info("Etapas carregadas com sucesso")
+
             logger.info(
                 "Retrieving leads from Kommo CRM (pipeline_id = 8865067)")
 
             filtered_leads = []
             page = 1
             empty_streak = 0
-            stop_after = 1  # Para após 3 páginas vazias consecutivas
+            stop_after = 1  # Para após 1 página vazia
 
             while True:
-                # Rate limiting - espera 1 segundo entre requests
                 time.sleep(1)
-
                 response = self._make_request(
                     "leads",
                     params={
@@ -156,7 +171,8 @@ class KommoAPI:
                         page,
                         "limit":
                         250,
-                        "filter[pipeline_id]": 8865067,
+                        "filter[pipeline_id]":
+                        8865067,
                         "with":
                         "contacts,pipeline_id,loss_reason,catalog_elements,company"
                     })
@@ -178,10 +194,10 @@ class KommoAPI:
                     empty_streak = 0
                     filtered_leads.extend(filtered_page_leads)
 
-                page += 1
                 logger.info(
-                    f"Processada página {page-1}, encontrados {len(filtered_page_leads)} leads"
+                    f"Processada página {page}, encontrados {len(filtered_page_leads)} leads"
                 )
+                page += 1
 
             logger.info(
                 f"Total de leads com pipeline 8865067: {len(filtered_leads)}")
@@ -199,6 +215,9 @@ class KommoAPI:
                 updated_at = datetime.fromtimestamp(lead.get(
                     "updated_at", 0)) if lead.get("updated_at") else None
 
+                status_id = lead.get("status_id")
+                etapa = status_map.get(status_id, "Desconhecido")
+
                 processed_leads.append({
                     "id":
                     lead.get("id"),
@@ -211,12 +230,11 @@ class KommoAPI:
                     "valor":
                     lead.get("price"),
                     "status_id":
-                    lead.get("status_id"),
+                    status_id,
                     "pipeline_id":
                     lead.get("pipeline_id"),
                     "etapa":
-                    lead.get("_embedded",
-                             {}).get("status", {}).get("name", "Desconhecido"),
+                    etapa,
                     "criado_em":
                     created_at,
                     "atualizado_em":
@@ -224,15 +242,15 @@ class KommoAPI:
                     "fechado":
                     lead.get("closed_at") is not None,
                     "status":
-                    ("Ganho" if lead.get("status_id") == 142 else "Perdido"
-                     if lead.get("status_id") == 143 else "Em progresso")
+                    ("Ganho" if status_id == 142 else
+                     "Perdido" if status_id == 143 else "Em progresso")
                 })
 
             return pd.DataFrame(processed_leads)
 
         except Exception as e:
-            logger.error(f"Failed to retrieve leads: {str(e)}")
-            raise
+            logger.error(f"Erro ao buscar leads: {str(e)}")
+            return pd.DataFrame()
 
     def get_activities(self):
         """

@@ -171,7 +171,7 @@ def create_conversion_funnel(leads_df):
     try:
         logger.info("Creating conversion funnel")
 
-        if leads_df.empty or 'etapa_categoria' not in leads_df.columns:
+        if leads_df.empty or 'etapa' not in leads_df.columns:
             logger.warning("Insufficient data for funnel creation")
             # Return empty figure
             fig = go.Figure()
@@ -185,7 +185,7 @@ def create_conversion_funnel(leads_df):
         funnel_stages = ['Contato Inicial', 'Visita', 'Proposta', 'Venda']
 
         # Count leads in each stage
-        stage_counts = leads_df['etapa_categoria'].value_counts().reindex(
+        stage_counts = leads_df['etapa'].value_counts().reindex(
             funnel_stages, fill_value=0)
 
         # Create funnel chart
