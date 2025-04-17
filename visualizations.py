@@ -45,21 +45,24 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
 
         # Traduz dia da semana do inglês para português
         dias_traducao = {
+            'MONDAY': 'Segunda',
+            'TUESDAY': 'Terça',
+            'WEDNESDAY': 'Quarta',
+            'THURSDAY': 'Quinta',
+            'FRIDAY': 'Sexta',
+            'SATURDAY': 'Sábado',
+            'SUNDAY': 'Domingo',
             'Monday': 'Segunda',
             'Tuesday': 'Terça',
             'Wednesday': 'Quarta',
             'Thursday': 'Quinta',
             'Friday': 'Sexta',
             'Saturday': 'Sábado',
-            'Sunday': 'Domingo',
-            'Segunda': 'Segunda',
-            'Terça': 'Terça',
-            'Quarta': 'Quarta',
-            'Quinta': 'Quinta',
-            'Sexta': 'Sexta',
-            'Sábado': 'Sábado',
-            'Domingo': 'Domingo'
+            'Sunday': 'Domingo'
         }
+
+        # Garante que dia_semana não é nulo e faz o mapeamento
+        filtered['dia_semana'] = filtered['dia_semana'].fillna(filtered['criado_em'].dt.strftime('%A').str.upper())
 
         logger.info("[HEATMAP] Traduzindo dias da semana")
         filtered['dia_semana'] = filtered['dia_semana'].astype(str).str.strip().str.capitalize()
