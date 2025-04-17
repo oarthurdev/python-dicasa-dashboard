@@ -842,45 +842,28 @@ def display_login_page():
             .stButton button {
                 width: 100%;
             }
-
-            .main {
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                padding: 0;
-            }
-
-            .form-wrapper {
+            div[data-testid="stForm"] {
                 background: white;
                 border-radius: 10px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 padding: 2rem;
-                width: 100%;
                 max-width: 400px;
+                margin: 2rem auto;
             }
-
-            .logo {
-                width: 30%;
-                max-width: 200px;
-                height: auto;
-                margin-bottom: 20px;
-            }
-
-            .form-control {
+            .stTextInput input {
                 margin-bottom: 1rem;
             }
-
+            div[data-testid="stImage"] {
+                text-align: center;
+                margin-bottom: 2rem;
+            }
             .text-center {
                 text-align: center;
             }
-
         </style>
-    """,
-                unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-    st.markdown('<div class="main">', unsafe_allow_html=True)
+    st.container()
 
     try:
         logo = Image.open("logo_dicasa.png")
