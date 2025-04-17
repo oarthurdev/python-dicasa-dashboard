@@ -839,55 +839,12 @@ def display_login_page():
     # Include Bootstrap CSS
     st.markdown("""
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            .login-page {
-                min-height: 100vh;
-                background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .login-card {
-                background: white;
-                border-radius: 1rem;
-                box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
-                padding: 2rem;
-                width: 100%;
-                max-width: 400px;
-            }
-            .form-control {
-                border-radius: 0.5rem;
-                padding: 0.75rem 1rem;
-            }
-            .btn-primary {
-                border-radius: 0.5rem;
-                padding: 0.75rem 1rem;
-                width: 100%;
-                background: #0d6efd;
-                border: none;
-                font-weight: 600;
-            }
-            .btn-primary:hover {
-                background: #0b5ed7;
-                transform: translateY(-1px);
-                box-shadow: 0 0.25rem 0.5rem rgba(13, 110, 253, 0.2);
-            }
-            .forgot-link {
-                color: #6c757d;
-                text-decoration: none;
-                font-size: 0.875rem;
-            }
-            .forgot-link:hover {
-                color: #0d6efd;
-                text-decoration: underline;
-            }
-        </style>
     """, unsafe_allow_html=True)
 
     # Login page layout
     st.markdown("""
-        <div class="login-page">
-            <div class="login-card">
+        <div class="min-vh-100 d-flex align-items-center justify-content-center bg-light">
+            <div class="card shadow-lg p-4" style="max-width: 400px;">
                 <div class="text-center mb-4">
     """, unsafe_allow_html=True)
 
@@ -903,7 +860,7 @@ def display_login_page():
             </div>
     """, unsafe_allow_html=True)
 
-    # Form inputs
+    # Form inputs with Bootstrap form-floating for better styling
     email = st.text_input("Email", 
                          placeholder="Digite seu email",
                          help="Digite seu email corporativo")
@@ -914,7 +871,7 @@ def display_login_page():
                          help="Digite sua senha")
 
     # Login button with Bootstrap styling
-    if st.button("Entrar", type="primary"):
+    if st.button("Entrar", type="primary", use_container_width=True):
         if email and senha:
             if email == "admin@teste.com" and senha == "123456":
                 st.success("Login realizado com sucesso!")
@@ -926,10 +883,10 @@ def display_login_page():
         else:
             st.warning("Preencha todos os campos.")
 
-    # Forgot password link
+    # Forgot password link with Bootstrap classes
     st.markdown("""
             <div class="text-center mt-3">
-                <a href="#" class="forgot-link">Esqueci minha senha</a>
+                <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
             </div>
         </div>
     </div>
