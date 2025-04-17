@@ -874,14 +874,14 @@ def display_login_page():
 
     # Criar uma única coluna centralizada que ocupa 50% da largura
     col1, col2, col3 = st.columns([1, 2, 1])
-    
+
     with col2:
         container = st.container()
         with container:
             # Centraliza logo com tamanho 250x250
             try:
                 logo = Image.open("logo_dicasa.png")
-                st.image(logo, width=250, use_column_width=True)
+                st.image(logo, width=250, use_container_width=True)
             except Exception:
                 st.markdown('<p class="text-muted text-center">[Logo]</p>',
                             unsafe_allow_html=True)
@@ -903,13 +903,13 @@ def display_login_page():
 
             with st.form("login_form", clear_on_submit=True):
                 email = st.text_input("Email",
-                                    placeholder="Digite seu email",
-                                    help="Digite seu email corporativo")
+                                      placeholder="Digite seu email",
+                                      help="Digite seu email corporativo")
 
                 senha = st.text_input("Senha",
-                                    type="password",
-                                    placeholder="Digite sua senha",
-                                    help="Digite sua senha")
+                                      type="password",
+                                      placeholder="Digite sua senha",
+                                      help="Digite sua senha")
 
             if st.form_submit_button("Entrar",
                                      type="primary",
