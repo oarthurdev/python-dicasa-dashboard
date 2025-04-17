@@ -114,16 +114,18 @@ def background_data_loader():
 st.markdown("""
 <style>
     .stApp {
-        background: linear-gradient(135deg, #EBF4FF 0%, #E6FFFA 100%);
+        background: linear-gradient(120deg, #fdfbfb 0%, #f5f7fa 100%);
+        min-height: 100vh;
     }
     .main .block-container {
         padding: 2rem;
         max-width: 1400px;
-        margin: 0 auto;
-        background: rgba(255, 255, 255, 0.9);
-        backdrop-filter: blur(10px);
-        border-radius: 20px;
-        box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.12);
+        margin: 2rem auto;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(8px);
+        border-radius: 16px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.8);
     }
     h1 {
         font-size: 2.4rem !important;
