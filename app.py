@@ -838,65 +838,65 @@ def get_view_manager():
 def display_login_page():
     st.markdown("""
     <style>
-         .centered-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
+        [data-testid="stAppViewContainer"] {
+            background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
         }
-    
-        .logo {
-            width: 30%;
-            max-width: 200px;
-            height: auto;
-            margin-bottom: 2rem;
-        }
-    
-        .input-container {
-            width: 100%;
+        
+        [data-testid="stVerticalBlock"] {
+            padding-top: 10vh;
+            margin: 0 auto;
             max-width: 400px;
         }
-    
-        .stTextInput > div > input,
-        .stTextInput input[type="password"] {
-            padding: 0.75rem;
-            font-size: 1rem;
+
+        [data-testid="stImage"] {
+            margin: 0 auto 2rem;
+            display: block;
         }
-    
-        button[kind="primary"] {
+
+        .login-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-top: 2rem;
+        }
+
+        .stButton > button {
             width: 100%;
-            font-size: 1rem;
+            background: linear-gradient(135deg, #3B82F6, #2563EB);
+            color: white;
             padding: 0.75rem;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+
+        .stTextInput > div > input {
+            background: #F3F4F6;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
         }
     </style>
-    """,
-                unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-    with st.container():
-        st.markdown('<div class="centered-container">', unsafe_allow_html=True)
-
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
         imagem = Image.open("logo_dicasa.png")
-        st.image(imagem,
-                 use_container_width=False,
-                 output_format='PNG',
-                 caption="",
-                 width=200)
-
-        st.markdown('<div class="input-container">', unsafe_allow_html=True)
-
+        st.image(imagem, width=200)
+        
+        st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        
         email = st.text_input("Email", placeholder="Digite seu email")
-        password = st.text_input("Senha",
-                                 type="password",
-                                 placeholder="Digite sua senha")
+        password = st.text_input("Senha", type="password", placeholder="Digite sua senha")
 
         if st.button("Entrar"):
             try:
                 response = supabase.client.auth.sign_in_with_password({
-                    "email":
-                    email,
-                    "password":
-                    password
+                    "email": email,
+                    "password": password
                 })
                 if response.user:
                     st.session_state["authenticated"] = True
@@ -906,10 +906,8 @@ def display_login_page():
                     st.error("Login falhou. Verifique suas credenciais.")
             except Exception as e:
                 st.error(f"Erro no login: {str(e)}")
-
-        st.markdown('</div>', unsafe_allow_html=True)  # fecha .input-container
-        st.markdown('</div>',
-                    unsafe_allow_html=True)  # fecha .centered-container
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
 
 def main():
