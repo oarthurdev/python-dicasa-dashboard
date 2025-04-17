@@ -61,23 +61,23 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
             'Sunday': 'Domingo'
         }
 
-        # Garante que criado_em é datetime e dia_semana não é nulo
+        # Define as categorias primeiro
+        day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+
+        # Garante que criado_em é datetime e extrai o dia da semana
         filtered['criado_em'] = pd.to_datetime(filtered['criado_em'])
         filtered['dia_semana'] = filtered['dia_semana'].fillna(filtered['criado_em'].dt.strftime('%A').str.upper())
 
         logger.info("[HEATMAP] Traduzindo dias da semana")
-        filtered['dia_semana'] = filtered['dia_semana'].astype(str).str.strip().str.capitalize()
+        filtered['dia_semana'] = filtered['dia_semana'].astype(str).str.strip()
         filtered['dia_semana'] = filtered['dia_semana'].map(dias_traducao)
+
+        # Aplica as categorias após a tradução
+        filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
 
         logger.info(f"[HEATMAP] Valores únicos de dia_semana após tradução: {filtered['dia_semana'].unique()}")
         logger.info(f"[HEATMAP] DataFrame filtrado antes da categorização:\n{filtered[['dia_semana', 'hora']].head()}\n")
 
-        # Primeiro traduz os dias
-        filtered['dia_semana'] = filtered['dia_semana'].map(dias_traducao)
-
-        # Depois define as categorias
-        day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
-        filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
 
         time_blocks = {
             '08h - 10h': [8, 9],
@@ -150,16 +150,16 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
 def create_conversion_funnel(leads_df):
     """
     Create a conversion funnel visualization
-    
+
     Args:
         leads_df (pd.DataFrame): DataFrame containing lead data
-    
+
     Returns:
         plotly.graph_objects.Figure: Funnel figure
     """
     try:
         logger.info("Creating conversion funnel")
-        
+
         if leads_df.empty or 'etapa_categoria' not in leads_df.columns:
             logger.warning("Insufficient data for funnel creation")
             # Return empty figure
@@ -169,13 +169,13 @@ def create_conversion_funnel(leads_df):
                 height=400,
             )
             return fig
-        
+
         # Define funnel stages in order
         funnel_stages = ['Contato Inicial', 'Visita', 'Proposta', 'Venda']
-        
+
         # Count leads in each stage
         stage_counts = leads_df['etapa_categoria'].value_counts().reindex(funnel_stages, fill_value=0)
-        
+
         # Create funnel chart
         fig = go.Figure(go.Funnel(
             y=stage_counts.index,
@@ -188,16 +188,16 @@ def create_conversion_funnel(leads_df):
                 "#8E44AD",  # Purple for sale
             ]),
         ))
-        
+
         # Update layout
         fig.update_layout(
             title="Funil de Conversão",
             height=400,
             margin=dict(l=50, r=50, t=80, b=20),
         )
-        
+
         return fig
-    
+
     except Exception as e:
         logger.error(f"Error creating conversion funnel: {str(e)}")
         # Return fallback empty figure
@@ -216,16 +216,16 @@ def create_conversion_funnel(leads_df):
 def create_points_breakdown_chart(broker_data):
     """
     Create a bar chart showing the breakdown of points by category
-    
+
     Args:
         broker_data (pd.Series): Series containing broker points data
-    
+
     Returns:
         plotly.graph_objects.Figure: Bar chart figure
     """
     try:
         logger.info("Creating points breakdown chart")
-        
+
         # Define point categories and their values with expanded gamification rules
         categories = {
             # Positive categories
@@ -239,17 +239,17 @@ def create_points_breakdown_chart(broker_data):
             'Todos leads respondidos': ('todos_leads_respondidos', 5),
             'Cadastros completos': ('cadastro_completo', 3),
             'Acompanhamento pós-venda': ('acompanhamento_pos_venda', 10),
-            
+
             # Negative categories
             'Leads sem interação (24h)': ('leads_sem_interacao_24h', -3),
             'Leads ignorados (48h)': ('leads_ignorados_48h', -5),
             'Leads com reclamação': ('leads_com_reclamacao', -4),
             'Leads perdidos': ('leads_perdidos', -6)
         }
-        
+
         # Calculate points for each category
         points_breakdown = []
-        
+
         for category_name, (column, points_per_item) in categories.items():
             if column in broker_data and (not pd.isna(broker_data[column]) and broker_data[column] > 0):
                 count = broker_data[column]
@@ -260,10 +260,10 @@ def create_points_breakdown_chart(broker_data):
                     'pontos': int(total_points),
                     'tipo': 'Positivo' if points_per_item > 0 else 'Negativo'
                 })
-        
+
         # Convert to DataFrame
         df = pd.DataFrame(points_breakdown)
-        
+
         if df.empty:
             # Return empty figure
             fig = go.Figure()
@@ -272,14 +272,14 @@ def create_points_breakdown_chart(broker_data):
                 height=400,
             )
             return fig
-        
+
         # Sort by absolute value of points
         df = df.sort_values('pontos', key=abs, ascending=False)
-        
+
         # Calculate totals for annotation
         total_positive = df[df['tipo'] == 'Positivo']['pontos'].sum()
         total_negative = abs(df[df['tipo'] == 'Negativo']['pontos'].sum())
-        
+
         # Create bar chart with enhanced styling
         fig = px.bar(
             df,
@@ -291,7 +291,7 @@ def create_points_breakdown_chart(broker_data):
             color_discrete_map={'Positivo': '#28A745', 'Negativo': '#DC3545'},
             height=400,
         )
-        
+
         # Update layout
         fig.update_layout(
             title={
@@ -322,10 +322,10 @@ def create_points_breakdown_chart(broker_data):
             paper_bgcolor='rgba(0,0,0,0)',
             plot_bgcolor='rgba(0,0,0,0)',
         )
-        
+
         # Show counts on bars
         fig.update_traces(texttemplate='%{text}', textposition='auto')
-        
+
         # Add summary annotation
         fig.add_annotation(
             x=0.5,
@@ -339,15 +339,15 @@ def create_points_breakdown_chart(broker_data):
             bgcolor="rgba(245, 245, 245, 0.8)",
             borderpad=4
         )
-        
+
         # Add explanatory annotation for different categories
         if len(df) > 5:  # Only add explanation if we have enough data points
             # Find the best performing category
             best_category = df[df['tipo'] == 'Positivo'].sort_values('pontos', ascending=False).iloc[0] if not df[df['tipo'] == 'Positivo'].empty else None
-            
+
             # Find the worst performing category
             worst_category = df[df['tipo'] == 'Negativo'].sort_values('pontos').iloc[0] if not df[df['tipo'] == 'Negativo'].empty else None
-            
+
             if best_category is not None:
                 fig.add_annotation(
                     x=best_category['categoria'],
@@ -363,7 +363,7 @@ def create_points_breakdown_chart(broker_data):
                     borderpad=4,
                     yshift=15
                 )
-            
+
             if worst_category is not None:
                 fig.add_annotation(
                     x=worst_category['categoria'],
@@ -379,9 +379,9 @@ def create_points_breakdown_chart(broker_data):
                     borderpad=4,
                     yshift=-15
                 )
-        
+
         return fig
-    
+
     except Exception as e:
         logger.error(f"Error creating points breakdown chart: {str(e)}")
         # Return fallback empty figure
