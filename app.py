@@ -834,13 +834,60 @@ def get_view_manager():
 
 
 def display_login_page():
-    st.markdown("<h1 style='text-align: center;'>Login</h1>",
-                unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .login-logo {
+            display: block;
+            margin: 0 auto 2rem;
+            width: 200px;
+        }
+        .login-title {
+            color: #2563EB;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .stButton > button {
+            width: 100%;
+            background: linear-gradient(135deg, #3B82F6, #2563EB);
+            color: white;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+        .stButton > button:hover {
+            background: linear-gradient(135deg, #2563EB, #1D4ED8);
+            transform: translateY(-1px);
+        }
+        [data-testid="stTextInput"] {
+            background: #F3F4F6;
+            border-radius: 8px;
+            padding: 0.5rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+    <div class="login-container">
+        <img src="attached_assets/logo_dicasa.png" alt="DiCasa Logo" class="login-logo">
+        <h1 class="login-title">Bem-vindo ao DiCasa</h1>
+    </div>
+    """, unsafe_allow_html=True)
 
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
+    with st.container():
+        email = st.text_input("Email", placeholder="Digite seu email")
+        password = st.text_input("Senha", type="password", placeholder="Digite sua senha")
 
-    if st.button("Login"):
+        if st.button("Entrar"):
         try:
             response = supabase.client.auth.sign_in_with_password({
                 "email":
