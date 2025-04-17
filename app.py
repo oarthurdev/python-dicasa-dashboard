@@ -836,15 +836,34 @@ def get_view_manager():
 
 
 def display_login_page():
-    # Include Bootstrap CSS
+    st.set_page_config(page_title="Login - Dicasa Dashboard", layout="wide")
+    
+    # Include Bootstrap CSS and custom styles
     st.markdown("""
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    """, unsafe_allow_html=True)
-
-    # Login page layout
-    st.markdown("""
-        <div class="min-vh-100 d-flex align-items-center justify-content-center bg-light">
-            <div class="card shadow-lg p-4" style="max-width: 400px;">
+        <style>
+            .login-container {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                background-color: #f8f9fa;
+                padding: 20px;
+            }
+            .login-card {
+                background: white;
+                border-radius: 10px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                padding: 2rem;
+                width: 100%;
+                max-width: 400px;
+            }
+            .stButton button {
+                width: 100%;
+            }
+        </style>
+        <div class="login-container">
+            <div class="login-card">
                 <div class="text-center mb-4">
     """, unsafe_allow_html=True)
 
@@ -885,11 +904,12 @@ def display_login_page():
 
     # Forgot password link with Bootstrap classes
     st.markdown("""
-            <div class="text-center mt-3">
-                <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
+                    <div class="text-center mt-3">
+                        <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
     """, unsafe_allow_html=True)
 
 
