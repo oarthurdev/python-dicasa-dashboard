@@ -842,59 +842,99 @@ def display_login_page():
             .stButton button {
                 width: 100%;
             }
-            div[data-testid="stForm"] {
+
+            .main {
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                padding: 0;
+            }
+
+            .form-wrapper {
                 background: white;
                 border-radius: 10px;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
                 padding: 2rem;
+                width: 100%;
                 max-width: 400px;
-                margin: 0 auto;
             }
+
+            .logo {
+                width: 30%;
+                max-width: 200px;
+                height: auto;
+                margin-bottom: 20px;
+            }
+
             .form-control {
                 margin-bottom: 1rem;
             }
+
+            .text-center {
+                text-align: center;
+            }
+
         </style>
-    """, unsafe_allow_html=True)
+    """,
+                unsafe_allow_html=True)
 
-    with st.container():
-        col1, col2, col3 = st.columns([1, 2, 1])
+    st.markdown('<div class="main">', unsafe_allow_html=True)
 
-        with col2:
-            try:
-                logo = Image.open("logo_dicasa.png")
-                st.image(logo, width=100, use_column_width=False)
-            except:
-                st.markdown('<p class="text-muted text-center">[Logo]</p>', unsafe_allow_html=True)
+    try:
+        logo = Image.open("logo_dicasa.png")
+        st.image(logo, width=200)
+    except Exception:
+        st.markdown('<p class="text-muted text-center">[Logo]</p>',
+                    unsafe_allow_html=True)
 
-            st.markdown('<h4 class="text-center mb-4">Acesse sua conta</h4>', unsafe_allow_html=True)
+    st.markdown('<div class="form-wrapper">', unsafe_allow_html=True)
+    st.markdown('<h4 class="text-center mb-4">Acesse sua conta</h4>',
+                unsafe_allow_html=True)
 
-            with st.form("login_form"):
-                email = st.text_input("Email", 
-                    placeholder="Digite seu email",
-                    help="Digite seu email corporativo")
+    with st.form("login_form"):
+        email = st.text_input("Email",
+                              placeholder="Digite seu email",
+                              help="Digite seu email corporativo")
 
-                senha = st.text_input("Senha",
-                    type="password",
-                    placeholder="Digite sua senha",
-                    help="Digite sua senha")
+        senha = st.text_input("Senha",
+                              type="password",
+                              placeholder="Digite sua senha",
+                              help="Digite sua senha")
 
-                if st.form_submit_button("Entrar", type="primary", use_container_width=True):
-                    if email and senha:
-                        if email == "admin@teste.com" and senha == "123456":
-                            st.success("Login realizado com sucesso!")
-                            st.session_state["authenticated"] = True
-                            st.query_params["page"] = "ranking"
-                            st.rerun()
-                        else:
-                            st.error("Credenciais inválidas. Tente novamente.")
+        if st.form_submit_button("Entrar",
+                                 type="primary",
+                                 use_container_width=True):
+            if email and senha:
+                try:
+                    response = supabase.client.auth.sign_in_with_password({
+                        "email":
+                        email,
+                        "password":
+                        senha
+                    })
+                    if response.user:
+                        st.success("Login realizado com sucesso!")
+                        st.session_state["authenticated"] = True
+                        st.query_params["page"] = "ranking"
+                        st.rerun()
                     else:
-                        st.warning("Preencha todos os campos.")
+                        st.error("Login falhou. Verifique suas credenciais.")
+                except Exception as e:
+                    st.error(f"Erro no login: {str(e)}")
+            else:
+                st.warning("Preencha todos os campos.")
 
-            st.markdown("""
-                <div class="text-center mt-3">
-                    <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
-                </div>
-            """, unsafe_allow_html=True)
+    st.markdown("""
+        <div class="text-center mt-3">
+            <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
+        </div>
+    """,
+                unsafe_allow_html=True)
+
+    st.markdown('</div>', unsafe_allow_html=True)  # fecha form-wrapper
+    st.markdown('</div>', unsafe_allow_html=True)  # fecha main
 
 
 def main():
