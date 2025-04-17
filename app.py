@@ -836,82 +836,65 @@ def get_view_manager():
 
 
 def display_login_page():
-    # Include Bootstrap CSS and custom styles
     st.markdown("""
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <style>
-            .login-container {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                min-height: 100vh;
-                background-color: #f8f9fa;
-                padding: 20px;
+            .stButton button {
+                width: 100%;
             }
-            .login-card {
+            div[data-testid="stForm"] {
                 background: white;
                 border-radius: 10px;
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 padding: 2rem;
-                width: 100%;
                 max-width: 400px;
+                margin: 0 auto;
             }
-            .stButton button {
-                width: 100%;
+            .form-control {
+                margin-bottom: 1rem;
             }
         </style>
-        <div class="login-container">
-            <div class="login-card">
-                <div class="text-center mb-4">
-    """,
-                unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
-    # Logo
-    try:
-        logo = Image.open("logo_dicasa.png")
-        st.image(logo, width=100)
-    except:
-        st.markdown('<p class="text-muted">[Logo]</p>', unsafe_allow_html=True)
+    with st.container():
+        col1, col2, col3 = st.columns([1, 2, 1])
 
-    st.markdown("""
-                <h4 class="mb-4">Acesse sua conta</h4>
-            </div>
-    """,
-                unsafe_allow_html=True)
+        with col2:
+            try:
+                logo = Image.open("logo_dicasa.png")
+                st.image(logo, width=100, use_column_width=False)
+            except:
+                st.markdown('<p class="text-muted text-center">[Logo]</p>', unsafe_allow_html=True)
 
-    # Form inputs with Bootstrap form-floating for better styling
-    email = st.text_input("Email",
-                          placeholder="Digite seu email",
-                          help="Digite seu email corporativo")
+            st.markdown('<h4 class="text-center mb-4">Acesse sua conta</h4>', unsafe_allow_html=True)
 
-    senha = st.text_input("Senha",
-                          type="password",
-                          placeholder="Digite sua senha",
-                          help="Digite sua senha")
+            with st.form("login_form"):
+                email = st.text_input("Email", 
+                    placeholder="Digite seu email",
+                    help="Digite seu email corporativo")
 
-    # Login button with Bootstrap styling
-    if st.button("Entrar", type="primary", use_container_width=True):
-        if email and senha:
-            if email == "admin@teste.com" and senha == "123456":
-                st.success("Login realizado com sucesso!")
-                st.session_state["authenticated"] = True
-                st.query_params["page"] = "ranking"
-                st.rerun()
-            else:
-                st.error("Credenciais inválidas. Tente novamente.")
-        else:
-            st.warning("Preencha todos os campos.")
+                senha = st.text_input("Senha",
+                    type="password",
+                    placeholder="Digite sua senha",
+                    help="Digite sua senha")
 
-    # Forgot password link with Bootstrap classes
-    st.markdown("""
-                    <div class="text-center mt-3">
-                        <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
-                    </div>
+                if st.form_submit_button("Entrar", type="primary", use_container_width=True):
+                    if email and senha:
+                        if email == "admin@teste.com" and senha == "123456":
+                            st.success("Login realizado com sucesso!")
+                            st.session_state["authenticated"] = True
+                            st.query_params["page"] = "ranking"
+                            st.rerun()
+                        else:
+                            st.error("Credenciais inválidas. Tente novamente.")
+                    else:
+                        st.warning("Preencha todos os campos.")
+
+            st.markdown("""
+                <div class="text-center mt-3">
+                    <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
                 </div>
-            </div>
-        </div>
-    """,
-                unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
 
 
 def main():
