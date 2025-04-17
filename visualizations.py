@@ -11,62 +11,66 @@ logger = logging.getLogger(__name__)
 def create_heatmap(activities_df, activity_type=None, lead_filter=None):
     """
     Create an enhanced heatmap of activities by day of week and hour with filtering options
-    Based on recommendations for operational efficiency analysis
-    
+    Now fully aligned with streamlit dashboard integration
+
     Args:
         activities_df (pd.DataFrame): DataFrame containing activity data
         activity_type (str, optional): Filter for specific activity type (e.g., 'mensagem_enviada')
-        lead_filter (dict, optional): Filter criteria for leads (e.g., {'source': 'orgânico'})
-    
+        lead_filter (dict, optional): Future support for filtering by leads
+
     Returns:
-        plotly.graph_objects.Figure: Heatmap figure with annotations for operational insights
+        plotly.graph_objects.Figure: Heatmap chart
     """
     try:
-        logger.info("Creating enhanced activity heatmap")
-        
-        if activities_df.empty or 'dia_semana' not in activities_df.columns or 'hora' not in activities_df.columns:
-            logger.warning("Insufficient data for heatmap creation")
-            # Return empty figure
-            fig = go.Figure()
-            fig.update_layout(
-                title="Mapa de Calor de Atividades",
-                xaxis_title="Dia da Semana",
-                yaxis_title="Hora do Dia",
-                height=400,
-            )
-            return fig
-        
-        # Apply filters if provided
-        filtered_activities = activities_df.copy()
-        
-        if activity_type:
-            filtered_activities = filtered_activities[filtered_activities['tipo'] == activity_type]
+        logger.info("[HEATMAP] Iniciando criação do mapa de calor")
 
-        # Novo filtro: apenas entre 8h e 22h
-        filtered_activities = filtered_activities[
-            filtered_activities['hora'].between(8, 23)
-        ]
-            
-        if lead_filter and 'lead_id' in filtered_activities.columns:
-            # This would require joining with lead data, simplified for this example
-            pass
-        
-        if filtered_activities.empty:
-            logger.warning("No data left after filtering")
-            fig = go.Figure()
-            fig.update_layout(
-                title="Mapa de Calor de Atividades (Sem dados após filtragem)",
-                xaxis_title="Dia da Semana",
-                yaxis_title="Hora do Dia",
-                height=400,
-            )
-            return fig
-        
-        # Order days of week correctly
+        if activities_df.empty or 'dia_semana' not in activities_df.columns or 'hora' not in activities_df.columns:
+            logger.warning("[HEATMAP] Dados insuficientes para criar heatmap")
+            return go.Figure()
+
+        logger.info(f"[HEATMAP] Total de registros recebidos: {len(activities_df)}")
+
+        filtered = activities_df.copy()
+
+        if activity_type:
+            filtered = filtered[filtered['tipo'] == activity_type]
+            logger.info(f"[HEATMAP] Filtrando por tipo: {activity_type} — Registros restantes: {len(filtered)}")
+
+        filtered = filtered[(filtered['hora'] >= 8) & (filtered['hora'] <= 21)]
+        logger.info(f"[HEATMAP] Após filtro de horário (08h–21h): {len(filtered)} registros")
+
+        if filtered.empty:
+            logger.warning("[HEATMAP] Nenhum dado após os filtros")
+            return go.Figure()
+
+        # Traduz dia da semana do inglês para português
+        dias_traducao = {
+            'Monday': 'Segunda',
+            'Tuesday': 'Terça',
+            'Wednesday': 'Quarta',
+            'Thursday': 'Quinta',
+            'Friday': 'Sexta',
+            'Saturday': 'Sábado',
+            'Sunday': 'Domingo',
+            'Segunda': 'Segunda',
+            'Terça': 'Terça',
+            'Quarta': 'Quarta',
+            'Quinta': 'Quinta',
+            'Sexta': 'Sexta',
+            'Sábado': 'Sábado',
+            'Domingo': 'Domingo'
+        }
+
+        logger.info("[HEATMAP] Traduzindo dias da semana")
+        filtered['dia_semana'] = filtered['dia_semana'].astype(str).str.strip().str.capitalize()
+        filtered['dia_semana'] = filtered['dia_semana'].map(dias_traducao)
+
+        logger.info(f"[HEATMAP] Valores únicos de dia_semana após tradução: {filtered['dia_semana'].unique()}")
+        logger.info(f"[HEATMAP] DataFrame filtrado antes da categorização:\n{filtered[['dia_semana', 'hora']].head()}\n")
+
         day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
-        
-        # Group hours into time blocks for better analysis as recommended
-        # Define time blocks entre 08h e 22h
+        filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
+
         time_blocks = {
             '08h - 10h': [8, 9],
             '10h - 12h': [10, 11],
@@ -77,119 +81,34 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
             '20h - 22h': [20, 21],
         }
 
-        # Map each hour to its time block
-        hour_to_block = {}
-        for block, hours in time_blocks.items():
-            for hour in hours:
-                hour_to_block[hour] = block
-        
-        # Add time block column
-        filtered_activities['time_block'] = filtered_activities['hora'].map(hour_to_block)
-        
-        # Count activities by day and time block
-        heatmap_data = filtered_activities.groupby(['dia_semana', 'time_block']).size().reset_index(name='count')
-        
-        # Create a complete grid with all days and time blocks
+        hour_to_block = {hour: block for block, hours in time_blocks.items() for hour in hours}
+        filtered['time_block'] = filtered['hora'].map(hour_to_block)
+
+        logger.info("[HEATMAP] Mapeando horas para blocos de tempo")
+        logger.info(f"[HEATMAP] DataFrame após mapeamento:\n{filtered[['dia_semana', 'hora', 'time_block']].head()}\n")
+
+        heatmap_data = filtered.groupby(['dia_semana', 'time_block'], observed=True).size().reset_index(name='count')
+        logger.info(f"[HEATMAP] Registros agrupados: {len(heatmap_data)}")
+        logger.info(f"[HEATMAP] Heatmap agrupado:\n{heatmap_data}\n")
+
         all_days = pd.DataFrame({'dia_semana': day_order})
         all_blocks = pd.DataFrame({'time_block': list(time_blocks.keys())})
         grid = all_days.merge(all_blocks, how='cross')
-        
-        # Merge with actual data
         heatmap_data = grid.merge(heatmap_data, on=['dia_semana', 'time_block'], how='left')
         heatmap_data['count'] = heatmap_data['count'].fillna(0)
-        
-        # Calculate the average count per time block to identify relative patterns
-        time_block_avgs = heatmap_data.groupby('time_block')['count'].mean().reset_index()
-        day_avgs = heatmap_data.groupby('dia_semana')['count'].mean().reset_index()
-        
-        # Find max and min values for annotations
-        max_idx = heatmap_data['count'].idxmax()
-        min_idx = heatmap_data[heatmap_data['count'] > 0]['count'].idxmin() if any(heatmap_data['count'] > 0) else None
-        
-        # Create heatmap using Plotly Graph Objects for more control
+
+        logger.info("[HEATMAP] Grid completo gerado com contagens preenchidas")
+
         fig = go.Figure()
-        
-        # Add heatmap
         fig.add_trace(go.Heatmap(
             x=heatmap_data['dia_semana'],
             y=heatmap_data['time_block'],
             z=heatmap_data['count'],
             colorscale='Blues',
             hoverongaps=False,
-            hovertemplate='Dia: %{x}<br>Horário: %{y}<br>Atividades: %{z}<extra></extra>',
+            hovertemplate='Dia: %{x}<br>Horário: %{y}<br>Atividades: %{z}<extra></extra>'
         ))
-        
-        # Add annotations for insights as recommended in the document
-        annotations = []
-        
-        # Highlight peak activity time
-        if max_idx is not None:
-            max_row = heatmap_data.iloc[max_idx]
-            annotations.append(dict(
-                x=max_row['dia_semana'],
-                y=max_row['time_block'],
-                text='Pico',
-                showarrow=True,
-                arrowhead=2,
-                arrowsize=1,
-                arrowwidth=2,
-                arrowcolor='#FF5733',
-                font=dict(size=10, color='black'),
-                bgcolor='#FFC300',
-                bordercolor='#FF5733',
-                borderwidth=1,
-                borderpad=4,
-                opacity=0.8
-            ))
-        
-        # Highlight low activity time (potential opportunity)
-        if min_idx is not None:
-            min_row = heatmap_data.iloc[min_idx]
-            # Only annotate if it's during business hours (8am-6pm weekdays)
-            if min_row['dia_semana'] not in ['Sábado', 'Domingo'] and min_row['count'] < heatmap_data['count'].mean() / 2:
-                annotations.append(dict(
-                    x=min_row['dia_semana'],
-                    y=min_row['time_block'],
-                    text='Oportunidade',
-                    showarrow=True,
-                    arrowhead=2,
-                    arrowsize=1,
-                    arrowwidth=2,
-                    arrowcolor='#27AE60',
-                    font=dict(size=10, color='black'),
-                    bgcolor='#ABEBC6',
-                    bordercolor='#27AE60',
-                    borderwidth=1,
-                    borderpad=4,
-                    opacity=0.8
-                ))
-        
-        # Find time blocks with zero activity during business hours
-        zero_activity = heatmap_data[
-            (heatmap_data['count'] == 0) &
-            (~heatmap_data['dia_semana'].isin(['Sábado', 'Domingo']))
-        ]
-        
-        # Add 'Atenção' annotation for up to 3 zero activity blocks
-        for _, row in zero_activity.head(3).iterrows():
-            annotations.append(dict(
-                x=row['dia_semana'],
-                y=row['time_block'],
-                text='Atenção',
-                showarrow=True,
-                arrowhead=2,
-                arrowsize=1,
-                arrowwidth=2,
-                arrowcolor='#E74C3C',
-                font=dict(size=10, color='black'),
-                bgcolor='#FADBD8',
-                bordercolor='#E74C3C',
-                borderwidth=1,
-                borderpad=4,
-                opacity=0.8
-            ))
-        
-        # Update layout with enhanced styling
+
         fig.update_layout(
             title={
                 'text': "Mapa de Calor de Atividades",
@@ -198,75 +117,26 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
             xaxis={
                 'title': "Dia da Semana",
                 'categoryorder': 'array',
-                'categoryarray': day_order,
-                'tickangle': 0,
-                'tickfont': {'size': 12},
-                'gridcolor': 'rgba(0,0,0,0.1)'
+                'categoryarray': day_order
             },
             yaxis={
                 'title': "Faixa de Horário",
                 'categoryorder': 'array',
-                'categoryarray': list(time_blocks.keys()),
-                'tickfont': {'size': 12},
-                'gridcolor': 'rgba(0,0,0,0.1)'
+                'categoryarray': list(time_blocks.keys())
             },
             height=400,
             margin=dict(l=60, r=60, t=80, b=60),
             paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            coloraxis_colorbar=dict(
-                title="Atividades",
-                tickfont={'size': 10}
-            ),
-            annotations=annotations,
-            hovermode='closest'
+            plot_bgcolor='rgba(0,0,0,0)'
         )
-        
-        # Add a footer annotation with advice based on the heatmap
-        overall_activity = heatmap_data['count'].sum()
-        
-        if overall_activity > 0:
-            # Calculate percentage of activity outside business hours
-            outside_hours = heatmap_data[
-                (heatmap_data['time_block'] == 'Pós 18h') | 
-                (heatmap_data['dia_semana'].isin(['Sábado', 'Domingo']))
-            ]['count'].sum()
-            
-            if zero_activity.shape[0] > 5:
-                advice_text = "⚠️ Alerta: Existem vários períodos sem atividade durante o horário comercial, considere reorganizar a distribuição de horários."
-                
-            if advice_text:
-                fig.add_annotation(
-                    x=0.5,
-                    y=-0.15,
-                    xref="paper",
-                    yref="paper",
-                    text=advice_text,
-                    showarrow=False,
-                    font=dict(size=12, color="#E74C3C"),
-                    align="center",
-                    bordercolor="#E74C3C",
-                    borderwidth=1,
-                    borderpad=4,
-                    bgcolor="#FADBD8",
-                    opacity=0.8
-                )
-        
+
+        logger.info("[HEATMAP] Heatmap finalizado com sucesso")
         return fig
-    
+
     except Exception as e:
-        logger.error(f"Error creating enhanced heatmap: {str(e)}")
-        # Return fallback empty figure
+        logger.error(f"[HEATMAP] Erro ao criar heatmap: {str(e)}")
         fig = go.Figure()
-        fig.update_layout(
-            title="Mapa de Calor de Atividades (Erro)",
-            height=400,
-        )
-        fig.add_annotation(
-            text=f"Erro ao criar mapa de calor: {str(e)}",
-            showarrow=False,
-            font=dict(size=14, color="red")
-        )
+        fig.update_layout(title="Erro ao criar Mapa de Calor")
         return fig
 
 def create_conversion_funnel(leads_df):

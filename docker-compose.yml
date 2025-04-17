@@ -11,10 +11,10 @@ services:
       - PORT=8501
     restart: always
 
-  flask-server:
-    build:
-      context: .
-      dockerfile: ./flask_server.Dockerfile
-    ports:
-      - "5001:5001"
-    restart: always
+  # flask-server:
+  #   build:
+  #     context: .
+  #     dockerfile: ./flask_server.Dockerfile
+  #   ports:
+  #     - "5001:5001"
+  #   restart: always

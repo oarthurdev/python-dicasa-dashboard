@@ -1,5 +1,5 @@
 import os
-import requests
+import time
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -16,6 +16,7 @@ from flask import Flask, jsonify
 from libs import KommoAPI, SupabaseClient, SyncManager
 from data_processor import process_data
 from visualizations import create_heatmap, create_conversion_funnel, create_points_breakdown_chart
+from view_manager import ViewManager
 
 # Configure logging
 logging.basicConfig(
@@ -26,36 +27,10 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-st.set_page_config(page_title="Dicasa - Dashboard de Desempenho", layout="wide")
+st.set_page_config(page_title="Dicasa - Dashboard de Desempenho",
+                   layout="wide")
 
-# def background_data_loader_once():
-#     """
-#     Runs the sync process once to fetch initial data from Kommo and update Supabase.
-#     """
-#     try:
-#         # Initialize clients
-#         kommo_api = KommoAPI(api_url=os.getenv(
-#             "KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
-#                              access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
 
-#         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-#                                   key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-
-#         sync_manager = SyncManager(kommo_api, supabase)
-
-#         logger.info("Running initial data sync with Kommo API")
-#         sync_manager.sync_data()
-
-#     except Exception as e:
-#         logger.error(f"Failed to run initial data sync: {str(e)}")
-
-# No início do app
-# @st.cache_resource
-# def start_auto_update_thread():
-#     thread = threading.Thread(target=auto_update_broker_points, daemon=True)
-#     thread.start()
-
-# Initialize API and database clients
 @st.cache_resource
 def init_supabase_client():
     return SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
@@ -63,6 +38,7 @@ def init_supabase_client():
 
 
 supabase = init_supabase_client()
+
 
 def background_data_loader():
     """
@@ -95,11 +71,14 @@ def background_data_loader():
 
                 current_time = datetime.now()
 
-                if not last_sync_time or (current_time - last_sync_time).total_seconds() > 300:
-                    logger.info("Iniciando sincronização e atualização de pontos...")
+                if not last_sync_time or (
+                        current_time - last_sync_time).total_seconds() > 300:
+                    logger.info(
+                        "Iniciando sincronização e atualização de pontos...")
 
                     if not brokers.empty and not leads.empty and not activities.empty:
-                        sync_manager.sync_from_cache(brokers, leads, activities)
+                        sync_manager.sync_from_cache(brokers, leads,
+                                                     activities)
                         auto_update_broker_points()
 
                     last_sync_time = current_time
@@ -113,15 +92,15 @@ def background_data_loader():
 
 
 # # Start the background thread when app starts
-@st.cache_resource
-def start_background_thread():
-    thread = threading.Thread(target=background_data_loader, daemon=True)
-    thread.start()
-    return "Background thread started"
+# @st.cache_resource
+# def start_background_thread():
+#     thread = threading.Thread(target=background_data_loader, daemon=True)
+#     thread.start()
+#     return "Background thread started"
 
 
-# Start the background thread
-thread_status = start_background_thread()
+# # Start the background thread
+# thread_status = start_background_thread()
 
 # Custom CSS
 st.markdown("""
@@ -265,120 +244,71 @@ def get_data_from_supabase():
 
 
 # Function to display the ranking cards in the exact format shown in the image
-def get_rank_color(points):
-    """Define cores baseadas na pontuação"""
-    if points >= 500:
-        return "#22C55E", "🏆"  # Verde para pontuação alta
-    elif points >= 300:
-        return "#3B82F6", "⭐"  # Azul para pontuação média-alta
-    elif points >= 100:
-        return "#EAB308", "🌟"  # Amarelo para pontuação média
+def get_rank_style(points):
+    """Define estilos baseados na pontuação"""
+    if points < 0:
+        return {
+            'color': '#DC2626',
+            'icon': '⚠️',
+            'gradient': 'linear-gradient(135deg, white, #FEE2E2)',
+            'border': '#DC2626',
+            'badge_bg': '#FEE2E2',
+            'status': 'Precisa Atenção'
+        }
+    elif points == 0:
+        return {
+            'color': '#6B7280',
+            'icon': '🔄',
+            'gradient': 'linear-gradient(135deg, white, #F3F4F6)',
+            'border': '#6B7280',
+            'badge_bg': '#F3F4F6',
+            'status': 'Iniciando'
+        }
+    elif points < 100:
+        return {
+            'color': '#FB923C',
+            'icon': '📈',
+            'gradient': 'linear-gradient(135deg, white, #FFEDD5)',
+            'border': '#FB923C',
+            'badge_bg': '#FFEDD5',
+            'status': 'Em Evolução'
+        }
+    elif points < 300:
+        return {
+            'color': '#EAB308',
+            'icon': '🌟',
+            'gradient': 'linear-gradient(135deg, white, #FEF9C3)',
+            'border': '#EAB308',
+            'badge_bg': '#FEF9C3',
+            'status': 'Progredindo'
+        }
+    elif points < 500:
+        return {
+            'color': '#3B82F6',
+            'icon': '⭐',
+            'gradient': 'linear-gradient(135deg, white, #DBEAFE)',
+            'border': '#3B82F6',
+            'badge_bg': '#DBEAFE',
+            'status': 'Avançado'
+        }
     else:
-        return "#6B7280", "🔄"  # Cinza para pontuação baixa
-
-
-# Function to display the ranking cards in the exact format shown in the image
-# def display_ranking_cards(ranking_data):
-#     """Display ranking cards in a grid layout"""
-#     if ranking_data.empty:
-#         st.info("Dados de ranking não disponíveis.")
-#         return
-
-#     # Sort brokers by points in descending order
-#     sorted_brokers = ranking_data.sort_values(
-#         by='pontos', ascending=False).reset_index(drop=True)
-#     sorted_brokers.index = sorted_brokers.index + 1  # Start index from 1
-
-#     # Create a grid of cards - 3 per row as shown in the reference image
-#     cols = st.columns(3)
-
-#     # Display only top 9 brokers (or fewer if less available)
-#     for i, row in enumerate(sorted_brokers.head(9).itertuples()):
-#         col_idx = i % 3  # Determine which column to place the card
-#         rank_color, rank_icon = get_rank_color(row.pontos)
-
-#         with cols[col_idx]:
-#             st.markdown(f"""
-#             <div class="ranking-card" style="background: linear-gradient(135deg, white, {rank_color}10); border-left: 4px solid {rank_color};">
-#                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-#                     <div style="display: flex; align-items: center;">
-#                         <div class="rank-number" style="
-#                             background-color: {rank_color}; 
-#                             color: white;
-#                             width: 30px;
-#                             height: 30px;
-#                             border-radius: 50%;
-#                             display: flex;
-#                             align-items: center;
-#                             justify-content: center;
-#                             margin-right: 12px;
-#                             font-weight: bold;
-#                             font-size: 16px;">
-#                             {row.Index}
-#                         </div>
-#                         <div style="display: flex; flex-direction: column;">
-#                             <div class="broker-name" style="font-weight: 600; color: #1F2937;">{row.nome}</div>
-#                             <div style="font-size: 12px; color: {rank_color}; margin-top: 2px;">
-#                                 {rank_icon} Nível {5-((row.Index-1)//2 if row.Index <= 9 else 1)}
-#                             </div>
-#                         </div>
-#                     </div>
-#                     <div style="
-#                         background-color: {rank_color}15;
-#                         padding: 8px 12px;
-#                         border-radius: 12px;
-#                         display: flex;
-#                         flex-direction: column;
-#                         align-items: center;
-#                     ">
-#                         <div style="font-size: 11px; color: {rank_color}; font-weight: 500;">PONTOS</div>
-#                         <div style="font-size: 18px; color: {rank_color}; font-weight: 700;">{int(row.pontos)}</div>
-#                     </div>
-#                 </div>
-#                 <div style="
-#                     display: flex;
-#                     justify-content: space-between;
-#                     background-color: {rank_color}08;
-#                     padding: 8px;
-#                     border-radius: 8px;
-#                     margin-top: 8px;
-#                 ">
-#                     <div style="text-align: center; flex: 1;">
-#                         <div style="font-size: 11px; color: #6B7280;">Leads</div>
-#                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.leads_visitados or 0)}</div>
-#                     </div>
-#                     <div style="text-align: center; flex: 1; border-left: 1px solid {rank_color}20; border-right: 1px solid {rank_color}20;">
-#                         <div style="font-size: 11px; color: #6B7280;">Propostas</div>
-#                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.propostas_enviadas or 0)}</div>
-#                     </div>
-#                     <div style="text-align: center; flex: 1;">
-#                         <div style="font-size: 11px; color: #6B7280;">Vendas</div>
-#                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.vendas_realizadas or 0)}</div>
-#                     </div>
-#                 </div>
-#             </div>
-#             """,
-#                         unsafe_allow_html=True)
-
-
-# Function to display the ranking cards in the exact format shown in the image
-def get_rank_color(points):
-    """Define cores baseadas na pontuação"""
-    if points >= 500:
-        return "#22C55E", "🏆"  # Verde para pontuação alta
-    elif points >= 300:
-        return "#3B82F6", "⭐"  # Azul para pontuação média-alta
-    elif points >= 100:
-        return "#EAB308", "🌟"  # Amarelo para pontuação média
-    else:
-        return "#6B7280", "🔄"  # Cinza para pontuação baixa
+        return {
+            'color': '#22C55E',
+            'icon': '🏆',
+            'gradient': 'linear-gradient(135deg, white, #DCFCE7)',
+            'border': '#22C55E',
+            'badge_bg': '#DCFCE7',
+            'status': 'Expert'
+        }
 
 
 # Function to display the ranking cards in the exact format shown in the image
 def display_ranking_cards(ranking_data):
     """Display ranking cards in a grid layout"""
     if ranking_data.empty:
-        st.info("📭 Nenhum dado de pontuação ainda. Acompanhe em breve o desempenho dos corretores.")
+        st.info(
+            "📭 Nenhum dado de pontuação ainda. Acompanhe em breve o desempenho dos corretores."
+        )
         return
 
     # Sort brokers by points in descending order
@@ -392,15 +322,15 @@ def display_ranking_cards(ranking_data):
     # Display only top 9 brokers (or fewer if less available)
     for i, row in enumerate(sorted_brokers.head(9).itertuples()):
         col_idx = i % 3  # Determine which column to place the card
-        rank_color, rank_icon = get_rank_color(row.pontos)
+        rank_style = get_rank_style(row.pontos)
 
         with cols[col_idx]:
             st.markdown(f"""
-            <div class="ranking-card" style="background: linear-gradient(135deg, white, {rank_color}10); border-left: 4px solid {rank_color};">
+            <div class="ranking-card" style="background: {rank_style['gradient']}; border-left: 4px solid {rank_style['border']};">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <div style="display: flex; align-items: center;">
                         <div class="rank-number" style="
-                            background-color: {rank_color}; 
+                            background-color: {rank_style['color']}; 
                             color: white;
                             width: 30px;
                             height: 30px;
@@ -415,27 +345,27 @@ def display_ranking_cards(ranking_data):
                         </div>
                         <div style="display: flex; flex-direction: column;">
                             <div class="broker-name" style="font-weight: 600; color: #1F2937;">{row.nome}</div>
-                            <div style="font-size: 12px; color: {rank_color}; margin-top: 2px;">
-                                {rank_icon} Nível {5-((row.Index-1)//2 if row.Index <= 9 else 1)}
+                            <div style="font-size: 12px; color: {rank_style['color']}; margin-top: 2px;">
+                                {rank_style['icon']} {rank_style['status']}
                             </div>
                         </div>
                     </div>
                     <div style="
-                        background-color: {rank_color}15;
+                        background-color: {rank_style['badge_bg']};
                         padding: 8px 12px;
                         border-radius: 12px;
                         display: flex;
                         flex-direction: column;
                         align-items: center;
                     ">
-                        <div style="font-size: 11px; color: {rank_color}; font-weight: 500;">PONTOS</div>
-                        <div style="font-size: 18px; color: {rank_color}; font-weight: 700;">{int(row.pontos)}</div>
+                        <div style="font-size: 11px; color: {rank_style['color']}; font-weight: 500;">PONTOS</div>
+                        <div style="font-size: 18px; color: {rank_style['color']}; font-weight: 700;">{int(row.pontos)}</div>
                     </div>
                 </div>
                 <div style="
                     display: flex;
                     justify-content: space-between;
-                    background-color: {rank_color}08;
+                    background-color: {rank_style['color']}08;
                     padding: 8px;
                     border-radius: 8px;
                     margin-top: 8px;
@@ -444,7 +374,7 @@ def display_ranking_cards(ranking_data):
                         <div style="font-size: 11px; color: #6B7280;">Leads</div>
                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.leads_visitados or 0)}</div>
                     </div>
-                    <div style="text-align: center; flex: 1; border-left: 1px solid {rank_color}20; border-right: 1px solid {rank_color}20;">
+                    <div style="text-align: center; flex: 1; border-left: 1px solid {rank_style['color']}20; border-right: 1px solid {rank_style['color']}20;">
                         <div style="font-size: 11px; color: #6B7280;">Propostas</div>
                         <div style="font-size: 14px; color: #374151; font-weight: 600;">{int(row.propostas_enviadas or 0)}</div>
                     </div>
@@ -458,7 +388,7 @@ def display_ranking_cards(ranking_data):
                         unsafe_allow_html=True)
 
 
-# Function to display the broker performance breakdown
+# Function to fetch data from Supabase
 @st.cache_data(ttl=300, max_entries=10)
 def calculate_broker_metrics(broker_id, data):
     """Calculate broker metrics for caching"""
@@ -503,6 +433,7 @@ def display_broker_metrics(broker_id, data):
     with cols[3]:
         st.metric("Vendas Realizadas", metrics['vendas_realizadas'])
 
+
 # Function to display the activity heatmap with advanced filtering options
 @st.cache_data(ttl=300, max_entries=10)
 def process_heatmap_data(broker_id, data, activity_type, date_range,
@@ -538,30 +469,35 @@ def process_heatmap_data(broker_id, data, activity_type, date_range,
 
 
 def display_activity_heatmap(broker_id, data):
-    """Display heatmap apenas com mensagem_enviada entre 08h e 22h"""
+    """Exibe o mapa de calor de atividades (mensagem_enviada) das 08h às 22h para o corretor atual"""
 
     if 'activities' not in data or data['activities'].empty:
         st.info("Sem dados de atividades.")
         return
 
-    # Filtrar por corretor, tipo, e horário
-    broker_activities = data['activities']
-    filtered_activities = broker_activities[
-        (broker_activities['user_id'] == broker_id) &
-        (broker_activities['tipo'] == 'mensagem_enviada') &
-        (broker_activities['hora'] >= 8) & (broker_activities['hora'] < 22)
+    activities = data['activities']
+
+    # Filtro por corretor, tipo e horário
+    filtered = activities[
+        (activities['user_id'] == broker_id) &
+        (activities['tipo'] == 'mensagem_enviada') &
+        (activities['hora'] >= 8) &
+        (activities['hora'] <= 21)
     ].copy()
 
-    logger.info(f"[HEATMAP] Corretor {broker_id} - Atividades filtradas: {len(filtered_activities)} registros encontrados")
-    logger.info(f"[HEATMAP] Preview das atividades:\n{filtered_activities.head().to_string(index=False)}")
-
-    if filtered_activities.empty:
+    # Se estiver vazio, avisa
+    if filtered.empty:
         st.info("Nenhuma atividade de mensagem enviada entre 08h e 22h.")
         return
 
-    # Gerar o heatmap com filtro já aplicado
-    heatmap_fig = create_heatmap(filtered_activities, activity_type="mensagem_enviada")
-    st.plotly_chart(heatmap_fig, use_container_width=True)
+    # Força dia_semana como categoria ordenada
+    day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+    filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
+
+    # Gerar o heatmap com os dados filtrados
+    fig = create_heatmap(filtered, activity_type="mensagem_enviada")
+    st.plotly_chart(fig, use_container_width=True, key=f"heatmap_{broker_id}")
+
 
 # Function to display the points breakdown chart
 def display_points_breakdown(broker_id, data):
@@ -663,191 +599,106 @@ def create_styled_conversion_funnel(lead_data):
 
 
 # Main application
-def main():
-    # Título da página
-    st.markdown(
-        "<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>",
-        unsafe_allow_html=True)
+def display_broker_dashboard(broker_id, data):
+    """Display individual broker dashboard"""
+    broker = data['brokers'][data['brokers']['id'] == broker_id].iloc[0]
 
-    # Fetch data from Supabase only
-    with st.spinner("🔄 Carregando dados... Aguarde enquanto sincronizamos com o sistema."):
-        data = get_data_from_supabase()
+    # Get broker details
+    if 'responsavel_id' in data['leads'].columns:
+        broker_leads = data['leads'][data['leads']['responsavel_id'] ==
+                                     broker_id]
+    else:
+        broker_leads = None
 
-    if data is None:
-        st.error("Erro ao conectar com o banco de dados")
-        return
+    # Display broker header with ranking position
+    broker_rank = data['ranking'][data['ranking']['id'] == broker_id].index[
+        0] + 1 if not data['ranking'].empty and broker_id in data['ranking'][
+            'id'].values else "N/A"
+    broker_points = int(
+        data['ranking'][data['ranking']['id'] == broker_id]['pontos'].values[0]
+    ) if not data['ranking'].empty and broker_id in data['ranking'][
+        'id'].values else 0
 
-    if data['brokers'].empty:
-        st.warning("Nenhum corretor cadastrado no sistema.")
-        return  # esse é crítico, pois sem brokers nada funciona
-
-    # mas deixa o ranking seguir mesmo se estiver vazio
-    if data['ranking'].empty:
-        st.info("🔄 Os pontos ainda estão sendo calculados. Assim que estiverem prontos, o ranking será exibido aqui.")
-
-    # Create tabs container with custom styling
-    st.markdown('<div class="tabs-container">', unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["📊 Ranking Geral", "👤 Dashboard Individual"])
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    with tab1:
-        st.markdown("### Ranking de Corretores")
-        st.markdown(
-            "Classificação baseada em pontos acumulados por produtividade")
-
-        # Display ranking cards
-        display_ranking_cards(data['ranking'])
-
-        # Additional section for summary statistics
-        st.markdown("### Estatísticas Gerais")
-
-        # Create summary metrics
-        col1, col2, col3, col4 = st.columns(4)
-
-        # Calculate summary statistics
-        total_leads = len(data['leads']) if not data['leads'].empty else 0
-        active_brokers = len(
-            data['ranking']) if not data['ranking'].empty else 0
-
-        # Calculate average points and total sales from broker_points table
-        if not data['ranking'].empty:
-            avg_points = int(data['ranking']['pontos'].mean())
-            total_sales = int(data['ranking']['vendas_realizadas'].sum(
-            )) if 'vendas_realizadas' in data['ranking'].columns else 0
-        else:
-            avg_points = 0
-            total_sales = 0
-
-        with col1:
-            st.metric("Total de Leads", total_leads)
-        with col2:
-            st.metric("Corretores Ativos", active_brokers)
-        with col3:
-            st.metric("Pontuação Média", avg_points)
-        with col4:
-            st.metric("Vendas Realizadas", total_sales)
-
-    with tab2:
-        # Select a broker
-        if data['brokers'].empty:
-            st.info("Nenhum corretor disponível no momento.")
-            return
-
-        # Filter only active brokers (those with points in ranking)
-        active_broker_ids = data['ranking']['id'].tolist(
-        ) if not data['ranking'].empty else []
-        broker_options = data['brokers'][data['brokers']['id'].isin(
-            active_broker_ids)][['id', 'nome']].copy()
-        broker_options['display_name'] = broker_options['nome']
-
-        selected_broker = st.selectbox(
-            "Selecione um corretor",
-            options=broker_options['id'].tolist(),
-            format_func=lambda x: broker_options.loc[broker_options['id'] == x,
-                                                     'display_name'].iloc[0])
-
-        if selected_broker:
-            broker = data['brokers'][data['brokers']['id'] ==
-                                     selected_broker].iloc[0]
-
-            # Get broker details
-            if 'responsavel_id' in data['leads'].columns:
-                broker_leads = data['leads'][data['leads']['responsavel_id'] ==
-                                             selected_broker]
-            else:
-                print(
-                    "Column 'responsavel_id' does not exist in the DataFrame.")
-                broker_leads = None  # Handle the case when the column does not exist
-
-            # Display broker header with ranking position
-            broker_rank = data['ranking'][
-                data['ranking']['id'] ==
-                selected_broker].index[0] + 1 if not data[
-                    'ranking'].empty and selected_broker in data['ranking'][
-                        'id'].values else "N/A"
-            broker_points = int(
-                data['ranking'][data['ranking']['id'] ==
-                                selected_broker]['pontos'].values[0]
-            ) if not data['ranking'].empty and selected_broker in data[
-                'ranking']['id'].values else 0
-
-            # Header with rank and points
-            st.markdown(f"""
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2>{broker['nome']}</h2>
-                <div style="display: flex; align-items: center;">
-                    <div style="margin-right: 20px; text-align: center;">
-                        <div style="font-size: 14px; color: #6B7280;">Ranking</div>
-                        <div style="font-size: 24px; font-weight: bold; color: #1E3A8A;">#{broker_rank}</div>
-                    </div>
-                    <div style="text-align: center;">
-                        <div style="font-size: 14px; color: #6B7280;">Pontuação</div>
-                        <div style="font-size: 24px; font-weight: bold; color: #2563EB;">{broker_points}</div>
-                    </div>
-                </div>
+    st.markdown(f"""
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>{broker['nome']}</h2>
+        <div style="display: flex; align-items: center;">
+            <div style="margin-right: 20px; text-align: center;">
+                <div style="font-size: 14px; color: #6B7280;">Ranking</div>
+                <div style="font-size: 24px; font-weight: bold; color: #1E3A8A;">#{broker_rank}</div>
             </div>
-            """,
+            <div style="text-align: center;">
+                <div style="font-size: 14px; color: #6B7280;">Pontuação</div>
+                <div style="font-size: 24px; font-weight: bold; color: #2563EB;">{broker_points}</div>
+            </div>
+        </div>
+    </div>
+    """,
+                unsafe_allow_html=True)
+
+    # Create tabs
+    tabs = st.tabs(["Métricas"])
+    metrics_tab = tabs[0]
+
+    with metrics_tab:
+        # Display metrics and charts
+        display_broker_metrics(broker_id, data)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown('<div class="card-title">Funil de Conversão</div>',
                         unsafe_allow_html=True)
+            funnel_fig = create_styled_conversion_funnel(broker_leads)
+            st.plotly_chart(funnel_fig,
+                            use_container_width=True,
+                            key=f"funnel_{broker_id}")
 
-            # Display performance metrics
-            st.markdown('<div class="card-title">Métricas de Desempenho</div>',
+            st.markdown('<div class="card-title">Alertas</div>',
                         unsafe_allow_html=True)
-            display_broker_metrics(selected_broker, data)
+            display_broker_alerts(broker_id, data)
 
-            # Create two columns for the charts
-            col1, col2 = st.columns(2)
+        with col2:
+            st.markdown(
+                '<div class="card-title">Mapa de Calor - Atividades</div>',
+                unsafe_allow_html=True)
+            display_activity_heatmap(broker_id, data)
 
-            with col1:
-                # Display conversion funnel
-                st.markdown('<div class="card-title">Funil de Conversão</div>',
-                            unsafe_allow_html=True)
-                funnel_fig = create_styled_conversion_funnel(broker_leads)
-                st.plotly_chart(funnel_fig, use_container_width=True)
+            st.markdown('<div class="card-title">Distribuição de Pontos</div>',
+                        unsafe_allow_html=True)
+            display_points_breakdown(broker_id, data)
 
-                # Display alerts
-                st.markdown('<div class="card-title">Alertas</div>',
-                            unsafe_allow_html=True)
-                display_broker_alerts(selected_broker, data)
 
-            with col2:
-                # Display activity heatmap
-                st.markdown(
-                    '<div class="card-title">Mapa de Calor - Atividades</div>',
-                    unsafe_allow_html=True)
-                display_activity_heatmap(selected_broker, data)
+def display_general_ranking(data):
+    """Display general ranking dashboard"""
+    st.markdown("### Ranking de Corretores")
+    st.markdown("Classificação baseada em pontos acumulados por produtividade")
+    display_ranking_cards(data['ranking'])
 
-                # Display points breakdown
-                st.markdown(
-                    '<div class="card-title">Distribuição de Pontos</div>',
-                    unsafe_allow_html=True)
-                display_points_breakdown(selected_broker, data)
+    st.markdown("### Estatísticas Gerais")
+    col1, col2, col3, col4 = st.columns(4)
 
-# def update_broker_points():
-#     try:
-#         logger.info("Recalculando pontos dos corretores via endpoint...")
+    total_leads = len(data['leads']) if not data['leads'].empty else 0
+    active_brokers = len(data['ranking']) if not data['ranking'].empty else 0
+    avg_points = int(
+        data['ranking']['pontos'].mean()) if not data['ranking'].empty else 0
+    total_sales = int(data['ranking']['vendas_realizadas'].sum(
+    )) if not data['ranking'].empty and 'vendas_realizadas' in data[
+        'ranking'].columns else 0
 
-#         kommo_api = KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
-#                              access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+    with col1:
+        st.metric("Total de Leads", total_leads)
+    with col2:
+        st.metric("Corretores Ativos", active_brokers)
+    with col3:
+        st.metric("Pontuação Média", avg_points)
+    with col4:
+        st.metric("Vendas Realizadas", total_sales)
 
-#         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-#                                   key=os.getenv("VITE_SUPABASE_ANON_KEY"))
 
-#         brokers = kommo_api.get_users()
-#         leads = kommo_api.get_leads()
-#         activities = kommo_api.get_activities()
+# Lock para sincronização do state
+state_lock = threading.Lock()
 
-#         if not brokers.empty and not leads.empty and not activities.empty:
-#             from gamification import calculate_broker_points
-#             points_df = calculate_broker_points(brokers, leads, activities)
-#             supabase.upsert_broker_points(points_df)
-#             logger.info("Pontos atualizados com sucesso via endpoint.")
 
-#         return jsonify({"status": "success"}), 200
-
-#     except Exception as e:
-#         logger.error(f"Erro ao atualizar pontos via endpoint: {str(e)}")
-#         return jsonify({"status": "error", "message": str(e)}), 500
-        
 def auto_update_broker_points():
     while True:
         try:
@@ -855,13 +706,189 @@ def auto_update_broker_points():
             supabase.update_broker_points()
             logger.info("[Auto Update] Pontos atualizados com sucesso")
             st.rerun()
-            logger.info("[Auto Update] Aguardando 5 minutos para a próxima atualização")
+            logger.info(
+                "[Auto Update] Aguardando 5 minutos para a próxima atualização"
+            )
             time.sleep(300)
         except Exception as e:
             logger.error(f"[Auto Update] Erro ao atualizar pontos: {str(e)}")
         time.sleep(10)
 
+
+# Inicializar ViewManager como recurso global
+@st.cache_resource
+def get_view_manager():
+    return ViewManager(rotation_interval=5)
+
+
+# def handle_page_rotation():
+#     """Gerencia a rotação de páginas"""
+#     view_manager = get_view_manager()
+
+#     # Inicializar página e corretores ativos
+#     if "current_page" not in st.session_state:
+#         st.session_state["current_page"] = "ranking"
+        
+#     # Inicializar lista de corretores ativos se não existir
+#     if "active_brokers" not in st.session_state:
+#         st.session_state["active_brokers"] = []
+
+#     view_manager.set_active_brokers(st.session_state["active_brokers"])
+
+#     logger.info(
+#         f"[View Manager] Página atual: {st.session_state['current_page']}")
+#     logger.info(
+#         f"[View Manager] Corretores ativos: {st.session_state['active_brokers']}"
+#     )
+
+#     # Verificar e executar rotação
+#     next_page = view_manager.rotate_if_needed()
+#     if next_page and next_page != st.session_state["current_page"]:
+#         st.session_state["current_page"] = next_page
+#         st.query_params["page"] = next_page
+#         st.rerun()
+
+
+# def rotate_views_loop():
+#     view_manager = get_view_manager()
+
+#     while True:
+#         try:
+#             if "active_brokers" in st.session_state:
+#                 view_manager.set_active_brokers(st.session_state["active_brokers"])
+#                 next_page = view_manager.rotate_if_needed()
+
+#                 if next_page and next_page != st.session_state.get("current_page"):
+#                     st.session_state["next_page"] = next_page
+
+#             time.sleep(1)
+#         except Exception as e:
+#             logger.error(f"[Rotação Thread] Erro: {e}")
+#             time.sleep(5)
+            
+def main():
+    def rotate_views_on_reload():
+        view_manager = get_view_manager()
+
+        if "active_brokers" not in st.session_state:
+            st.session_state["active_brokers"] = []
+
+        if "last_rotation_time" not in st.session_state:
+            st.session_state["last_rotation_time"] = time.time()
+
+        elapsed = time.time() - st.session_state["last_rotation_time"]
+
+        if elapsed >= 10:  # só rotaciona a cada 5 segundos
+            view_manager.set_active_brokers(st.session_state["active_brokers"])
+            next_page = view_manager.get_next_page()
+
+            if next_page and next_page != st.session_state.get("current_page"):
+                st.session_state["current_page"] = next_page
+                st.session_state["last_rotation_time"] = time.time()
+                st.query_params["page"] = next_page
+                st.rerun()
+
+    # Gerenciar rotação de páginas
+    # handle_page_rotation()
+
+    # # Verificar se houve mudança de página
+    # url_page = st.query_params.get("page", "ranking")
+    # if url_page != st.session_state.get("current_page"):
+    #     st.session_state["current_page"] = url_page
+    #     st.rerun()
+
+    if "current_page" not in st.session_state:
+        st.session_state["current_page"] = "ranking"
+
+    if "page" not in st.query_params:
+        st.query_params.update({"page": "ranking"})
+
+    # Título da página
+    st.markdown(
+        "<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>",
+        unsafe_allow_html=True)
+
+    # Fetch data from Supabase
+    data = get_data_from_supabase()
+
+    if data is None:
+        st.error("Erro ao conectar com o banco de dados")
+        return
+
+    # Iniciar threads de background se ainda não iniciados
+    if not st.session_state.get("background_started"):
+        st.session_state["active_brokers"] = data['brokers'][
+            data['brokers']['cargo'] == 'Corretor']['id'].tolist()
+
+        # st.session_state["rotation_thread"] = threading.Thread(
+        #     target=rotate_views_loop, daemon=True)
+        # st.session_state["rotation_thread"].start()
+
+        st.session_state["data_thread"] = threading.Thread(
+            target=background_data_loader, daemon=True)
+        st.session_state["data_thread"].start()
+
+        st.session_state["background_started"] = True
+
+    if data['brokers'].empty:
+        st.warning("Nenhum corretor cadastrado no sistema.")
+        return
+
+    if data['ranking'].empty:
+        st.info(
+            "🔄 Os pontos ainda estão sendo calculados. Assim que estiverem prontos, o ranking será exibido aqui."
+        )
+        return
+
+    # Get active brokers
+    active_brokers = data['brokers'][data['brokers']['cargo'] == 'Corretor']
+
+    # Ler parâmetros da URL e sincronizar com session state
+    url_page = st.query_params.get("page", "ranking")
+
+    if url_page != st.session_state["current_page"]:
+        st.session_state["current_page"] = url_page
+
+    current_page = st.session_state["current_page"]
+    broker_id = None
+
+    logger.info(f"[MAIN]Current page: {current_page}")
+    logger.info(f"[MAIN] Active brokers: {active_brokers}")
+
+    if current_page != "ranking":
+        try:
+            broker_id = int(current_page.split('/')[1])
+            broker_exists = data['brokers'][data['brokers']['id'] == broker_id]
+            if broker_exists.empty:
+                raise ValueError("Corretor inválido")
+        except (IndexError, ValueError):
+            st.warning("Página inválida. Retornando ao ranking geral.")
+            st.session_state["current_page"] = "ranking"
+            st.query_params["page"] = "ranking"
+            current_page = "ranking"
+
+    rotate_views_on_reload()
+
+    if current_page == "ranking":
+        display_general_ranking(data)
+    elif current_page.startswith("broker") and broker_id:
+        display_broker_dashboard(broker_id, data)
+
+    # # Add JavaScript for auto-rotation
+    # # broker_ids = active_brokers['id'].tolist()
+    # # Exibir JS de rotação de views se necessário
+    # if "next_page" in st.session_state and st.session_state["next_page"]:
+    #     next_page = st.session_state["next_page"]
+    #     st.session_state["next_page"] = None  # limpa para não repetir
+
+    #     st.markdown(f"""
+    #     <script>
+    #         setTimeout(function() {{
+    #             window.location.href = window.location.pathname + "?page={next_page}";
+    #         }}, 1000);
+    #     </script>
+    #     """, unsafe_allow_html=True)
+
+
 if __name__ == "__main__":
-    # background_data_loader_once()
-    # background_data_loader()
     main()
