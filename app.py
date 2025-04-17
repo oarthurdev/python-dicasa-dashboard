@@ -98,7 +98,6 @@ def background_data_loader():
 #     thread.start()
 #     return "Background thread started"
 
-
 # # Start the background thread
 # thread_status = start_background_thread()
 
@@ -478,12 +477,10 @@ def display_activity_heatmap(broker_id, data):
     activities = data['activities']
 
     # Filtro por corretor, tipo e horário
-    filtered = activities[
-        (activities['user_id'] == broker_id) &
-        (activities['tipo'] == 'mensagem_enviada') &
-        (activities['hora'] >= 8) &
-        (activities['hora'] <= 21)
-    ].copy()
+    filtered = activities[(activities['user_id'] == broker_id)
+                          & (activities['tipo'] == 'mensagem_enviada') &
+                          (activities['hora'] >= 8) &
+                          (activities['hora'] <= 21)].copy()
 
     # Se estiver vazio, avisa
     if filtered.empty:
@@ -491,8 +488,12 @@ def display_activity_heatmap(broker_id, data):
         return
 
     # Força dia_semana como categoria ordenada
-    day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
-    filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
+    day_order = [
+        'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'
+    ]
+    filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'],
+                                            categories=day_order,
+                                            ordered=True)
 
     # Gerar o heatmap com os dados filtrados
     fig = create_heatmap(filtered, activity_type="mensagem_enviada")
@@ -659,7 +660,7 @@ def display_broker_dashboard(broker_id, data):
 
         with col2:
             st.markdown(
-                '<div class="card-title">Mapa de Calor - Atividades</div>',
+                '<div class="card-title">Mapa de Calor - Mensagens Enviadas</div>',
                 unsafe_allow_html=True)
             display_activity_heatmap(broker_id, data)
 
@@ -728,7 +729,7 @@ def get_view_manager():
 #     # Inicializar página e corretores ativos
 #     if "current_page" not in st.session_state:
 #         st.session_state["current_page"] = "ranking"
-        
+
 #     # Inicializar lista de corretores ativos se não existir
 #     if "active_brokers" not in st.session_state:
 #         st.session_state["active_brokers"] = []
@@ -748,7 +749,6 @@ def get_view_manager():
 #         st.query_params["page"] = next_page
 #         st.rerun()
 
-
 # def rotate_views_loop():
 #     view_manager = get_view_manager()
 
@@ -765,8 +765,10 @@ def get_view_manager():
 #         except Exception as e:
 #             logger.error(f"[Rotação Thread] Erro: {e}")
 #             time.sleep(5)
-            
+
+
 def main():
+
     def rotate_views_on_reload():
         view_manager = get_view_manager()
 
