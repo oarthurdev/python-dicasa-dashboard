@@ -847,15 +847,21 @@ def display_login_page():
                 border-radius: 10px;
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 padding: 2rem;
-                max-width: 400px;
+                max-width: 600px;
                 margin: 2rem auto;
             }
             .stTextInput input {
                 margin-bottom: 1rem;
             }
             div[data-testid="stImage"] {
-                text-align: center;
-                margin-bottom: 2rem;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                margin: 2rem auto;
+                width: 100%;
+            }
+            div[data-testid="stImage"] > img {
+                margin: 0 auto;
             }
             .text-center {
                 text-align: center;
