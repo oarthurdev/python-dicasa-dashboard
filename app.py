@@ -903,17 +903,17 @@ def display_login_page():
 
             with st.form("login_form", clear_on_submit=True):
                 email = st.text_input("Email",
-                                      placeholder="Digite seu email",
-                                      help="Digite seu email corporativo")
+                                    placeholder="Digite seu email",
+                                    help="Digite seu email corporativo")
 
                 senha = st.text_input("Senha",
-                                      type="password",
-                                      placeholder="Digite sua senha",
-                                      help="Digite sua senha")
+                                    type="password",
+                                    placeholder="Digite sua senha",
+                                    help="Digite sua senha")
 
-            if st.form_submit_button("Entrar",
-                                     type="primary",
-                                     use_container_width=True):
+                if st.form_submit_button("Entrar",
+                                       type="primary",
+                                       use_container_width=True):
                 if email and senha:
                     try:
                         response = supabase.client.auth.sign_in_with_password({
