@@ -388,35 +388,7 @@ def calculate_broker_points(broker_data, lead_data, activity_data):
                         stale_leads_count += 1
 
                 points_df.at[idx, 'leads_5_dias_sem_mudanca'] = stale_leads_count
-
-        # Ensure points are not negative
-        points_df['pontos'] = points_df['pontos'].apply(lambda x: max(0, x))
-
-        # ======= CÁLCULO FINAL DA PONTUAÇÃO =======
-
-        # Limpa qualquer valor anterior de pontos
-        points_df["pontos"] = 0
-
-        # Soma dos pontos positivos
-        points_df["pontos"] += points_df["leads_respondidos_1h"] * 2
-        points_df["pontos"] += points_df["leads_visitados"] * 5
-        points_df["pontos"] += points_df["propostas_enviadas"] * 8
-        points_df["pontos"] += points_df["vendas_realizadas"] * 15
-        points_df["pontos"] += points_df["leads_atualizados_mesmo_dia"] * 2
-        points_df["pontos"] += points_df["feedbacks_positivos"] * 3
-        points_df["pontos"] += points_df["resposta_rapida_3h"] * 4
-        points_df["pontos"] += points_df["todos_leads_respondidos"] * 5
-        points_df["pontos"] += points_df["cadastro_completo"] * 3
-        points_df["pontos"] += points_df["acompanhamento_pos_venda"] * 10
-
-        # Subtração dos pontos negativos
-        points_df["pontos"] -= points_df["leads_sem_interacao_24h"] * 3
-        points_df["pontos"] -= points_df["leads_ignorados_48h"] * 5
-        points_df["pontos"] -= points_df["leads_com_reclamacao"] * 4
-        points_df["pontos"] -= points_df["leads_perdidos"] * 6
-
-        # Garante que os pontos nunca sejam negativos
-        points_df["pontos"] = points_df["pontos"].clip(lower=0)
+    
 
         logger.info("Broker points calculation completed")
         return points_df

@@ -143,7 +143,7 @@ class KommoAPI:
             filtered_leads = []
             page = 1
             empty_streak = 0
-            stop_after = 10  # Para após 3 páginas vazias consecutivas
+            stop_after = 1  # Para após 3 páginas vazias consecutivas
 
             while True:
                 # Rate limiting - espera 1 segundo entre requests
@@ -244,7 +244,7 @@ class KommoAPI:
             activities_data = []
             page = 1
             empty_streak = 0
-            stop_after = 3  # Para após 3 páginas vazias consecutivas
+            stop_after = 1  # Para após 3 páginas vazias consecutivas
 
             now = int(time.time())
             filter_from = now - (7 * 24 * 60 * 60)

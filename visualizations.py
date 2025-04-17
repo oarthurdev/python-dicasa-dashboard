@@ -41,6 +41,11 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
         
         if activity_type:
             filtered_activities = filtered_activities[filtered_activities['tipo'] == activity_type]
+
+        # Novo filtro: apenas entre 8h e 22h
+        filtered_activities = filtered_activities[
+            filtered_activities['hora'].between(8, 23)
+        ]
             
         if lead_filter and 'lead_id' in filtered_activities.columns:
             # This would require joining with lead data, simplified for this example
@@ -61,16 +66,17 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
         day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
         
         # Group hours into time blocks for better analysis as recommended
-        # Define time blocks
+        # Define time blocks entre 08h e 22h
         time_blocks = {
             '08h - 10h': [8, 9],
             '10h - 12h': [10, 11],
             '12h - 14h': [12, 13],
             '14h - 16h': [14, 15],
             '16h - 18h': [16, 17],
-            'Pós 18h': list(range(18, 24)) + list(range(0, 8))  # Evening and early morning
+            '18h - 20h': [18, 19],
+            '20h - 22h': [20, 21],
         }
-        
+
         # Map each hour to its time block
         hour_to_block = {}
         for block, hours in time_blocks.items():
@@ -140,7 +146,7 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
         if min_idx is not None:
             min_row = heatmap_data.iloc[min_idx]
             # Only annotate if it's during business hours (8am-6pm weekdays)
-            if min_row['time_block'] not in ['Pós 18h'] and min_row['dia_semana'] not in ['Sábado', 'Domingo'] and min_row['count'] < heatmap_data['count'].mean() / 2:
+            if min_row['dia_semana'] not in ['Sábado', 'Domingo'] and min_row['count'] < heatmap_data['count'].mean() / 2:
                 annotations.append(dict(
                     x=min_row['dia_semana'],
                     y=min_row['time_block'],
@@ -160,8 +166,7 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
         
         # Find time blocks with zero activity during business hours
         zero_activity = heatmap_data[
-            (heatmap_data['count'] == 0) & 
-            (heatmap_data['time_block'] != 'Pós 18h') & 
+            (heatmap_data['count'] == 0) &
             (~heatmap_data['dia_semana'].isin(['Sábado', 'Domingo']))
         ]
         
@@ -227,14 +232,9 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
                 (heatmap_data['dia_semana'].isin(['Sábado', 'Domingo']))
             ]['count'].sum()
             
-            outside_pct = (outside_hours / overall_activity) * 100
-            
-            advice_text = ""
-            if outside_pct > 30:
-                advice_text = "⚠️ Alerta: Mais de 30% das atividades ocorrem fora do horário comercial, o que pode indicar falta de cobertura adequada."
-            elif zero_activity.shape[0] > 5:
+            if zero_activity.shape[0] > 5:
                 advice_text = "⚠️ Alerta: Existem vários períodos sem atividade durante o horário comercial, considere reorganizar a distribuição de horários."
-            
+                
             if advice_text:
                 fig.add_annotation(
                     x=0.5,

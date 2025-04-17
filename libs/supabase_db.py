@@ -379,6 +379,7 @@ class SupabaseClient:
                     if isinstance(value, pd.Timestamp):
                         record[key] = value.isoformat()
 
+            logger.info(f"[DEBUG records]: {records}")
             # Realiza o upsert com os dados tratados
             response = self.client.table("broker_points").upsert(records).execute()
 
@@ -521,6 +522,8 @@ class SupabaseClient:
             # Calcula os pontos
             points_df = calculate_broker_points(active_brokers, leads,
                                                 activities)
+
+            logger.info(f"[DEBUG points_df]: {points_df}")
 
             # Garante que todos os campos necessários existam
             required_fields = [

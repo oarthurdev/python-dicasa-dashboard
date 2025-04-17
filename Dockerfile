@@ -18,6 +18,10 @@ RUN pip install --upgrade pip && \
 # Copia o restante da aplicação
 COPY . .
 
+RUN mkdir -p /root/.streamlit
+
+COPY .streamlit/config.toml /root/.streamlit/config.toml
+
 # Expõe a porta padrão do Streamlit
 EXPOSE 8501
 

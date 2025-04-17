@@ -26,6 +26,8 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+st.set_page_config(page_title="Dicasa - Dashboard de Desempenho", layout="wide")
+
 # def background_data_loader_once():
 #     """
 #     Runs the sync process once to fetch initial data from Kommo and update Supabase.
@@ -48,10 +50,10 @@ load_dotenv()
 #         logger.error(f"Failed to run initial data sync: {str(e)}")
 
 # No início do app
-@st.cache_resource
-def start_auto_update_thread():
-    thread = threading.Thread(target=auto_update_broker_points, daemon=True)
-    thread.start()
+# @st.cache_resource
+# def start_auto_update_thread():
+#     thread = threading.Thread(target=auto_update_broker_points, daemon=True)
+#     thread.start()
 
 # Initialize API and database clients
 @st.cache_resource
@@ -61,9 +63,6 @@ def init_supabase_client():
 
 
 supabase = init_supabase_client()
-
-supabase.initialize_broker_points()
-
 
 def background_data_loader():
     """
@@ -90,38 +89,30 @@ def background_data_loader():
 
         while True:
             try:
-                # Calculate points after syncing data
                 brokers = kommo_api.get_users()
                 leads = kommo_api.get_leads()
                 activities = kommo_api.get_activities()
 
-                if not brokers.empty and not leads.empty and not activities.empty:
-                    supabase.update_broker_points()
-                    logger.info("Broker points updated successfully")
-
                 current_time = datetime.now()
 
-                # Only sync if more than 5 minutes have passed since last sync
-                if not last_sync_time or (
-                        current_time - last_sync_time).total_seconds() > 300:
-                    logger.info("Checking for updates from Kommo API")
-                    sync_manager.sync_from_cache(brokers, leads, activities)
+                if not last_sync_time or (current_time - last_sync_time).total_seconds() > 300:
+                    logger.info("Iniciando sincronização e atualização de pontos...")
 
-                    logger.info("Data sync completed successfully")
-                    
+                    if not brokers.empty and not leads.empty and not activities.empty:
+                        sync_manager.sync_from_cache(brokers, leads, activities)
+                        auto_update_broker_points()
+
                     last_sync_time = current_time
-
-                time.sleep(600)  # Check every 10 minutes for sync timing
 
             except Exception as e:
                 logger.error(f"Error in background sync: {str(e)}")
-                time.sleep(5)  # Wait before retrying on error
+                time.sleep(5)
 
     except Exception as e:
         logger.error(f"Failed to initialize background sync: {str(e)}")
 
 
-# Start the background thread when app starts
+# # Start the background thread when app starts
 @st.cache_resource
 def start_background_thread():
     thread = threading.Thread(target=background_data_loader, daemon=True)
@@ -474,7 +465,7 @@ def calculate_broker_metrics(broker_id, data):
     broker_points = data.get('ranking', pd.DataFrame())
 
     if not broker_points.empty:
-        broker_row = broker_points[broker_points.index == broker_id]
+        broker_row = broker_points[broker_points['id'] == broker_id]
         if not broker_row.empty:
             return {
                 'leads_respondidos_1h':
@@ -511,44 +502,6 @@ def display_broker_metrics(broker_id, data):
         st.metric("Propostas Enviadas", metrics['propostas_enviadas'])
     with cols[3]:
         st.metric("Vendas Realizadas", metrics['vendas_realizadas'])
-    # Find the broker in the data
-    broker_points = data.get('ranking', pd.DataFrame())
-
-    if not broker_points.empty:
-        broker_row = broker_points[broker_points.index == broker_id]
-    else:
-        broker_row = pd.DataFrame()
-
-    if broker_row.empty:
-        st.info("Dados do corretor não disponíveis.")
-        return
-
-    # Create metrics row
-    cols = st.columns(4)
-
-    # Extract performance metrics
-    leads_respondidos_1h = int(
-        broker_row['leads_respondidos_1h'].values[0]
-    ) if 'leads_respondidos_1h' in broker_row.columns else 0
-    leads_visitados = int(broker_row['leads_visitados'].values[0]
-                          ) if 'leads_visitados' in broker_row.columns else 0
-    propostas_enviadas = int(
-        broker_row['propostas_enviadas'].values[0]
-    ) if 'propostas_enviadas' in broker_row.columns else 0
-    vendas_realizadas = int(
-        broker_row['vendas_realizadas'].values[0]
-    ) if 'vendas_realizadas' in broker_row.columns else 0
-
-    # Display metrics
-    with cols[0]:
-        st.metric("Leads Respondidos em 1h", leads_respondidos_1h)
-    with cols[1]:
-        st.metric("Leads Visitados", leads_visitados)
-    with cols[2]:
-        st.metric("Propostas Enviadas", propostas_enviadas)
-    with cols[3]:
-        st.metric("Vendas Realizadas", vendas_realizadas)
-
 
 # Function to display the activity heatmap with advanced filtering options
 @st.cache_data(ttl=300, max_entries=10)
@@ -585,120 +538,30 @@ def process_heatmap_data(broker_id, data, activity_type, date_range,
 
 
 def display_activity_heatmap(broker_id, data):
-    """Display enhanced activity heatmap for the broker with filtering options"""
+    """Display heatmap apenas com mensagem_enviada entre 08h e 22h"""
 
-    if 'activities' in data and not data['activities'].empty:
-        broker_activities = data['activities'][data['activities']['user_id'] ==
-                                               broker_id]
-    else:
-        st.info("Não há dados de atividades disponíveis para este corretor.")
+    if 'activities' not in data or data['activities'].empty:
+        st.info("Sem dados de atividades.")
         return
 
-    if broker_activities.empty:
-        st.info(
-            "Não há dados de atividades suficientes para gerar o mapa de calor."
-        )
+    # Filtrar por corretor, tipo, e horário
+    broker_activities = data['activities']
+    filtered_activities = broker_activities[
+        (broker_activities['user_id'] == broker_id) &
+        (broker_activities['tipo'] == 'mensagem_enviada') &
+        (broker_activities['hora'] >= 8) & (broker_activities['hora'] < 22)
+    ].copy()
+
+    logger.info(f"[HEATMAP] Corretor {broker_id} - Atividades filtradas: {len(filtered_activities)} registros encontrados")
+    logger.info(f"[HEATMAP] Preview das atividades:\n{filtered_activities.head().to_string(index=False)}")
+
+    if filtered_activities.empty:
+        st.info("Nenhuma atividade de mensagem enviada entre 08h e 22h.")
         return
 
-    # Create filter options for the heatmap
-    st.markdown("##### Filtros para o Mapa de Calor")
-
-    filter_cols = st.columns([1, 1, 1])
-
-    with filter_cols[0]:
-        # Filter by activity type
-        activity_types = ['Todos'] + sorted(
-            list(broker_activities['tipo'].unique()))
-        selected_activity_type = st.selectbox("Tipo de Atividade",
-                                              options=activity_types,
-                                              key=f"activity_type_{broker_id}")
-
-    with filter_cols[1]:
-        # Filter by date range
-        date_options = [
-            "Todos os períodos", "Últimos 7 dias", "Últimos 30 dias",
-            "Últimos 90 dias"
-        ]
-        selected_date_range = st.selectbox("Período",
-                                           options=date_options,
-                                           key=f"date_range_{broker_id}")
-
-    with filter_cols[2]:
-        # Filter by lead status
-        lead_status_options = [
-            "Todos os leads", "Leads ativos", "Leads convertidos",
-            "Leads perdidos"
-        ]
-        selected_lead_status = st.selectbox("Status do Lead",
-                                            options=lead_status_options,
-                                            key=f"lead_status_{broker_id}")
-
-    # Apply filters
-    filtered_activities = broker_activities.copy()
-
-    # Filter by activity type
-    if selected_activity_type != 'Todos':
-        filtered_activities = filtered_activities[filtered_activities['tipo']
-                                                  == selected_activity_type]
-
-    # Filter by date range
-    if selected_date_range != 'Todos os períodos':
-        today = datetime.now()
-        if selected_date_range == 'Últimos 7 dias':
-            date_filter = today - timedelta(days=7)
-        elif selected_date_range == 'Últimos 30 dias':
-            date_filter = today - timedelta(days=30)
-        else:  # Últimos 90 dias
-            date_filter = today - timedelta(days=90)
-
-        filtered_activities = filtered_activities[
-            filtered_activities['criado_em'] >= date_filter]
-
-    # Filter by lead status (requires joining with leads data)
-    if selected_lead_status != 'Todos os leads' and 'lead_id' in filtered_activities.columns:
-        broker_leads = data['leads'][data['leads']['responsavel_id'] ==
-                                     broker_id]
-
-        if selected_lead_status == 'Leads ativos':
-            active_lead_ids = broker_leads[~broker_leads['fechado']][
-                'id'].tolist()
-            filtered_activities = filtered_activities[
-                filtered_activities['lead_id'].isin(active_lead_ids)]
-        elif selected_lead_status == 'Leads convertidos':
-            converted_lead_ids = broker_leads[broker_leads['status'] ==
-                                              'Ganho']['id'].tolist()
-            filtered_activities = filtered_activities[
-                filtered_activities['lead_id'].isin(converted_lead_ids)]
-        elif selected_lead_status == 'Leads perdidos':
-            lost_lead_ids = broker_leads[broker_leads['status'] ==
-                                         'Perdido']['id'].tolist()
-            filtered_activities = filtered_activities[
-                filtered_activities['lead_id'].isin(lost_lead_ids)]
-
-    # Display analysis tips based on the heat map
-    with st.expander("💡 Como interpretar o mapa de calor", expanded=False):
-        st.markdown("""
-        **Cores mais escuras** indicam maior atividade em determinado horário e dia.
-
-        **Este mapa ajuda a identificar:**
-        - **Gargalos operacionais:** Períodos sem atividades durante o horário comercial
-        - **Oportunidades:** Horários sub-aproveitados que poderiam ter melhor rendimento
-        - **Padrões de comportamento:** Horários de maior produtividade para otimizar agendas
-
-        **Ações recomendadas:**
-        - Áreas em **vermelho** (Atenção) indicam períodos comerciais sem atividade - reorganize a agenda
-        - Áreas marcadas como **Oportunidade** mostram horários pouco explorados com potencial
-        - Mais de 30% das atividades após as 18h indica necessidade de redistribuição de horários
-        """)
-
-    # Create heatmap with the filtered data
-    heatmap_fig = create_heatmap(filtered_activities,
-                                 activity_type=selected_activity_type if
-                                 selected_activity_type != 'Todos' else None)
-
-    # Show the heatmap
+    # Gerar o heatmap com filtro já aplicado
+    heatmap_fig = create_heatmap(filtered_activities, activity_type="mensagem_enviada")
     st.plotly_chart(heatmap_fig, use_container_width=True)
-
 
 # Function to display the points breakdown chart
 def display_points_breakdown(broker_id, data):
@@ -959,43 +822,46 @@ def main():
                     unsafe_allow_html=True)
                 display_points_breakdown(selected_broker, data)
 
-def update_broker_points():
-    try:
-        logger.info("Recalculando pontos dos corretores via endpoint...")
+# def update_broker_points():
+#     try:
+#         logger.info("Recalculando pontos dos corretores via endpoint...")
 
-        kommo_api = KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
-                             access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+#         kommo_api = KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
+#                              access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
 
-        supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-                                  key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+#         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
+#                                   key=os.getenv("VITE_SUPABASE_ANON_KEY"))
 
-        brokers = kommo_api.get_users()
-        leads = kommo_api.get_leads()
-        activities = kommo_api.get_activities()
+#         brokers = kommo_api.get_users()
+#         leads = kommo_api.get_leads()
+#         activities = kommo_api.get_activities()
 
-        if not brokers.empty and not leads.empty and not activities.empty:
-            from gamification import calculate_broker_points
-            points_df = calculate_broker_points(brokers, leads, activities)
-            supabase.upsert_broker_points(points_df)
-            logger.info("Pontos atualizados com sucesso via endpoint.")
+#         if not brokers.empty and not leads.empty and not activities.empty:
+#             from gamification import calculate_broker_points
+#             points_df = calculate_broker_points(brokers, leads, activities)
+#             supabase.upsert_broker_points(points_df)
+#             logger.info("Pontos atualizados com sucesso via endpoint.")
 
-        return jsonify({"status": "success"}), 200
+#         return jsonify({"status": "success"}), 200
 
-    except Exception as e:
-        logger.error(f"Erro ao atualizar pontos via endpoint: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+#     except Exception as e:
+#         logger.error(f"Erro ao atualizar pontos via endpoint: {str(e)}")
+#         return jsonify({"status": "error", "message": str(e)}), 500
         
 def auto_update_broker_points():
     while True:
         try:
             logger.info("[Auto Update] Atualizando pontos dos corretores")
             supabase.update_broker_points()
+            logger.info("[Auto Update] Pontos atualizados com sucesso")
             st.rerun()
+            logger.info("[Auto Update] Aguardando 5 minutos para a próxima atualização")
+            time.sleep(300)
         except Exception as e:
             logger.error(f"[Auto Update] Erro ao atualizar pontos: {str(e)}")
         time.sleep(10)
 
 if __name__ == "__main__":
     # background_data_loader_once()
-    start_auto_update_thread()
+    # background_data_loader()
     main()
