@@ -72,6 +72,10 @@ def create_heatmap(activities_df, activity_type=None, lead_filter=None):
         logger.info(f"[HEATMAP] Valores únicos de dia_semana após tradução: {filtered['dia_semana'].unique()}")
         logger.info(f"[HEATMAP] DataFrame filtrado antes da categorização:\n{filtered[['dia_semana', 'hora']].head()}\n")
 
+        # Primeiro traduz os dias
+        filtered['dia_semana'] = filtered['dia_semana'].map(dias_traducao)
+
+        # Depois define as categorias
         day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
         filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
 
