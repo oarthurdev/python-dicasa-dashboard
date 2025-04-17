@@ -839,44 +839,106 @@ def display_login_page():
     st.markdown("""
     <style>
         [data-testid="stAppViewContainer"] {
-            background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
+            background: linear-gradient(135deg, #0099ff05 0%, #0099ff15 100%);
+            min-height: 100vh;
         }
         
         [data-testid="stVerticalBlock"] {
-            padding-top: 10vh;
+            padding-top: 5vh;
             margin: 0 auto;
             max-width: 400px;
         }
 
         [data-testid="stImage"] {
-            margin: 0 auto 2rem;
+            margin: 0 auto 1.5rem;
             display: block;
+            filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+            transition: transform 0.3s ease;
+        }
+
+        [data-testid="stImage"]:hover {
+            transform: translateY(-5px);
         }
 
         .login-card {
             background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-top: 2rem;
+            padding: 2.5rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 153, 255, 0.1);
+            margin-top: 1rem;
+            border: 1px solid rgba(0, 153, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .login-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 153, 255, 0.15);
+        }
+
+        .welcome-text {
+            text-align: center;
+            color: #1a1a1a;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
         }
 
         .stButton > button {
             width: 100%;
-            background: linear-gradient(135deg, #3B82F6, #2563EB);
+            background: linear-gradient(135deg, #0099ff, #0077cc);
             color: white;
-            padding: 0.75rem;
-            border-radius: 8px;
+            padding: 0.875rem;
+            border-radius: 12px;
             border: none;
             font-weight: 600;
-            margin-top: 1rem;
+            margin-top: 1.5rem;
+            transition: all 0.3s ease;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 153, 255, 0.3);
         }
 
         .stTextInput > div > input {
-            background: #F3F4F6;
-            border-radius: 8px;
-            padding: 0.75rem;
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .stTextInput > div > input:focus {
+            border-color: #0099ff;
+            box-shadow: 0 0 0 3px rgba(0, 153, 255, 0.1);
+            background: white;
+        }
+
+        .stTextInput > label {
+            color: #495057;
+            font-weight: 500;
+            font-size: 0.9rem;
             margin-bottom: 0.5rem;
+        }
+
+        ::placeholder {
+            color: #adb5bd;
+        }
+
+        .error-message {
+            background: #fff5f5;
+            color: #e53e3e;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            border: 1px solid #fed7d7;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -885,9 +947,10 @@ def display_login_page():
     
     with col2:
         imagem = Image.open("logo_dicasa.png")
-        st.image(imagem, width=200)
+        st.image(imagem, width=180)
         
         st.markdown('<div class="login-card">', unsafe_allow_html=True)
+        st.markdown('<div class="welcome-text">Bem-vindo(a) de volta!</div>', unsafe_allow_html=True)
         
         email = st.text_input("Email", placeholder="Digite seu email")
         password = st.text_input("Senha", type="password", placeholder="Digite sua senha")
