@@ -1,5 +1,5 @@
 import os
-import requests
+import time
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -92,15 +92,15 @@ def background_data_loader():
 
 
 # # Start the background thread when app starts
-@st.cache_resource
-def start_background_thread():
-    thread = threading.Thread(target=background_data_loader, daemon=True)
-    thread.start()
-    return "Background thread started"
+# @st.cache_resource
+# def start_background_thread():
+#     thread = threading.Thread(target=background_data_loader, daemon=True)
+#     thread.start()
+#     return "Background thread started"
 
 
-# Start the background thread
-thread_status = start_background_thread()
+# # Start the background thread
+# thread_status = start_background_thread()
 
 # Custom CSS
 st.markdown("""
@@ -469,37 +469,34 @@ def process_heatmap_data(broker_id, data, activity_type, date_range,
 
 
 def display_activity_heatmap(broker_id, data):
-    """Display heatmap apenas com mensagem_enviada entre 08h e 22h"""
+    """Exibe o mapa de calor de atividades (mensagem_enviada) das 08h às 22h para o corretor atual"""
 
     if 'activities' not in data or data['activities'].empty:
         st.info("Sem dados de atividades.")
         return
 
-    # Filtrar por corretor, tipo, e horário
-    broker_activities = data['activities']
-    filtered_activities = broker_activities[
-        (broker_activities['user_id'] == broker_id)
-        & (broker_activities['tipo'] == 'mensagem_enviada') &
-        (broker_activities['hora'] >= 8) &
-        (broker_activities['hora'] < 22)].copy()
+    activities = data['activities']
 
-    logger.info(
-        f"[HEATMAP] Corretor {broker_id} - Atividades filtradas: {len(filtered_activities)} registros encontrados"
-    )
-    logger.info(
-        f"[HEATMAP] Preview das atividades:\n{filtered_activities.head().to_string(index=False)}"
-    )
+    # Filtro por corretor, tipo e horário
+    filtered = activities[
+        (activities['user_id'] == broker_id) &
+        (activities['tipo'] == 'mensagem_enviada') &
+        (activities['hora'] >= 8) &
+        (activities['hora'] <= 21)
+    ].copy()
 
-    if filtered_activities.empty:
+    # Se estiver vazio, avisa
+    if filtered.empty:
         st.info("Nenhuma atividade de mensagem enviada entre 08h e 22h.")
         return
 
-    # Gerar o heatmap com filtro já aplicado
-    heatmap_fig = create_heatmap(filtered_activities,
-                                 activity_type="mensagem_enviada")
-    st.plotly_chart(heatmap_fig,
-                    use_container_width=True,
-                    key=f"heatmap_{broker_id}")
+    # Força dia_semana como categoria ordenada
+    day_order = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+    filtered['dia_semana'] = pd.Categorical(filtered['dia_semana'], categories=day_order, ordered=True)
+
+    # Gerar o heatmap com os dados filtrados
+    fig = create_heatmap(filtered, activity_type="mensagem_enviada")
+    st.plotly_chart(fig, use_container_width=True, key=f"heatmap_{broker_id}")
 
 
 # Function to display the points breakdown chart
@@ -724,43 +721,87 @@ def get_view_manager():
     return ViewManager(rotation_interval=5)
 
 
-def handle_page_rotation():
-    """Gerencia a rotação de páginas"""
-    view_manager = get_view_manager()
+# def handle_page_rotation():
+#     """Gerencia a rotação de páginas"""
+#     view_manager = get_view_manager()
 
-    # Inicializar página e corretores ativos
-    if "current_page" not in st.session_state:
-        st.session_state["current_page"] = "ranking"
+#     # Inicializar página e corretores ativos
+#     if "current_page" not in st.session_state:
+#         st.session_state["current_page"] = "ranking"
         
-    # Inicializar lista de corretores ativos se não existir
-    if "active_brokers" not in st.session_state:
-        st.session_state["active_brokers"] = []
+#     # Inicializar lista de corretores ativos se não existir
+#     if "active_brokers" not in st.session_state:
+#         st.session_state["active_brokers"] = []
 
-    view_manager.set_active_brokers(st.session_state["active_brokers"])
+#     view_manager.set_active_brokers(st.session_state["active_brokers"])
 
-    logger.info(
-        f"[View Manager] Página atual: {st.session_state['current_page']}")
-    logger.info(
-        f"[View Manager] Corretores ativos: {st.session_state['active_brokers']}"
-    )
+#     logger.info(
+#         f"[View Manager] Página atual: {st.session_state['current_page']}")
+#     logger.info(
+#         f"[View Manager] Corretores ativos: {st.session_state['active_brokers']}"
+#     )
 
-    # Verificar e executar rotação
-    next_page = view_manager.rotate_if_needed()
-    if next_page and next_page != st.session_state["current_page"]:
-        st.session_state["current_page"] = next_page
-        st.query_params["page"] = next_page
-        st.rerun()
+#     # Verificar e executar rotação
+#     next_page = view_manager.rotate_if_needed()
+#     if next_page and next_page != st.session_state["current_page"]:
+#         st.session_state["current_page"] = next_page
+#         st.query_params["page"] = next_page
+#         st.rerun()
 
 
+# def rotate_views_loop():
+#     view_manager = get_view_manager()
+
+#     while True:
+#         try:
+#             if "active_brokers" in st.session_state:
+#                 view_manager.set_active_brokers(st.session_state["active_brokers"])
+#                 next_page = view_manager.rotate_if_needed()
+
+#                 if next_page and next_page != st.session_state.get("current_page"):
+#                     st.session_state["next_page"] = next_page
+
+#             time.sleep(1)
+#         except Exception as e:
+#             logger.error(f"[Rotação Thread] Erro: {e}")
+#             time.sleep(5)
+            
 def main():
+    def rotate_views_on_reload():
+        view_manager = get_view_manager()
+
+        if "active_brokers" not in st.session_state:
+            st.session_state["active_brokers"] = []
+
+        if "last_rotation_time" not in st.session_state:
+            st.session_state["last_rotation_time"] = time.time()
+
+        elapsed = time.time() - st.session_state["last_rotation_time"]
+
+        if elapsed >= 10:  # só rotaciona a cada 5 segundos
+            view_manager.set_active_brokers(st.session_state["active_brokers"])
+            next_page = view_manager.get_next_page()
+
+            if next_page and next_page != st.session_state.get("current_page"):
+                st.session_state["current_page"] = next_page
+                st.session_state["last_rotation_time"] = time.time()
+                st.query_params["page"] = next_page
+                st.rerun()
+
     # Gerenciar rotação de páginas
-    handle_page_rotation()
+    # handle_page_rotation()
 
     # # Verificar se houve mudança de página
     # url_page = st.query_params.get("page", "ranking")
     # if url_page != st.session_state.get("current_page"):
     #     st.session_state["current_page"] = url_page
     #     st.rerun()
+
+    if "current_page" not in st.session_state:
+        st.session_state["current_page"] = "ranking"
+
+    if "page" not in st.query_params:
+        st.query_params.update({"page": "ranking"})
 
     # Título da página
     st.markdown(
@@ -779,60 +820,13 @@ def main():
         st.session_state["active_brokers"] = data['brokers'][
             data['brokers']['cargo'] == 'Corretor']['id'].tolist()
 
+        # st.session_state["rotation_thread"] = threading.Thread(
+        #     target=rotate_views_loop, daemon=True)
+        # st.session_state["rotation_thread"].start()
+
         st.session_state["data_thread"] = threading.Thread(
             target=background_data_loader, daemon=True)
-        # Iniciar thread de dados
         st.session_state["data_thread"].start()
-
-        st.session_state["background_started"] = True
-
-        def rotate_views():
-            if "current_page" not in st.session_state:
-                st.session_state["current_page"] = "ranking"
-                logger.info("[View Rotator] Iniciando na página de ranking")
-                return
-
-            if "active_brokers" not in st.session_state:
-                logger.info("[View Rotator] Aguardando lista de corretores...")
-                return
-
-            current_page = st.session_state["current_page"]
-
-            if current_page == "ranking":
-                if st.session_state["active_brokers"]:
-                    next_page = f"broker/{st.session_state['active_brokers'][0]}"
-            else:
-                try:
-                    current_broker = int(current_page.split('/')[1])
-                    broker_ids = st.session_state["active_brokers"]
-                    current_index = broker_ids.index(current_broker)
-
-                    if current_index == len(broker_ids) - 1:
-                        next_page = "ranking"
-                    else:
-                        next_page = f"broker/{broker_ids[current_index + 1]}"
-                except (ValueError, IndexError):
-                    next_page = "ranking"
-
-            if next_page != current_page:
-                logger.info(
-                    f"[View Rotator] Rotacionando de '{current_page}' para '{next_page}'"
-                )
-                st.session_state["current_page"] = next_page
-                st.rerun()
-
-        # Configura o intervalo de rotação (10 segundos)
-        if 'last_rotation' not in st.session_state:
-            st.session_state['last_rotation'] = time.time()
-
-        try:
-            current_time = time.time()
-            if current_time - st.session_state['last_rotation'] >= 10:
-                st.session_state['last_rotation'] = current_time
-                rotate_views()
-        except Exception as e:
-            logger.error(f"Erro na rotação de views: {str(e)}")
-            time.sleep(1)
 
         st.session_state["background_started"] = True
 
@@ -844,7 +838,7 @@ def main():
         st.info(
             "🔄 Os pontos ainda estão sendo calculados. Assim que estiverem prontos, o ranking será exibido aqui."
         )
-        st.rerun()
+        return
 
     # Get active brokers
     active_brokers = data['brokers'][data['brokers']['cargo'] == 'Corretor']
@@ -858,6 +852,9 @@ def main():
     current_page = st.session_state["current_page"]
     broker_id = None
 
+    logger.info(f"[MAIN]Current page: {current_page}")
+    logger.info(f"[MAIN] Active brokers: {active_brokers}")
+
     if current_page != "ranking":
         try:
             broker_id = int(current_page.split('/')[1])
@@ -870,47 +867,27 @@ def main():
             st.query_params["page"] = "ranking"
             current_page = "ranking"
 
+    rotate_views_on_reload()
+
     if current_page == "ranking":
         display_general_ranking(data)
     elif current_page.startswith("broker") and broker_id:
         display_broker_dashboard(broker_id, data)
 
-    # Add JavaScript for auto-rotation
-    broker_ids = active_brokers['id'].tolist()
-    st.markdown(f"""
-    <script type="text/javascript">
-        window.addEventListener('load', function() {{
-            const brokerIds = {broker_ids};
+    # # Add JavaScript for auto-rotation
+    # # broker_ids = active_brokers['id'].tolist()
+    # # Exibir JS de rotação de views se necessário
+    # if "next_page" in st.session_state and st.session_state["next_page"]:
+    #     next_page = st.session_state["next_page"]
+    #     st.session_state["next_page"] = None  # limpa para não repetir
 
-            function rotateViews() {{
-                const urlParams = new URLSearchParams(window.location.search);
-                let currentPage = urlParams.get('page') || 'ranking';
-                let newUrl = new URL(window.location.href);
-
-                if (currentPage === 'ranking') {{
-                    newUrl.searchParams.set('page', 'broker/' + brokerIds[0]);
-                }} else {{
-                    let currentBrokerId = parseInt(currentPage.split('/')[1]);
-                    let currentIndex = brokerIds.indexOf(currentBrokerId);
-
-                    if (currentIndex === -1 || currentIndex === brokerIds.length - 1) {{
-                        newUrl.searchParams.set('page', 'ranking');
-                    }} else {{
-                        newUrl.searchParams.set('page', 'broker/' + brokerIds[currentIndex + 1]);
-                    }}
-                }}
-
-                window.location.href = newUrl.toString();
-            }}
-
-            // Iniciar rotação após 10 segundos
-            setTimeout(() => {{
-                setInterval(rotateViews, 10000);
-            }}, 10000);
-        }});
-    </script>
-    """,
-                unsafe_allow_html=True)
+    #     st.markdown(f"""
+    #     <script>
+    #         setTimeout(function() {{
+    #             window.location.href = window.location.pathname + "?page={next_page}";
+    #         }}, 1000);
+    #     </script>
+    #     """, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
