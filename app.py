@@ -16,6 +16,7 @@ from flask import Flask, jsonify
 from libs import KommoAPI, SupabaseClient, SyncManager
 from data_processor import process_data
 from visualizations import create_heatmap, create_conversion_funnel, create_points_breakdown_chart
+from view_manager import ViewManager
 
 # Configure logging
 logging.basicConfig(
@@ -496,7 +497,9 @@ def display_activity_heatmap(broker_id, data):
     # Gerar o heatmap com filtro já aplicado
     heatmap_fig = create_heatmap(filtered_activities,
                                  activity_type="mensagem_enviada")
-    st.plotly_chart(heatmap_fig, use_container_width=True)
+    st.plotly_chart(heatmap_fig,
+                    use_container_width=True,
+                    key=f"heatmap_{broker_id}")
 
 
 # Function to display the points breakdown chart
@@ -637,9 +640,10 @@ def display_broker_dashboard(broker_id, data):
                 unsafe_allow_html=True)
 
     # Create tabs
-    tab1, tab2 = st.tabs(["Métricas", "Detalhes"])
+    tabs = st.tabs(["Métricas"])
+    metrics_tab = tabs[0]
 
-    with tab1:
+    with metrics_tab:
         # Display metrics and charts
         display_broker_metrics(broker_id, data)
 
@@ -648,7 +652,9 @@ def display_broker_dashboard(broker_id, data):
             st.markdown('<div class="card-title">Funil de Conversão</div>',
                         unsafe_allow_html=True)
             funnel_fig = create_styled_conversion_funnel(broker_leads)
-            st.plotly_chart(funnel_fig, use_container_width=True)
+            st.plotly_chart(funnel_fig,
+                            use_container_width=True,
+                            key=f"funnel_{broker_id}")
 
             st.markdown('<div class="card-title">Alertas</div>',
                         unsafe_allow_html=True)
@@ -663,48 +669,6 @@ def display_broker_dashboard(broker_id, data):
             st.markdown('<div class="card-title">Distribuição de Pontos</div>',
                         unsafe_allow_html=True)
             display_points_breakdown(broker_id, data)
-
-    with tab2:
-        # Filter only active brokers (those with points in ranking)
-        active_broker_ids = data['ranking']['id'].tolist(
-        ) if not data['ranking'].empty else []
-        broker_options = data['brokers'][data['brokers']['id'].isin(
-            active_broker_ids)][['id', 'nome']].copy()
-        broker_options['display_name'] = broker_options['nome']
-
-        selected_broker = st.selectbox(
-            "Selecione um corretor",
-            options=broker_options['id'].tolist(),
-            format_func=lambda x: broker_options.loc[broker_options['id'] == x,
-                                                     'display_name'].iloc[0],
-            key="broker_selector")
-
-        if selected_broker:
-            display_broker_metrics(selected_broker, data)
-
-            # Create two columns for the charts
-            col1, col2 = st.columns(2)
-
-            with col1:
-                st.markdown('<div class="card-title">Funil de Conversão</div>',
-                            unsafe_allow_html=True)
-                funnel_fig = create_styled_conversion_funnel(broker_leads)
-                st.plotly_chart(funnel_fig, use_container_width=True)
-
-                st.markdown('<div class="card-title">Alertas</div>',
-                            unsafe_allow_html=True)
-                display_broker_alerts(selected_broker, data)
-
-            with col2:
-                st.markdown(
-                    '<div class="card-title">Mapa de Calor - Atividades</div>',
-                    unsafe_allow_html=True)
-                display_activity_heatmap(selected_broker, data)
-
-                st.markdown(
-                    '<div class="card-title">Distribuição de Pontos</div>',
-                    unsafe_allow_html=True)
-                display_points_breakdown(selected_broker, data)
 
 
 def display_general_ranking(data):
@@ -754,11 +718,49 @@ def auto_update_broker_points():
         time.sleep(10)
 
 
+# Inicializar ViewManager como recurso global
+@st.cache_resource
+def get_view_manager():
+    return ViewManager(rotation_interval=5)
 
-def main():
-    # Inicializar session state se necessário
+
+def handle_page_rotation():
+    """Gerencia a rotação de páginas"""
+    view_manager = get_view_manager()
+
+    # Inicializar página e corretores ativos
     if "current_page" not in st.session_state:
         st.session_state["current_page"] = "ranking"
+        
+    # Inicializar lista de corretores ativos se não existir
+    if "active_brokers" not in st.session_state:
+        st.session_state["active_brokers"] = []
+
+    view_manager.set_active_brokers(st.session_state["active_brokers"])
+
+    logger.info(
+        f"[View Manager] Página atual: {st.session_state['current_page']}")
+    logger.info(
+        f"[View Manager] Corretores ativos: {st.session_state['active_brokers']}"
+    )
+
+    # Verificar e executar rotação
+    next_page = view_manager.rotate_if_needed()
+    if next_page and next_page != st.session_state["current_page"]:
+        st.session_state["current_page"] = next_page
+        st.query_params["page"] = next_page
+        st.rerun()
+
+
+def main():
+    # Gerenciar rotação de páginas
+    handle_page_rotation()
+
+    # # Verificar se houve mudança de página
+    # url_page = st.query_params.get("page", "ranking")
+    # if url_page != st.session_state.get("current_page"):
+    #     st.session_state["current_page"] = url_page
+    #     st.rerun()
 
     # Título da página
     st.markdown(
@@ -774,62 +776,63 @@ def main():
 
     # Iniciar threads de background se ainda não iniciados
     if not st.session_state.get("background_started"):
-        data_thread = threading.Thread(target=background_data_loader,
-                                       daemon=True)
-
-        # Atualizar lista de corretores ativos
         st.session_state["active_brokers"] = data['brokers'][
             data['brokers']['cargo'] == 'Corretor']['id'].tolist()
-        
-        # Rotação de views integrada à função main()
-        time.sleep(5) # Aguarda 5 segundos para garantir que os dados foram carregados
 
-        while True:
-            try:
-                time.sleep(10) # Aguarda 10 segundos antes de cada rotação
+        st.session_state["data_thread"] = threading.Thread(
+            target=background_data_loader, daemon=True)
+        # Iniciar thread de dados
+        st.session_state["data_thread"].start()
 
-                with state_lock:
-                    if "current_page" not in st.session_state:
-                        st.session_state["current_page"] = "ranking"
-                        logger.info(
-                            "[View Rotator] Iniciando na página de ranking")
+        st.session_state["background_started"] = True
 
-                    if "active_brokers" not in st.session_state:
-                        logger.info(
-                            "[View Rotator] Aguardando lista de corretores...")
-                        continue
+        def rotate_views():
+            if "current_page" not in st.session_state:
+                st.session_state["current_page"] = "ranking"
+                logger.info("[View Rotator] Iniciando na página de ranking")
+                return
 
-                    current_page = st.session_state["current_page"]
-                    next_page = current_page
+            if "active_brokers" not in st.session_state:
+                logger.info("[View Rotator] Aguardando lista de corretores...")
+                return
 
-                    if current_page == "ranking":
-                        if st.session_state["active_brokers"]:
-                            next_page = f"broker/{st.session_state['active_brokers'][0]}"
+            current_page = st.session_state["current_page"]
+
+            if current_page == "ranking":
+                if st.session_state["active_brokers"]:
+                    next_page = f"broker/{st.session_state['active_brokers'][0]}"
+            else:
+                try:
+                    current_broker = int(current_page.split('/')[1])
+                    broker_ids = st.session_state["active_brokers"]
+                    current_index = broker_ids.index(current_broker)
+
+                    if current_index == len(broker_ids) - 1:
+                        next_page = "ranking"
                     else:
-                        try:
-                            current_broker = int(current_page.split('/')[1])
-                            broker_ids = st.session_state["active_brokers"]
-                            current_index = broker_ids.index(current_broker)
+                        next_page = f"broker/{broker_ids[current_index + 1]}"
+                except (ValueError, IndexError):
+                    next_page = "ranking"
 
-                            if current_index == len(broker_ids) - 1:
-                                next_page = "ranking"
-                            else:
-                                next_page = f"broker/{broker_ids[current_index + 1]}"
-                        except (ValueError, IndexError):
-                            next_page = "ranking"
-
-                    logger.info(
-                        f"[View Rotator] Rotacionando de '{current_page}' para '{next_page}'"
-                    )
-                    st.session_state["current_page"] = next_page
-
+            if next_page != current_page:
+                logger.info(
+                    f"[View Rotator] Rotacionando de '{current_page}' para '{next_page}'"
+                )
+                st.session_state["current_page"] = next_page
                 st.rerun()
-            except Exception as e:
-                logger.error(f"Erro na rotação de views: {str(e)}")
-                time.sleep(1)
 
+        # Configura o intervalo de rotação (10 segundos)
+        if 'last_rotation' not in st.session_state:
+            st.session_state['last_rotation'] = time.time()
 
-        data_thread.start()
+        try:
+            current_time = time.time()
+            if current_time - st.session_state['last_rotation'] >= 10:
+                st.session_state['last_rotation'] = current_time
+                rotate_views()
+        except Exception as e:
+            logger.error(f"Erro na rotação de views: {str(e)}")
+            time.sleep(1)
 
         st.session_state["background_started"] = True
 
@@ -846,16 +849,25 @@ def main():
     # Get active brokers
     active_brokers = data['brokers'][data['brokers']['cargo'] == 'Corretor']
 
-    # Use session state to control which view to show
+    # Ler parâmetros da URL e sincronizar com session state
+    url_page = st.query_params.get("page", "ranking")
+
+    if url_page != st.session_state["current_page"]:
+        st.session_state["current_page"] = url_page
+
     current_page = st.session_state["current_page"]
     broker_id = None
 
     if current_page != "ranking":
         try:
             broker_id = int(current_page.split('/')[1])
+            broker_exists = data['brokers'][data['brokers']['id'] == broker_id]
+            if broker_exists.empty:
+                raise ValueError("Corretor inválido")
         except (IndexError, ValueError):
             st.warning("Página inválida. Retornando ao ranking geral.")
             st.session_state["current_page"] = "ranking"
+            st.query_params["page"] = "ranking"
             current_page = "ranking"
 
     if current_page == "ranking":
