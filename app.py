@@ -902,14 +902,14 @@ def display_login_page():
                 unsafe_allow_html=True)
 
             with st.form("login_form", clear_on_submit=True):
-            email = st.text_input("Email",
-                                  placeholder="Digite seu email",
-                                  help="Digite seu email corporativo")
+                email = st.text_input("Email",
+                                    placeholder="Digite seu email",
+                                    help="Digite seu email corporativo")
 
-            senha = st.text_input("Senha",
-                                  type="password",
-                                  placeholder="Digite sua senha",
-                                  help="Digite sua senha")
+                senha = st.text_input("Senha",
+                                    type="password",
+                                    placeholder="Digite sua senha",
+                                    help="Digite sua senha")
 
             if st.form_submit_button("Entrar",
                                      type="primary",
