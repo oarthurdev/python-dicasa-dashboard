@@ -889,7 +889,46 @@ def get_view_manager():
 #             time.sleep(5)
 
 
+def display_login_page():
+    st.markdown(
+        "<h1 style='text-align: center;'>Login</h1>",
+        unsafe_allow_html=True)
+    
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+    
+    if st.button("Login"):
+        try:
+            response = supabase.client.auth.sign_in_with_password({
+                "email": email,
+                "password": password
+            })
+            if response.user:
+                st.session_state["authenticated"] = True
+                st.query_params["page"] = "ranking"
+                st.rerun()
+            else:
+                st.error("Login falhou. Verifique suas credenciais.")
+        except Exception as e:
+            st.error(f"Erro no login: {str(e)}")
+
 def main():
+    # Check authentication
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    # Check if login page is requested
+    current_page = st.query_params.get("page", "ranking")
+    
+    if current_page == "login":
+        display_login_page()
+        return
+    
+    # Redirect to login if not authenticated
+    if not st.session_state["authenticated"]:
+        st.query_params["page"] = "login"
+        st.rerun()
+        return
 
     def rotate_views_on_reload():
         view_manager = get_view_manager()
@@ -927,10 +966,18 @@ def main():
     if "page" not in st.query_params:
         st.query_params.update({"page": "ranking"})
 
-    # Título da página
-    st.markdown(
-        "<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>",
-        unsafe_allow_html=True)
+    # Header with logout button
+    col1, col2, col3 = st.columns([8,2,2])
+    with col1:
+        st.markdown(
+            "<h1 style='text-align: center;'>Dashboard de Desempenho - Corretores</h1>",
+            unsafe_allow_html=True)
+    with col3:
+        if st.button("Logout"):
+            supabase.client.auth.sign_out()
+            st.session_state["authenticated"] = False
+            st.query_params["page"] = "login"
+            st.rerun()
 
     # Fetch data from Supabase
     data = get_data_from_supabase()
