@@ -105,24 +105,57 @@ def background_data_loader():
 st.markdown("""
 <style>
     .main .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
+        padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+        background: linear-gradient(to bottom, #F8FAFC, #F1F5F9);
     }
     h1 {
-        font-size: 2.2rem !important;
-        font-weight: 600 !important;
+        font-size: 2.4rem !important;
+        font-weight: 700 !important;
         color: #1E3A8A !important;
+        text-align: center !important;
+        margin-bottom: 2rem !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
     }
     h2 {
-        font-size: 1.8rem !important;
-        font-weight: 500 !important;
+        font-size: 2rem !important;
+        font-weight: 600 !important;
         color: #2563EB !important;
+        margin: 1.5rem 0 !important;
+        border-bottom: 2px solid #E2E8F0;
+        padding-bottom: 0.5rem;
+    }
+    h3 {
+        font-size: 1.5rem !important;
+        font-weight: 600 !important;
+        color: #334155 !important;
+        margin: 1rem 0 !important;
     }
     .stMetric {
-        background-color: #F3F4F6;
-        padding: 10px 15px;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24);
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        transition: transform 0.2s ease-in-out;
+    }
+    .stMetric:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+    }
+    .stMetric label {
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        color: #4B5563 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .stMetric .css-1xarl3l {
+        font-size: 2.5rem !important;
+        font-weight: 700 !important;
+        background: linear-gradient(45deg, #1E40AF, #3B82F6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
     .stMetric label {
         font-weight: 600 !important;
@@ -145,16 +178,32 @@ st.markdown("""
         padding-bottom: 1rem;
     }
     .ranking-card {
-        background-color: white;
-        padding: 15px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 20px;
-        transition: all 0.3s ease;
+        background: white;
+        padding: 1.5rem;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        margin-bottom: 1.5rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid #E2E8F0;
+        backdrop-filter: blur(10px);
     }
     .ranking-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+        transform: translateY(-4px) scale(1.01);
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+        border-color: #CBD5E1;
+    }
+    .ranking-card::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(30,64,175,0.1));
+        border-radius: 16px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    .ranking-card:hover::after {
+        opacity: 1;
     }
     .rank-number {
         font-size: 24px;
