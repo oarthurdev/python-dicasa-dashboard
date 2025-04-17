@@ -1,0 +1,30 @@
+Analise os arquivos no contexto do chat, e corrija o modo como é pego o dia_semana para criar o heatmap, na tabela activities é salvo em ingles, mandarei um log de debu abaixo.
+
+Iniciando criação do mapa de calor
+streamlit-app_1  | 2025-04-17 19:00:18,683 - visualizations - INFO - [HEATMAP] Total de registros recebidos: 30
+streamlit-app_1  | 2025-04-17 19:00:18,684 - visualizations - INFO - [HEATMAP] Filtrando por tipo: mensagem_enviada — Registros restantes: 30
+streamlit-app_1  | 2025-04-17 19:00:18,685 - visualizations - INFO - [HEATMAP] Após filtro de horário (08h–21h): 30 registros
+streamlit-app_1  | 2025-04-17 19:00:18,685 - visualizations - INFO - [HEATMAP] Traduzindo dias da semana
+streamlit-app_1  | 2025-04-17 19:00:18,688 - visualizations - INFO - [HEATMAP] Valores únicos de dia_semana após tradução: [nan]
+streamlit-app_1  | 2025-04-17 19:00:18,700 - visualizations - INFO - [HEATMAP] DataFrame filtrado antes da categorização:
+streamlit-app_1  |     dia_semana  hora
+streamlit-app_1  | 110        NaN    12
+streamlit-app_1  | 166        NaN    17
+streamlit-app_1  | 167        NaN    17
+streamlit-app_1  | 260        NaN    17
+streamlit-app_1  | 332        NaN    12
+streamlit-app_1  | 
+streamlit-app_1  | 2025-04-17 19:00:18,705 - visualizations - INFO - [HEATMAP] Mapeando horas para blocos de tempo
+streamlit-app_1  | 2025-04-17 19:00:18,718 - visualizations - INFO - [HEATMAP] DataFrame após mapeamento:
+streamlit-app_1  |     dia_semana  hora time_block
+streamlit-app_1  | 110        NaN    12  12h - 14h
+streamlit-app_1  | 166        NaN    17  16h - 18h
+streamlit-app_1  | 167        NaN    17  16h - 18h
+streamlit-app_1  | 260        NaN    17  16h - 18h
+streamlit-app_1  | 332        NaN    12  12h - 14h
+streamlit-app_1  | 
+streamlit-app_1  | 2025-04-17 19:00:18,727 - visualizations - INFO - [HEATMAP] Registros agrupados: 0
+streamlit-app_1  | 2025-04-17 19:00:18,728 - visualizations - INFO - [HEATMAP] Heatmap agrupado:
+streamlit-app_1  | Empty DataFrame
+streamlit-app_1  | Columns: [dia_semana, time_block, count]
+streamlit-app_1  | Index: []
