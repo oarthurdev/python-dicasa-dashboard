@@ -987,37 +987,46 @@ def display_rules_list():
 def display_rule_create():
     st.title("Criar Nova Regra")
     
-    with st.form("create_rule"):
-        nome = st.text_input("Nome da Regra")
-        pontos = st.number_input("Pontos", step=1)
-        
-        if st.form_submit_button("Criar Regra", type="primary"):
-            if not nome:
-                st.error("Nome da regra é obrigatório")
-                return
-                
-            try:
-                # Formatar nome da coluna
-                coluna_nome = format_rule_name(nome)
-                
-                # Inserir regra
-                supabase.client.table("rules").insert({
-                    "nome": nome,
-                    "pontos": pontos,
-                    "coluna_nome": coluna_nome
-                }).execute()
-                
-                # Adicionar coluna na tabela broker_points
-                supabase.client.rpc(
-                    'add_column_to_broker_points',
-                    {'column_name': coluna_nome, 'column_type': 'integer'}
-                ).execute()
-                
-                st.success("Regra criada com sucesso!")
-                st.query_params["page"] = "settings/rules"
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao criar regra: {str(e)}")
+    with st.container():
+        with st.form("create_rule", clear_on_submit=True):
+            nome = st.text_input("Nome da Regra", 
+                               placeholder="Ex: Leads respondidos em 1h",
+                               help="Nome descritivo da regra de pontuação")
+            
+            pontos = st.number_input("Pontos", 
+                                   min_value=0,
+                                   step=1,
+                                   help="Quantidade de pontos para esta regra")
+            
+            submitted = st.form_submit_button("Criar Regra", type="primary")
+            
+            if submitted:
+                if not nome:
+                    st.error("Nome da regra é obrigatório")
+                    return
+                    
+                try:
+                    # Formatar nome da coluna
+                    coluna_nome = format_rule_name(nome)
+                    
+                    # Inserir regra
+                    supabase.client.table("rules").insert({
+                        "nome": nome,
+                        "pontos": pontos,
+                        "coluna_nome": coluna_nome
+                    }).execute()
+                    
+                    # Adicionar coluna na tabela broker_points
+                    supabase.client.rpc(
+                        'add_column_to_broker_points',
+                        {'column_name': coluna_nome, 'column_type': 'integer'}
+                    ).execute()
+                    
+                    st.success("Regra criada com sucesso!")
+                    st.query_params["page"] = "settings/rules"
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao criar regra: {str(e)}")
 
 def display_settings():
     st.title("Configurações")
