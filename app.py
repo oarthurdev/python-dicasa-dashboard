@@ -1098,34 +1098,47 @@ def display_rule_create():
                     st.error("Nome da regra é obrigatório")
                     return
 
-                try:
-                    # Formatar nome da coluna
-                    coluna_nome = format_rule_name(nome)
-                    logger.info(f"[RULE] Nome da coluna: {coluna_nome}")
-                    # Inserir regra
-                    supabase.client.table("rules").insert({
-                        "nome": nome,
-                        "pontos": pontos,
-                        "coluna_nome": coluna_nome
-                    }).execute()
+                # Formatar nome da coluna
+                coluna_nome = format_rule_name(nome)
+                logger.info(f"[RULE] Nome da coluna: {coluna_nome}")
 
-                    logger.info("[RULE] Regra inserida com sucesso")
+                try:
+                    # Primeiro adiciona a coluna na tabela broker_points
                     logger.info("[RULE] Adicionando coluna na tabela broker_points")
-                    # Adicionar coluna na tabela broker_points
                     supabase.client.rpc(
                         'add_column_to_broker_points',
                         {'column_name': coluna_nome, 'column_type': 'integer'}
                     ).execute()
-
                     logger.info("[RULE] Coluna adicionada com sucesso")
+
+                    # Depois insere a regra
+                    logger.info("[RULE] Inserindo regra")
+                    response = supabase.client.table("rules").insert({
+                        "nome": nome,
+                        "pontos": pontos,
+                        "coluna_nome": coluna_nome
+                    }).execute()
                     
+                    if not response.data:
+                        raise Exception("Erro ao inserir regra no banco de dados")
+                    
+                    logger.info("[RULE] Regra inserida com sucesso")
                     st.success("Regra criada com sucesso!")
-                    time.sleep(1)  # Give time for the success message to be shown
+                    time.sleep(1)
                     st.query_params["page"] = "settings/rules"
                     st.rerun()
+
                 except Exception as e:
-                    logger.info(f"[RULE] Erro ao criar regra: {str(e)}")
+                    logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
                     st.error(f"Erro ao criar regra: {str(e)}")
+                    # Tenta remover a coluna se ela foi criada mas a regra falhou
+                    try:
+                        supabase.client.rpc(
+                            'drop_column_from_broker_points',
+                            {'column_name': coluna_nome}
+                        ).execute()
+                    except:
+                        pass
 
 def display_settings():
     st.title("Configurações")
