@@ -40,10 +40,12 @@ class SyncManager:
             # Convert records for database
             processed_records = []
             for record in data_list:
-                # Convert Timestamp objects to ISO format strings
+                # Convert Timestamp objects to ISO format strings and handle NaN values
                 for key, value in record.items():
                     if hasattr(value, 'isoformat'):  # Check if it's datetime-like
                         record[key] = value.isoformat()
+                    elif pd.isna(value):  # Handle NaN values
+                        record[key] = None
                 
                 record_hash = self._generate_hash(record)
                 
