@@ -109,17 +109,23 @@ class SyncManager:
 
             if self.needs_sync('activities') and activities is not None:
                 # Get existing broker IDs
-                result = self.supabase.client.table("brokers").select("id").execute()
-                if hasattr(result, "error") and result.error:
-                    raise Exception(f"Supabase error: {result.error}")
-                    
-                valid_broker_ids = {broker['id'] for broker in result.data}
+                broker_result = self.supabase.client.table("brokers").select("id").execute()
+                if hasattr(broker_result, "error") and broker_result.error:
+                    raise Exception(f"Supabase error: {broker_result.error}")
+                valid_broker_ids = {broker['id'] for broker in broker_result.data}
+
+                # Get existing lead IDs
+                lead_result = self.supabase.client.table("leads").select("id").execute()
+                if hasattr(lead_result, "error") and lead_result.error:
+                    raise Exception(f"Supabase error: {lead_result.error}")
+                valid_lead_ids = {lead['id'] for lead in lead_result.data}
                 
-                # Filter activities with valid user_id
+                # Filter activities with valid user_id and lead_id
                 activities_records = activities.to_dict('records')
                 valid_activities = [
                     activity for activity in activities_records 
-                    if activity.get('user_id') in valid_broker_ids or activity.get('user_id') is None
+                    if (activity.get('user_id') in valid_broker_ids or activity.get('user_id') is None) and
+                       (activity.get('lead_id') in valid_lead_ids or activity.get('lead_id') is None)
                 ]
                 
                 for i in range(0, len(valid_activities), self.batch_size):
