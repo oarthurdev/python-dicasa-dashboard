@@ -3,6 +3,7 @@ run = "python app.py"
 
 [nix]
 channel = "stable-24_05"
+packages = ["glibcLocales"]
 
 [deployment]
 deploymentTarget = "autoscale"
