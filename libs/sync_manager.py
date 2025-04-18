@@ -16,7 +16,7 @@ class SyncManager:
         self.supabase = supabase_client
         self.batch_size = batch_size
         self.last_sync = {
-            'users': None,
+            'brokers': None,
             'leads': None,
             'activities': None
         }
@@ -71,12 +71,12 @@ class SyncManager:
     def sync_from_cache(self, brokers, leads, activities):
         """Synchronize data from cache with batch processing"""
         try:
-            if self.needs_sync('users') and brokers is not None:
+            if self.needs_sync('brokers') and brokers is not None:
                 brokers_records = brokers.to_dict('records')
                 for i in range(0, len(brokers_records), self.batch_size):
                     batch = brokers_records[i:i + self.batch_size]
                     self._process_batch(batch, 'brokers')
-                self.update_sync_time('users')
+                self.update_sync_time('brokers')
 
             if self.needs_sync('leads') and leads is not None:
                 leads_records = leads.to_dict('records')
