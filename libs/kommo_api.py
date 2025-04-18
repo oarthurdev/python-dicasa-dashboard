@@ -252,7 +252,7 @@ class KommoAPI:
             logger.error(f"Erro ao buscar leads: {str(e)}")
             return pd.DataFrame()
 
-    def get_activities(self, page_size=250, max_workers=3):
+    def get_activities(self, page_size=250, max_workers=5):
         """
         Retrieve all activities from Kommo CRM using parallel requests
         """
@@ -269,7 +269,8 @@ class KommoAPI:
                     params={
                         "page": page,
                         "limit": page_size,
-                        "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
+                        "filter[type]":
+                        "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
                         "filter[created_at][from]": filter_from,
                     })
 
@@ -282,27 +283,33 @@ class KommoAPI:
                 while True:
                     # Fetch multiple pages in parallel
                     future_to_page = {
-                        executor.submit(fetch_page, p): p 
+                        executor.submit(fetch_page, p): p
                         for p in range(page, page + max_workers)
                     }
 
                     for future in future_to_page:
                         try:
                             response = future.result()
-                            events = response.get("_embedded", {}).get("events", [])
+                            events = response.get("_embedded",
+                                                  {}).get("events", [])
 
                             if not events:
                                 empty_streak += 1
                                 if empty_streak >= stop_after:
-                                    logger.info(f"Stopping: {stop_after} empty pages")
+                                    logger.info(
+                                        f"Stopping: {stop_after} empty pages")
                                     break
                             else:
                                 empty_streak = 0
                                 activities_data.extend(events)
-                                logger.info(f"Page {future_to_page[future]} fetched: {len(events)} events")
+                                logger.info(
+                                    f"Page {future_to_page[future]} fetched: {len(events)} events"
+                                )
 
                         except Exception as e:
-                            logger.error(f"Error fetching page {future_to_page[future]}: {e}")
+                            logger.error(
+                                f"Error fetching page {future_to_page[future]}: {e}"
+                            )
 
                     if empty_streak >= stop_after:
                         break
