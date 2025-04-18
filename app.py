@@ -947,13 +947,54 @@ def format_rule_name(name):
     return name.lower().replace(' ', '_').replace('-', '_').replace('/', '_')
 
 def display_rules_list():
-    st.title("Regras de Pontuação")
-
-    # Container para o botão de criar regra
-    with st.container():
-        if st.button("➕ Criar Nova Regra", type="primary", key="create_rule_btn"):
-            st.query_params["page"] = "settings/rule/create"
-            st.rerun()
+    st.markdown("""
+        <div class="settings-container">
+            <h1 class="settings-title">Regras de Pontuação</h1>
+            <div class="d-flex justify-content-end mb-4">
+                <button class="btn btn-primary" onclick="window.location.href='?page=settings/rule/create'">
+                    ➕ Criar Nova Regra
+                </button>
+            </div>
+        </div>
+        <style>
+            .settings-container {
+                background: white;
+                border-radius: 10px;
+                padding: 2rem;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .settings-title {
+                color: #1a1a1a;
+                margin-bottom: 1.5rem;
+                font-size: 2rem;
+            }
+            .rule-card {
+                background: #f8f9fa;
+                border-radius: 8px;
+                padding: 1rem;
+                margin-bottom: 1rem;
+                border: 1px solid #e9ecef;
+                transition: all 0.2s ease;
+            }
+            .rule-card:hover {
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }
+            .points-badge {
+                background: #e9ecef;
+                padding: 0.25rem 0.75rem;
+                border-radius: 20px;
+                font-weight: 600;
+            }
+            .points-positive {
+                background: #d4edda;
+                color: #155724;
+            }
+            .points-negative {
+                background: #f8d7da;
+                color: #721c24;
+            }
+        </style>
+    """, unsafe_allow_html=True)
 
     # Buscar regras do Supabase
     rules = supabase.client.table("rules").select("*").execute()
@@ -964,54 +1005,92 @@ def display_rules_list():
 
     # Mostrar regras em cards
     for rule in rules.data:
-        with st.container():
-            cols = st.columns([3,1,1])
-            cols[0].markdown(f"**{rule['nome']}**")
-            cols[1].markdown(f"**{rule['pontos']} pontos**")
-            if cols[2].button("🗑️", key=f"del_{rule['id']}", type="secondary"):
-                try:
-                    # Deletar regra
-                    supabase.client.table("rules").delete().eq("id", rule['id']).execute()
+        points_class = "points-positive" if rule['pontos'] >= 0 else "points-negative"
+        st.markdown(f"""
+            <div class="rule-card">
+                <div class="row align-items-center">
+                    <div class="col-8">
+                        <h5 class="mb-0">{rule['nome']}</h5>
+                    </div>
+                    <div class="col-2 text-center">
+                        <span class="points-badge {points_class}">{rule['pontos']} pontos</span>
+                    </div>
+                    <div class="col-2 text-end">
+                        <button class="btn btn-danger btn-sm" onclick="delete_rule('{rule['id']}')">🗑️ Excluir</button>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
 
-                    # Deletar coluna da tabela broker_points
-                    supabase.client.rpc(
-                        'drop_column_from_broker_points',
-                        {'column_name': rule['coluna_nome']}
-                    ).execute()
-
-                    st.success("Regra deletada com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao deletar regra: {str(e)}")
-            st.divider()
+        # Handle delete functionality with Streamlit
+        if st.button("Excluir", key=f"del_{rule['id']}", type="secondary"):
+            try:
+                supabase.client.table("rules").delete().eq("id", rule['id']).execute()
+                supabase.client.rpc(
+                    'drop_column_from_broker_points',
+                    {'column_name': rule['coluna_nome']}
+                ).execute()
+                st.success("Regra deletada com sucesso!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao deletar regra: {str(e)}")
 
 def display_rule_create():
-    st.title("Criar Nova Regra")
+    st.markdown("""
+        <div class="settings-container">
+            <h1 class="settings-title">Criar Nova Regra</h1>
+            <style>
+                .settings-container {
+                    background: white;
+                    border-radius: 10px;
+                    padding: 2rem;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    max-width: 800px;
+                    margin: 0 auto;
+                }
+                .settings-title {
+                    color: #1a1a1a;
+                    margin-bottom: 1.5rem;
+                    font-size: 2rem;
+                    text-align: center;
+                }
+                .form-group {
+                    margin-bottom: 1.5rem;
+                }
+                .form-label {
+                    font-weight: 500;
+                    margin-bottom: 0.5rem;
+                }
+                .stButton button {
+                    width: 100%;
+                }
+            </style>
+        </div>
+    """, unsafe_allow_html=True)
 
     with st.container():
         with st.form("create_rule", clear_on_submit=True):
-            st.markdown("""
-                <style>
-                    [data-testid="stForm"] {
-                        padding: 20px !important;
-                        border-radius: 10px !important;
-                        background: white !important;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
-                    }
-                </style>
-            """, unsafe_allow_html=True)
-
+            st.markdown('<div class="form-group">', unsafe_allow_html=True)
             nome = st.text_input("Nome da Regra", 
                                placeholder="Ex: Leads respondidos em 1h",
                                help="Nome descritivo da regra de pontuação")
 
             pontos = st.number_input("Pontos", 
-                                   min_value=-100,
-                                   max_value=100,
+                                   min_value=-1000,
+                                   max_value=1000,
                                    step=1,
                                    help="Quantidade de pontos para esta regra (negativo para penalidades)")
+            st.markdown('</div>', unsafe_allow_html=True)
 
-            submitted = st.form_submit_button("Criar Regra", type="primary")
+            col1, col2 = st.columns([1,1])
+            with col1:
+                cancel = st.form_submit_button("Cancelar", type="secondary")
+            with col2:
+                submitted = st.form_submit_button("Criar Regra", type="primary")
+
+            if cancel:
+                st.query_params["page"] = "settings/rules"
+                st.rerun()
 
             if submitted:
                 if not nome:
@@ -1036,7 +1115,7 @@ def display_rule_create():
                     ).execute()
 
                     st.success("Regra criada com sucesso!")
-                    st.query_params.clear()
+                    time.sleep(1)  # Give time for the success message to be shown
                     st.query_params["page"] = "settings/rules"
                     st.rerun()
                 except Exception as e:
