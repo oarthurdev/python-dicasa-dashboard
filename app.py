@@ -1245,23 +1245,18 @@ def display_rule_create():
             except Exception as e:
                 logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
                 st.error(f"Erro ao criar regra: {str(e)}")
-                # Se a regra foi criada mas houve erro na coluna, remove a regra
+                
+                # Tenta limpar recursos criados em caso de erro
                 try:
+                    # Remove a regra se foi criada
                     supabase.client.table("rules").delete().eq(
                         "coluna_nome", coluna_nome).execute()
-                except:
-                    pass
-
-            except Exception as e:
-                logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
-                st.error(f"Erro ao criar regra: {str(e)}")
-                # Tenta remover a coluna se ela foi criada mas a regra falhou
-                try:
+                    # Remove a coluna se foi criada
                     supabase.client.rpc('drop_column_from_broker_points', {
                         'column_name': coluna_nome
                     }).execute()
-                except:
-                    pass
+                except Exception as cleanup_error:
+                    logger.error(f"[RULE] Erro ao limpar recursos: {str(cleanup_error)}")
 
 
 def display_settings():
