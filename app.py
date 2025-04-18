@@ -1051,72 +1051,72 @@ def display_rule_create():
                                step=1,
                                help="Quantidade de pontos para esta regra (negativo para penalidades)")
 
-            col1, col2 = st.columns([1,1])
-            with col1:
-                cancel = st.form_submit_button("Cancelar", use_container_width=True)
-            with col2:
-                submitted = st.form_submit_button("Criar Regra", use_container_width=True)
+        col1, col2 = st.columns([1,1])
+        with col1:
+            cancel = st.form_submit_button("Cancelar", use_container_width=True)
+        with col2:
+            submitted = st.form_submit_button("Criar Regra", use_container_width=True)
 
-            if cancel:
+        if cancel:
+            st.query_params["page"] = "settings/rules"
+            st.rerun()
+
+        if submitted:
+            if not nome:
+                st.error("Nome da regra é obrigatório")
+                return
+
+            try:
+                # Formatar nome da coluna
+                coluna_nome = format_rule_name(nome)
+                logger.info(f"[RULE] Nome da coluna: {coluna_nome}")
+
+                # Inserir regra primeiro
+                logger.info("[RULE] Inserindo regra")
+                response = supabase.client.table("rules").insert({
+                    "nome": nome,
+                    "pontos": pontos,
+                    "coluna_nome": coluna_nome
+                }).execute()
+
+                if not response.data:
+                    raise Exception("Erro ao inserir regra no banco de dados")
+                
+                logger.info("[RULE] Regra inserida com sucesso")
+
+                # Depois adiciona a coluna na tabela broker_points
+                logger.info("[RULE] Adicionando coluna na tabela broker_points")
+                supabase.client.rpc(
+                    'add_column_to_broker_points',
+                    {'column_name': coluna_nome, 'column_type': 'integer'}
+                ).execute()
+                logger.info("[RULE] Coluna adicionada com sucesso")
+                
+                st.success("Regra criada com sucesso!")
+                time.sleep(1)
                 st.query_params["page"] = "settings/rules"
                 st.rerun()
 
-            if submitted:
-                if not nome:
-                    st.error("Nome da regra é obrigatório")
-                    return
-
+            except Exception as e:
+                logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
+                st.error(f"Erro ao criar regra: {str(e)}")
+                # Se a regra foi criada mas houve erro na coluna, remove a regra
                 try:
-                    # Formatar nome da coluna
-                    coluna_nome = format_rule_name(nome)
-                    logger.info(f"[RULE] Nome da coluna: {coluna_nome}")
+                    supabase.client.table("rules").delete().eq("coluna_nome", coluna_nome).execute()
+                except:
+                    pass
 
-                    # Inserir regra primeiro
-                    logger.info("[RULE] Inserindo regra")
-                    response = supabase.client.table("rules").insert({
-                        "nome": nome,
-                        "pontos": pontos,
-                        "coluna_nome": coluna_nome
-                    }).execute()
-
-                    if not response.data:
-                        raise Exception("Erro ao inserir regra no banco de dados")
-                    
-                    logger.info("[RULE] Regra inserida com sucesso")
-
-                    # Depois adiciona a coluna na tabela broker_points
-                    logger.info("[RULE] Adicionando coluna na tabela broker_points")
+            except Exception as e:
+                logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
+                st.error(f"Erro ao criar regra: {str(e)}")
+                # Tenta remover a coluna se ela foi criada mas a regra falhou
+                try:
                     supabase.client.rpc(
-                        'add_column_to_broker_points',
-                        {'column_name': coluna_nome, 'column_type': 'integer'}
+                        'drop_column_from_broker_points',
+                        {'column_name': coluna_nome}
                     ).execute()
-                    logger.info("[RULE] Coluna adicionada com sucesso")
-                    
-                    st.success("Regra criada com sucesso!")
-                    time.sleep(1)
-                    st.query_params["page"] = "settings/rules"
-                    st.rerun()
-
-                except Exception as e:
-                    logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
-                    st.error(f"Erro ao criar regra: {str(e)}")
-                    # Se a regra foi criada mas houve erro na coluna, remove a regra
-                    try:
-                        supabase.client.table("rules").delete().eq("coluna_nome", coluna_nome).execute()
-                    except:
-                        pass
-
-                except Exception as e:
-                    logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
-                    st.error(f"Erro ao criar regra: {str(e)}")
-                    # Tenta remover a coluna se ela foi criada mas a regra falhou
-                    try:
-                        supabase.client.rpc(
-                            'drop_column_from_broker_points',
-                            {'column_name': coluna_nome}
-                        ).execute()
-                    except:
-                        pass
+                except:
+                    pass
 
 def display_settings():
     st.title("Configurações")
