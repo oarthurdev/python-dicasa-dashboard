@@ -1344,18 +1344,17 @@ def main():
         if "active_brokers" not in st.session_state:
             st.session_state["active_brokers"] = []
 
-        if "last_rotation_time" not in st.session_state:
-            st.session_state["last_rotation_time"] = time.time()
+        current_time = time.time()
+        last_sync_time = st.session_state.get("last_sync_time", 0)
+        elapsed = current_time - last_sync_time
 
-        elapsed = time.time() - st.session_state["last_rotation_time"]
-
-        if elapsed >= 10:  # só rotaciona a cada 5 segundos
+        if elapsed >= 10:  # só rotaciona a cada 10 segundos
             view_manager.set_active_brokers(st.session_state["active_brokers"])
             next_page = view_manager.get_next_page()
 
             if next_page and next_page != st.session_state.get("current_page"):
                 st.session_state["current_page"] = next_page
-                st.session_state["last_rotation_time"] = time.time()
+                st.session_state["last_sync_time"] = current_time
                 st.query_params["page"] = next_page
                 st.rerun()
 
