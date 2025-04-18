@@ -100,11 +100,6 @@ CREATE POLICY "Anônimo pode excluir activities" ON activities
 
 -- Política para broker_points
 ALTER TABLE broker_points ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Anônimo pode ler broker_points" ON broker_points
-    FOR SELECT USING (true);
-CREATE POLICY "Anônimo pode inserir broker_points" ON broker_points
-    FOR INSERT WITH CHECK (true);
-CREATE POLICY "Anônimo pode atualizar broker_points" ON broker_points
-    FOR UPDATE USING (true) WITH CHECK (true);
-CREATE POLICY "Anônimo pode excluir broker_points" ON broker_points
-    FOR DELETE USING (true);
+CREATE POLICY "Enable all access for authenticated users" ON broker_points
+    FOR ALL USING (auth.role() = 'authenticated')
+    WITH CHECK (auth.role() = 'authenticated');
