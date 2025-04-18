@@ -1029,20 +1029,17 @@ def main():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
 
-    # Verificar se é a página de login
+    # Get current page from query params
     current_page = st.query_params.get("page", "ranking")
-    if current_page == "login":
-        display_login_page()
-        return
-        
-    # Verificar autenticação para páginas de configuração
+    
+    # Check authentication for settings pages
     if current_page.startswith("settings"):
         if not st.session_state["authenticated"]:
             st.error("Você precisa estar autenticado para acessar esta página")
             st.query_params["page"] = "login"
             st.rerun()
             return
-    if current_page == "login":
+    elif current_page == "login":
         display_login_page()
         return
 
