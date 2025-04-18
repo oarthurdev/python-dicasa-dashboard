@@ -950,10 +950,12 @@ def display_rules_list():
     st.markdown("""
         <div class="settings-container">
             <h1 class="settings-title">Regras de Pontuação</h1>
-            if st.button("➕ Criar Nova Regra", type="primary"):
-                st.query_params["page"] = "settings/rule/create"
-                st.rerun()
         </div>
+        """, unsafe_allow_html=True)
+    
+    if st.button("➕ Criar Nova Regra", type="primary"):
+        st.query_params["page"] = "settings/rule/create"
+        st.rerun()
         <style>
             .settings-container {
                 background: white;
