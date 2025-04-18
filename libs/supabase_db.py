@@ -482,9 +482,10 @@ class SupabaseClient:
             logger.error(f"Erro ao inicializar broker_points: {str(e)}")
             raise
 
-    def update_broker_points(self):
+    def update_broker_points(self, brokers=None, leads=None, activities=None):
         """
         Atualiza a tabela broker_points no Supabase com base nas regras de gamificação.
+        Aceita dados já obtidos para evitar chamadas API desnecessárias.
         """
         import logging
         from gamification import calculate_broker_points
@@ -495,20 +496,21 @@ class SupabaseClient:
         try:
             logger.info("Iniciando atualização dos pontos dos corretores...")
 
-            # Recupera dados necessários
-            from .kommo_api import KommoAPI
-            kommo_api = KommoAPI()
+            # Se não recebeu dados em cache, busca da API
+            if brokers is None or leads is None or activities is None:
+                from .kommo_api import KommoAPI
+                kommo_api = KommoAPI()
 
-            # Tenta buscar os dados com retry em caso de erro
-            max_retries = 3
-            retry_delay = 5  # segundos
+                # Tenta buscar os dados com retry em caso de erro
+                max_retries = 3
+                retry_delay = 5  # segundos
 
-            for attempt in range(max_retries):
-                try:
-                    brokers = kommo_api.get_users()
-                    leads = kommo_api.get_leads()
-                    activities = kommo_api.get_activities()
-                    break
+                for attempt in range(max_retries):
+                    try:
+                        brokers = kommo_api.get_users()
+                        leads = kommo_api.get_leads()
+                        activities = kommo_api.get_activities()
+                        break
                 except Exception as e:
                     if attempt == max_retries - 1:
                         raise

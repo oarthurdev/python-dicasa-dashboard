@@ -121,7 +121,7 @@ def background_data_loader():
                     if not brokers.empty and not leads.empty and not activities.empty:
                         sync_manager.sync_from_cache(brokers, leads,
                                                      activities)
-                        auto_update_broker_points()
+                        auto_update_broker_points(brokers=brokers, leads=leads, activities=activities)
 
                     last_sync_time = current_time
 
@@ -845,11 +845,11 @@ def display_general_ranking(data):
 state_lock = threading.Lock()
 
 
-def auto_update_broker_points():
+def auto_update_broker_points(brokers=None, leads=None, activities=None):
     while True:
         try:
             logger.info("[Auto Update] Atualizando pontos dos corretores")
-            supabase.update_broker_points()
+            supabase.update_broker_points(brokers=brokers, leads=leads, activities=activities)
             logger.info("[Auto Update] Pontos atualizados com sucesso")
             logger.info(
                 "[Auto Update] Aguardando 5 minutos para a próxima atualização"
