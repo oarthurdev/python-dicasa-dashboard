@@ -1309,9 +1309,6 @@ def main():
     current_page = st.session_state["current_page"]
     broker_id = None
 
-    logger.info(f"[MAIN]Current page: {current_page}")
-    logger.info(f"[MAIN] Active brokers: {active_brokers}")
-
     # Handle different page types
     if current_page.startswith("broker/"):
         try:
