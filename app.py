@@ -904,26 +904,25 @@ def display_login_page():
                 if st.form_submit_button("Entrar",
                                          type="primary",
                                          use_container_width=True):
-                    if email and senha:
-                        try:
-                            response = supabase.client.auth.sign_in_with_password(
-                                {
-                                    "email": email,
-                                    "password": senha
-                                })
-                            if response.user:
-                                st.success("Login realizado com sucesso!")
-                                st.session_state["authenticated"] = True
-                                st.query_params["page"] = "ranking"
-                                st.rerun()
-                            else:
-                                st.error(
-                                    "Login falhou. Verifique suas credenciais."
-                                )
-                        except Exception as e:
-                            st.error(f"Erro no login: {str(e)}")
-                    else:
+                    if not email or not senha:
                         st.warning("Preencha todos os campos.")
+                        return
+
+                    try:
+                        response = supabase.client.auth.sign_in_with_password({
+                            "email": email,
+                            "password": senha
+                        })
+
+                        if response.user:
+                            st.success("Login realizado com sucesso!")
+                            st.session_state["authenticated"] = True
+                            st.query_params["page"] = "ranking"
+                            st.rerun()
+                        else:
+                            st.error("Email ou senha incorretos.")
+                    except Exception:
+                        st.error("Ocorreu um erro interno. Tente novamente mais tarde.")
 
 
 def main():
