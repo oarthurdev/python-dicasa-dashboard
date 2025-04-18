@@ -921,7 +921,7 @@ def display_login_page():
                             st.rerun()
                         else:
                             st.error("Email ou senha incorretos.")
-                    except gotrue.errors.AuthApiError as e:
+                    except gotrue.AuthApiError as e:
                         if "Invalid login credentials" in str(e):
                             st.error("Email ou senha incorretos, tente novamente.")
                         else:
