@@ -910,8 +910,10 @@ def display_login_page():
 
                     try:
                         response = supabase.client.auth.sign_in_with_password({
-                            "email": email,
-                            "password": senha
+                            "email":
+                            email,
+                            "password":
+                            senha
                         })
 
                         if response.user:
@@ -923,11 +925,14 @@ def display_login_page():
                             st.error("Email ou senha incorretos.")
                     except gotrue.AuthApiError as e:
                         if "Invalid login credentials" in str(e):
-                            st.error("Email ou senha incorretos, tente novamente.")
+                            st.error(
+                                "Email ou senha incorretos, tente novamente.")
                         else:
                             raise
                     except Exception:
-                        st.error("Ocorreu um erro interno. Tente novamente mais tarde.")
+                        st.error(
+                            "Ocorreu um erro interno. Tente novamente mais tarde."
+                        )
 
 
 def main():
@@ -977,12 +982,9 @@ def main():
     if "page" not in st.query_params:
         st.query_params.update({"page": "ranking"})
 
-    # Header with logout button
-    col1, col2, col3 = st.columns([8, 2, 2])
-    with col1:
-        st.markdown(
-            "<h1 style='text-align: center !important;'>Dashboard de Desempenho - Corretores</h1>",
-            unsafe_allow_html=True)
+    st.markdown(
+        "<h1 style='text-align: center !important;'>Dashboard de Desempenho - Corretores</h1>",
+        unsafe_allow_html=True)
 
     # Fetch data from Supabase
     data = get_data_from_supabase()
