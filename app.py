@@ -740,7 +740,6 @@ def display_broker_dashboard(broker_id, data):
                 <div style="font-size: 24px; font-weight: bold; color: #1E3A8A;">#{broker_rank}</div>
             </div>
             <div style="text-align: center;">
-                <div style="font-size: 14px; color: #6B7280;">Pontuação</div>
                 <div<div style="font-size: 24px; font-weight: bold; color: #2563EB;">{broker_points}</div>
             </div>
         </div>
@@ -910,10 +909,8 @@ def display_login_page():
 
                     try:
                         response = supabase.client.auth.sign_in_with_password({
-                            "email":
-                            email,
-                            "password":
-                            senha
+                            "email": email,
+                            "password": senha
                         })
 
                         if response.user:
@@ -923,10 +920,13 @@ def display_login_page():
                             st.rerun()
                         else:
                             st.error("Email ou senha incorretos.")
+                    except gotrue.errors.AuthApiError as e:
+                        if "Invalid login credentials" in str(e):
+                            st.error("Email ou senha incorretos, tente novamente.")
+                        else:
+                            raise
                     except Exception:
-                        st.error(
-                            "Ocorreu um erro interno. Tente novamente mais tarde."
-                        )
+                        st.error("Ocorreu um erro interno. Tente novamente mais tarde.")
 
 
 def main():
