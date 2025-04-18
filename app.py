@@ -922,7 +922,7 @@ def display_login_page():
                                 "email": response.user.email
                             }
                             st.success("Login realizado com sucesso!")
-                            
+
                             # Redirect to attempted page or ranking
                             next_page = st.session_state.get("attempted_page", "ranking")
                             st.query_params["page"] = next_page
@@ -947,20 +947,20 @@ def format_rule_name(name):
 
 def display_rules_list():
     st.title("Regras de Pontuação")
-    
+
     # Container para o botão de criar regra
     with st.container():
         if st.button("➕ Criar Nova Regra", type="primary", key="create_rule_btn"):
             st.query_params["page"] = "settings/rule/create"
             st.rerun()
-    
+
     # Buscar regras do Supabase
     rules = supabase.client.table("rules").select("*").execute()
-    
+
     if not rules.data:
         st.info("Nenhuma regra cadastrada.")
         return
-    
+
     # Mostrar regras em cards
     for rule in rules.data:
         with st.container():
@@ -971,13 +971,13 @@ def display_rules_list():
                 try:
                     # Deletar regra
                     supabase.client.table("rules").delete().eq("id", rule['id']).execute()
-                    
+
                     # Deletar coluna da tabela broker_points
                     supabase.client.rpc(
                         'drop_column_from_broker_points',
                         {'column_name': rule['coluna_nome']}
                     ).execute()
-                    
+
                     st.success("Regra deletada com sucesso!")
                     st.rerun()
                 except Exception as e:
@@ -986,42 +986,53 @@ def display_rules_list():
 
 def display_rule_create():
     st.title("Criar Nova Regra")
-    
+
     with st.container():
         with st.form("create_rule", clear_on_submit=True):
+            st.markdown("""
+                <style>
+                    .stForm > div:first-child {
+                        padding: 20px;
+                        border-radius: 10px;
+                        background: white;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+
             nome = st.text_input("Nome da Regra", 
                                placeholder="Ex: Leads respondidos em 1h",
                                help="Nome descritivo da regra de pontuação")
-            
+
             pontos = st.number_input("Pontos", 
                                    min_value=0,
                                    step=1,
                                    help="Quantidade de pontos para esta regra")
-            
+
             submitted = st.form_submit_button("Criar Regra", type="primary")
-            
+
             if submitted:
                 if not nome:
                     st.error("Nome da regra é obrigatório")
                     return
-                    
+
                 try:
                     # Formatar nome da coluna
                     coluna_nome = format_rule_name(nome)
-                    
+
                     # Inserir regra
                     supabase.client.table("rules").insert({
                         "nome": nome,
                         "pontos": pontos,
                         "coluna_nome": coluna_nome
                     }).execute()
-                    
+
                     # Adicionar coluna na tabela broker_points
                     supabase.client.rpc(
                         'add_column_to_broker_points',
                         {'column_name': coluna_nome, 'column_type': 'integer'}
                     ).execute()
-                    
+
                     st.success("Regra criada com sucesso!")
                     st.query_params["page"] = "settings/rules"
                     st.rerun()
@@ -1030,7 +1041,7 @@ def display_rule_create():
 
 def display_settings():
     st.title("Configurações")
-    
+
     # Menu lateral
     st.sidebar.title("Menu")
     if st.sidebar.button("Regras"):
@@ -1046,22 +1057,22 @@ def check_auth():
             st.session_state["authenticated"] = session is not None and session.user is not None
         except Exception:
             st.session_state["authenticated"] = False
-            
+
     return st.session_state["authenticated"]
 
 def main():
     # Get current page from query params
     current_page = st.query_params.get("page", "ranking")
-    
+
     # Check authentication status
     is_authenticated = check_auth()
-    
+
     logger.info(f"[SESSION] Authenticated: {str(is_authenticated)}")
     logger.info(f"[SESSION] Current page: {current_page}")
 
     # Define protected pages
     protected_pages = ["settings", "settings/rules", "settings/rule/create"]
-    
+
     # Handle page access and redirects
     if current_page in protected_pages and not is_authenticated:
         st.session_state["attempted_page"] = current_page
@@ -1069,7 +1080,7 @@ def main():
         st.query_params["page"] = "login"
         st.rerun()
         return
-        
+
     if current_page == "login":
         if is_authenticated:
             next_page = st.session_state.get("attempted_page", "ranking")
