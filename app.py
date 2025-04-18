@@ -948,42 +948,40 @@ def format_rule_name(name):
 def display_rules_list():
     st.title("Regras de Pontuação")
     
-    # Botão criar regra
-    if st.button("➕ Criar Nova Regra", type="primary"):
-        st.query_params["page"] = "settings/rule/create"
-        st.rerun()
-        
+    # Container para o botão de criar regra
+    with st.container():
+        if st.button("➕ Criar Nova Regra", type="primary", key="create_rule_btn"):
+            st.query_params["page"] = "settings/rule/create"
+            st.rerun()
+    
     # Buscar regras do Supabase
     rules = supabase.client.table("rules").select("*").execute()
     
     if not rules.data:
         st.info("Nenhuma regra cadastrada.")
         return
-        
+    
     # Mostrar regras em cards
     for rule in rules.data:
         with st.container():
-            col1, col2, col3 = st.columns([3,1,1])
-            with col1:
-                st.markdown(f"**{rule['nome']}**")
-            with col2:
-                st.markdown(f"**{rule['pontos']} pontos**")
-            with col3:
-                if st.button("🗑️ Deletar", key=f"del_{rule['id']}", type="secondary"):
-                    try:
-                        # Deletar regra
-                        supabase.client.table("rules").delete().eq("id", rule['id']).execute()
-                        
-                        # Deletar coluna da tabela broker_points
-                        supabase.client.rpc(
-                            'drop_column_from_broker_points',
-                            {'column_name': rule['coluna_nome']}
-                        ).execute()
-                        
-                        st.success("Regra deletada com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao deletar regra: {str(e)}")
+            cols = st.columns([3,1,1])
+            cols[0].markdown(f"**{rule['nome']}**")
+            cols[1].markdown(f"**{rule['pontos']} pontos**")
+            if cols[2].button("🗑️", key=f"del_{rule['id']}", type="secondary"):
+                try:
+                    # Deletar regra
+                    supabase.client.table("rules").delete().eq("id", rule['id']).execute()
+                    
+                    # Deletar coluna da tabela broker_points
+                    supabase.client.rpc(
+                        'drop_column_from_broker_points',
+                        {'column_name': rule['coluna_nome']}
+                    ).execute()
+                    
+                    st.success("Regra deletada com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao deletar regra: {str(e)}")
             st.divider()
 
 def display_rule_create():
