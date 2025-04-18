@@ -1344,6 +1344,11 @@ def main():
         if "active_brokers" not in st.session_state:
             st.session_state["active_brokers"] = []
 
+        # Não rotacionar se estiver na página de ranking ou em páginas de configuração
+        current_page = st.query_params.get("page", "ranking")
+        if current_page in ["ranking", "settings", "settings/rules", "settings/rule/create"]:
+            return
+
         current_time = time.time()
         last_sync_time = st.session_state.get("last_sync_time", 0)
         elapsed = current_time - last_sync_time
@@ -1352,7 +1357,7 @@ def main():
             view_manager.set_active_brokers(st.session_state["active_brokers"])
             next_page = view_manager.get_next_page()
 
-            if next_page and next_page != st.session_state.get("current_page"):
+            if next_page and next_page != current_page:
                 st.session_state["current_page"] = next_page
                 st.session_state["last_sync_time"] = current_time
                 st.query_params["page"] = next_page
