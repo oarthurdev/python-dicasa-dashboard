@@ -316,17 +316,6 @@ st.markdown("""
         background-color: #3B82F6;
         color: white;
     }
-    /* Remove blue outline from inputs */
-    div[data-testid="stForm"] input[type="text"],
-    div[data-testid="stForm"] input[type="password"] {
-        outline: none !important;
-        box-shadow: none !important;
-        border-color: #E2E8F0 !important;
-    }
-    div[data-testid="stForm"] input[type="text"]:focus,
-    div[data-testid="stForm"] input[type="password"]:focus {
-        border-color: #CBD5E1 !important;
-    }
 </style>
 """,
             unsafe_allow_html=True)
@@ -877,17 +866,6 @@ def display_login_page():
             }
             .text-center {
                 text-align: center;
-            }
-            /* Remove blue outline from inputs */
-            div[data-testid="stForm"] input[type="text"],
-            div[data-testid="stForm"] input[type="password"] {
-                outline: none !important;
-                box-shadow: none !important;
-                border-color: #E2E8F0 !important;
-            }
-            div[data-testid="stForm"] input[type="text"]:focus,
-            div[data-testid="stForm"] input[type="password"]:focus {
-                border-color: #CBD5E1 !important;
             }
         </style>
     """,
