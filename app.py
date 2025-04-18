@@ -935,10 +935,107 @@ def display_login_page():
                         )
 
 
+def format_rule_name(name):
+    """Format rule name to be used as column name"""
+    return name.lower().replace(' ', '_').replace('-', '_').replace('/', '_')
+
+def display_rules_list():
+    st.title("Regras de Pontuação")
+    
+    # Botão criar regra
+    if st.button("➕ Criar Nova Regra", type="primary"):
+        st.query_params["page"] = "settings/rule/create"
+        st.rerun()
+        
+    # Buscar regras do Supabase
+    rules = supabase.client.table("rules").select("*").execute()
+    
+    if not rules.data:
+        st.info("Nenhuma regra cadastrada.")
+        return
+        
+    # Mostrar regras em cards
+    for rule in rules.data:
+        with st.container():
+            col1, col2, col3 = st.columns([3,1,1])
+            with col1:
+                st.markdown(f"**{rule['nome']}**")
+            with col2:
+                st.markdown(f"**{rule['pontos']} pontos**")
+            with col3:
+                if st.button("🗑️ Deletar", key=f"del_{rule['id']}", type="secondary"):
+                    try:
+                        # Deletar regra
+                        supabase.client.table("rules").delete().eq("id", rule['id']).execute()
+                        
+                        # Deletar coluna da tabela broker_points
+                        supabase.client.rpc(
+                            'drop_column_from_broker_points',
+                            {'column_name': rule['coluna_nome']}
+                        ).execute()
+                        
+                        st.success("Regra deletada com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao deletar regra: {str(e)}")
+            st.divider()
+
+def display_rule_create():
+    st.title("Criar Nova Regra")
+    
+    with st.form("create_rule"):
+        nome = st.text_input("Nome da Regra")
+        pontos = st.number_input("Pontos", step=1)
+        
+        if st.form_submit_button("Criar Regra", type="primary"):
+            if not nome:
+                st.error("Nome da regra é obrigatório")
+                return
+                
+            try:
+                # Formatar nome da coluna
+                coluna_nome = format_rule_name(nome)
+                
+                # Inserir regra
+                supabase.client.table("rules").insert({
+                    "nome": nome,
+                    "pontos": pontos,
+                    "coluna_nome": coluna_nome
+                }).execute()
+                
+                # Adicionar coluna na tabela broker_points
+                supabase.client.rpc(
+                    'add_column_to_broker_points',
+                    {'column_name': coluna_nome, 'column_type': 'integer'}
+                ).execute()
+                
+                st.success("Regra criada com sucesso!")
+                st.query_params["page"] = "settings/rules"
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao criar regra: {str(e)}")
+
+def display_settings():
+    st.title("Configurações")
+    
+    # Menu lateral
+    st.sidebar.title("Menu")
+    if st.sidebar.button("Regras"):
+        st.query_params["page"] = "settings/rules"
+        st.rerun()
+
 def main():
     # Inicializar estado de autenticação se necessário
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
+        
+    # Verificar autenticação para páginas de configuração
+    current_page = st.query_params.get("page", "ranking")
+    if current_page.startswith("settings") and not st.session_state["authenticated"]:
+        st.error("Você precisa estar autenticado para acessar esta página")
+        st.query_params["page"] = "login"
+        st.rerun()
+        return
 
     # Verificar se é a página de login
     current_page = st.query_params.get("page", "ranking")
@@ -1057,6 +1154,12 @@ def main():
         display_general_ranking(data)
     elif current_page.startswith("broker") and broker_id:
         display_broker_dashboard(broker_id, data)
+    elif current_page == "settings":
+        display_settings()
+    elif current_page == "settings/rules":
+        display_rules_list()
+    elif current_page == "settings/rule/create":
+        display_rule_create()
 
     # # Add JavaScript for auto-rotation
     # # broker_ids = active_brokers['id'].tolist()
