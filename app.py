@@ -991,11 +991,11 @@ def display_rule_create():
         with st.form("create_rule", clear_on_submit=True):
             st.markdown("""
                 <style>
-                    div[data-testid="stForm"] {
-                        padding: 20px;
-                        border-radius: 10px;
-                        background: white;
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    [data-testid="stForm"] {
+                        padding: 20px !important;
+                        border-radius: 10px !important;
+                        background: white !important;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
                     }
                 </style>
             """, unsafe_allow_html=True)
