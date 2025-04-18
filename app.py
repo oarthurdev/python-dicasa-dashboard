@@ -1084,9 +1084,9 @@ def display_rule_create():
 
             col1, col2 = st.columns([1,1])
             with col1:
-                cancel = st.form_submit_button("Cancelar", type="secondary")
+                cancel = st.form_submit_button("Cancelar", use_container_width=True)
             with col2:
-                submitted = st.form_submit_button("Criar Regra", type="primary")
+                submitted = st.form_submit_button("Criar Regra", use_container_width=True)
 
             if cancel:
                 st.query_params["page"] = "settings/rules"
