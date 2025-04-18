@@ -161,6 +161,89 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 6px 15px rgba(37, 99, 235, 0.2);
     }
+    
+    /* Settings Pages Styles */
+    .settings-container {
+        background: white;
+        border-radius: 16px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        border: 1px solid #E5E7EB;
+    }
+    
+    .settings-header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
+    
+    .settings-title {
+        font-size: 2rem !important;
+        color: #1E40AF !important;
+        margin-bottom: 0.5rem !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    
+    .settings-description {
+        color: #6B7280;
+        font-size: 1rem;
+        margin-top: 0.5rem;
+    }
+    
+    .form-section {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #374151;
+        margin: 1rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #E5E7EB;
+    }
+    
+    .rule-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid #E5E7EB;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .rule-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .rule-points {
+        font-size: 1.25rem;
+        font-weight: 600;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+    }
+    
+    .points-positive {
+        color: #059669;
+        background: #D1FAE5;
+    }
+    
+    .points-negative {
+        color: #DC2626;
+        background: #FEE2E2;
+    }
+    
+    /* Custom styles for form inputs */
+    .stTextInput > div > div {
+        border-radius: 8px !important;
+    }
+    
+    .stNumberInput > div > div {
+        border-radius: 8px !important;
+    }
     h1 {
         font-size: 2.4rem !important;
         font-weight: 700 !important;
@@ -978,15 +1061,20 @@ def format_rule_name(name):
 
 def display_rules_list():
     st.markdown("""
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
         <div class="settings-container">
-            <h1 class="settings-title">Regras de Pontuação</h1>
+            <div class="settings-header">
+                <h1 class="settings-title"><i class="bi bi-gear-fill"></i> Regras de Pontuação</h1>
+                <p class="settings-description">Gerencie as regras que definem como os pontos são distribuídos entre os corretores.</p>
+            </div>
         </div>
-        """,
-                unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    if st.button("➕ Criar Nova Regra", type="primary"):
-        st.query_params["page"] = "settings/rule/create"
-        st.rerun()
+    col1, col2, col3 = st.columns([2,1,2])
+    with col2:
+        if st.button("<i class='bi bi-plus-circle-fill'></i> Nova Regra", type="primary", use_container_width=True):
+            st.query_params["page"] = "settings/rule/create"
+            st.rerun()
         st.markdown("""
             <style>
                 .settings-container {
@@ -1072,12 +1160,26 @@ def display_rules_list():
 
 
 def display_rule_create():
-    st.title("Criar Nova Regra")
+    st.markdown("""
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+        <div class="settings-container">
+            <div class="settings-header">
+                <h1 class="settings-title"><i class="bi bi-plus-circle-fill"></i> Nova Regra</h1>
+                <p class="settings-description">Crie uma nova regra de pontuação para os corretores.</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with st.form("create_rule", clear_on_submit=True):
+        st.markdown("""
+            <div class="form-section">
+                <i class="bi bi-pencil-fill"></i> Informações da Regra
+            </div>
+        """, unsafe_allow_html=True)
+        
         nome = st.text_input("Nome da Regra",
-                             placeholder="Ex: Leads respondidos em 1h",
-                             help="Nome descritivo da regra de pontuação")
+                            placeholder="Ex: Leads respondidos em 1h",
+                            help="Nome descritivo da regra de pontuação")
 
         pontos = st.number_input(
             "Pontos",
@@ -1163,13 +1265,27 @@ def display_rule_create():
 
 
 def display_settings():
-    st.title("Configurações")
+    st.markdown("""
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+        <div class="settings-container">
+            <div class="settings-header">
+                <h1 class="settings-title"><i class="bi bi-gear-fill"></i> Configurações</h1>
+                <p class="settings-description">Gerencie as configurações do sistema</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Menu lateral
-    st.sidebar.title("Menu")
-    if st.sidebar.button("Regras"):
-        st.query_params["page"] = "settings/rules"
-        st.rerun()
+    # Menu cards
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+            <div class="settings-card" onclick="window.location.href='?page=settings/rules'" style="cursor: pointer;">
+                <i class="bi bi-list-check" style="font-size: 2rem; color: #2563EB;"></i>
+                <h3>Regras de Pontuação</h3>
+                <p>Gerencie as regras do sistema de gamificação</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def check_auth():
