@@ -1,7 +1,8 @@
+
 import logging
 import time
+import pandas as pd
 from typing import List, Optional
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -10,22 +11,17 @@ class ViewManager:
         self.rotation_interval = rotation_interval
         self._active_brokers: List[int] = []
         self._last_rotation = time.time()
-        self._current_index = -1  # -1 represents the ranking page
+        self._current_index = -1
 
     def set_active_brokers(self, broker_ids: List[int]):
-        self._active_brokers = broker_ids
+        """Set active brokers in order of their appearance in broker_points"""
+        self._active_brokers = sorted(broker_ids, key=lambda x: broker_ids.index(x))
 
     def get_active_brokers(self) -> List[int]:
         return self._active_brokers.copy()
 
-    def should_rotate(self) -> bool:
-        current_time = time.time()
-        if current_time - self._last_rotation >= self.rotation_interval:
-            self._last_rotation = current_time
-            return True
-        return False
-
     def get_next_page(self) -> str:
+        """Get next page in rotation sequence"""
         if not self._active_brokers:
             return "ranking"
 
@@ -33,11 +29,6 @@ class ViewManager:
         if self._current_index >= len(self._active_brokers):
             self._current_index = -1
             return "ranking"
-
-        return f"broker/{self._active_brokers[self._current_index]}"
-
-    def rotate_if_needed(self) -> Optional[str]:
-        if not self.should_rotate():
-            return None
-
-        return self.get_next_page()
+            
+        current_broker = self._active_brokers[self._current_index]
+        return f"broker/{current_broker}"

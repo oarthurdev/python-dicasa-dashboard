@@ -1344,24 +1344,26 @@ def main():
         if "active_brokers" not in st.session_state:
             st.session_state["active_brokers"] = []
 
-        # Não rotacionar se estiver na página de ranking ou em páginas de configuração
+        # Não rotacionar se estiver em páginas de configuração
         current_page = st.query_params.get("page", "ranking")
-        if current_page in ["ranking", "settings", "settings/rules", "settings/rule/create"]:
+        if current_page in ["settings", "settings/rules", "settings/rule/create"]:
             return
+
+        # Atualiza lista de brokers ativos da tabela broker_points em ordem
+        broker_points = supabase.client.table("broker_points").select("id").order("id").execute()
+        active_brokers = [b['id'] for b in broker_points.data] if broker_points.data else []
+        view_manager.set_active_brokers(active_brokers)
 
         current_time = time.time()
         last_sync_time = st.session_state.get("last_sync_time", 0)
         elapsed = current_time - last_sync_time
 
-        if elapsed >= 10:  # só rotaciona a cada 10 segundos
-            view_manager.set_active_brokers(st.session_state["active_brokers"])
+        if elapsed >= 10:  # rotaciona a cada 10 segundos
             next_page = view_manager.get_next_page()
-
-            if next_page and next_page != current_page:
-                st.session_state["current_page"] = next_page
-                st.session_state["last_sync_time"] = current_time
-                st.query_params["page"] = next_page
-                st.rerun()
+            st.session_state["current_page"] = next_page
+            st.session_state["last_sync_time"] = current_time
+            st.query_params["page"] = next_page
+            st.rerun()
 
     # Gerenciar rotação de páginas
     # handle_page_rotation()
