@@ -1035,6 +1035,7 @@ def display_rule_create():
                     ).execute()
 
                     st.success("Regra criada com sucesso!")
+                    st.query_params.clear()
                     st.query_params["page"] = "settings/rules"
                     st.rerun()
                 except Exception as e:
