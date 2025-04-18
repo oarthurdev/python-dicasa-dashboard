@@ -492,6 +492,8 @@ class SupabaseClient:
         import time
 
         logger = logging.getLogger(__name__)
+        max_retries = 3
+        retry_delay = 5  # segundos
 
         try:
             logger.info("Iniciando atualização dos pontos dos corretores...")
