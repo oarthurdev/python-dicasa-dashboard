@@ -1032,25 +1032,30 @@ def main():
     # Get current page from query params
     current_page = st.query_params.get("page", "ranking")
     
-    # Check authentication for settings pages
-    if not st.session_state["authenticated"]:
-        if current_page.startswith("settings"):
+    # Initialize session state if needed
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+        
+    # Handle authentication logic
+    if current_page == "login":
+        if st.session_state["authenticated"]:
+            # If already authenticated, redirect to last attempted page or ranking
+            next_page = st.session_state.get("attempted_page", "ranking")
+            st.query_params["page"] = next_page
+            st.rerun()
+        else:
+            display_login_page()
+        return
+        
+    # Check authentication for protected pages
+    if current_page.startswith("settings"):
+        if not st.session_state["authenticated"]:
+            # Store attempted page before redirecting
+            st.session_state["attempted_page"] = current_page
             st.error("Você precisa estar autenticado para acessar esta página")
             st.query_params["page"] = "login"
             st.rerun()
             return
-        elif current_page != "login":
-            st.query_params["page"] = "login"
-            st.rerun()
-            return
-            
-    if current_page == "login" and st.session_state["authenticated"]:
-        st.query_params["page"] = "ranking"
-        st.rerun()
-        return
-    elif current_page == "login":
-        display_login_page()
-        return
 
     def rotate_views_on_reload():
         view_manager = get_view_manager()
