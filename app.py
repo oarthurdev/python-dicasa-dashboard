@@ -1037,51 +1037,19 @@ def display_rules_list():
                 st.error(f"Erro ao deletar regra: {str(e)}")
 
 def display_rule_create():
-    st.markdown("""
-        <div class="settings-container">
-            <h1 class="settings-title">Criar Nova Regra</h1>
-            <style>
-                .settings-container {
-                    background: white;
-                    border-radius: 10px;
-                    padding: 2rem;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    max-width: 800px;
-                    margin: 0 auto;
-                }
-                .settings-title {
-                    color: #1a1a1a;
-                    margin-bottom: 1.5rem;
-                    font-size: 2rem;
-                    text-align: center;
-                }
-                .form-group {
-                    margin-bottom: 1.5rem;
-                }
-                .form-label {
-                    font-weight: 500;
-                    margin-bottom: 0.5rem;
-                }
-                .stButton button {
-                    width: 100%;
-                }
-            </style>
-        </div>
-    """, unsafe_allow_html=True)
+    st.title("Criar Nova Regra")
 
-    with st.container():
-        with st.form("create_rule", clear_on_submit=True):
-            st.markdown('<div class="form-group">', unsafe_allow_html=True)
-            nome = st.text_input("Nome da Regra", 
-                               placeholder="Ex: Leads respondidos em 1h",
-                               help="Nome descritivo da regra de pontuação")
+    with st.form("create_rule", clear_on_submit=True):
+        nome = st.text_input("Nome da Regra", 
+                           placeholder="Ex: Leads respondidos em 1h",
+                           help="Nome descritivo da regra de pontuação")
 
-            pontos = st.number_input("Pontos", 
-                                   min_value=-1000,
-                                   max_value=1000,
-                                   step=1,
-                                   help="Quantidade de pontos para esta regra (negativo para penalidades)")
-            st.markdown('</div>', unsafe_allow_html=True)
+        pontos = st.number_input("Pontos", 
+                               min_value=-1000,
+                               max_value=1000,
+                               value=0,
+                               step=1,
+                               help="Quantidade de pontos para esta regra (negativo para penalidades)")
 
             col1, col2 = st.columns([1,1])
             with col1:
@@ -1098,35 +1066,45 @@ def display_rule_create():
                     st.error("Nome da regra é obrigatório")
                     return
 
-                # Formatar nome da coluna
-                coluna_nome = format_rule_name(nome)
-                logger.info(f"[RULE] Nome da coluna: {coluna_nome}")
-
                 try:
-                    # Primeiro adiciona a coluna na tabela broker_points
-                    logger.info("[RULE] Adicionando coluna na tabela broker_points")
-                    supabase.client.rpc(
-                        'add_column_to_broker_points',
-                        {'column_name': coluna_nome, 'column_type': 'integer'}
-                    ).execute()
-                    logger.info("[RULE] Coluna adicionada com sucesso")
+                    # Formatar nome da coluna
+                    coluna_nome = format_rule_name(nome)
+                    logger.info(f"[RULE] Nome da coluna: {coluna_nome}")
 
-                    # Depois insere a regra
+                    # Inserir regra primeiro
                     logger.info("[RULE] Inserindo regra")
                     response = supabase.client.table("rules").insert({
                         "nome": nome,
                         "pontos": pontos,
                         "coluna_nome": coluna_nome
                     }).execute()
-                    
+
                     if not response.data:
                         raise Exception("Erro ao inserir regra no banco de dados")
                     
                     logger.info("[RULE] Regra inserida com sucesso")
+
+                    # Depois adiciona a coluna na tabela broker_points
+                    logger.info("[RULE] Adicionando coluna na tabela broker_points")
+                    supabase.client.rpc(
+                        'add_column_to_broker_points',
+                        {'column_name': coluna_nome, 'column_type': 'integer'}
+                    ).execute()
+                    logger.info("[RULE] Coluna adicionada com sucesso")
+                    
                     st.success("Regra criada com sucesso!")
                     time.sleep(1)
                     st.query_params["page"] = "settings/rules"
                     st.rerun()
+
+                except Exception as e:
+                    logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
+                    st.error(f"Erro ao criar regra: {str(e)}")
+                    # Se a regra foi criada mas houve erro na coluna, remove a regra
+                    try:
+                        supabase.client.table("rules").delete().eq("coluna_nome", coluna_nome).execute()
+                    except:
+                        pass
 
                 except Exception as e:
                     logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
