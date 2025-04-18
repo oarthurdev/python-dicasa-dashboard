@@ -84,9 +84,22 @@ class SyncManager:
                 self.update_sync_time('brokers')
 
             if self.needs_sync('leads') and leads is not None:
+                # Get existing broker IDs
+                result = self.supabase.client.table("brokers").select("id").execute()
+                if hasattr(result, "error") and result.error:
+                    raise Exception(f"Supabase error: {result.error}")
+                    
+                valid_broker_ids = {broker['id'] for broker in result.data}
+                
+                # Filter leads with valid responsavel_id
                 leads_records = leads.to_dict('records')
-                for i in range(0, len(leads_records), self.batch_size):
-                    batch = leads_records[i:i + self.batch_size]
+                valid_leads = [
+                    lead for lead in leads_records 
+                    if lead.get('responsavel_id') in valid_broker_ids or lead.get('responsavel_id') is None
+                ]
+                
+                for i in range(0, len(valid_leads), self.batch_size):
+                    batch = valid_leads[i:i + self.batch_size]
                     self._process_batch(batch, 'leads')
                 self.update_sync_time('leads')
 
