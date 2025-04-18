@@ -910,8 +910,10 @@ def display_login_page():
 
                     try:
                         response = supabase.client.auth.sign_in_with_password({
-                            "email": email,
-                            "password": senha
+                            "email":
+                            email,
+                            "password":
+                            senha
                         })
 
                         if response.user:
@@ -922,7 +924,9 @@ def display_login_page():
                         else:
                             st.error("Email ou senha incorretos.")
                     except Exception:
-                        st.error("Ocorreu um erro interno. Tente novamente mais tarde.")
+                        st.error(
+                            "Ocorreu um erro interno. Tente novamente mais tarde."
+                        )
 
 
 def main():
