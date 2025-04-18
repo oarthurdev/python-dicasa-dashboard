@@ -991,7 +991,7 @@ def display_rule_create():
         with st.form("create_rule", clear_on_submit=True):
             st.markdown("""
                 <style>
-                    .stForm > div:first-child {
+                    div[data-testid="stForm"] {
                         padding: 20px;
                         border-radius: 10px;
                         background: white;
@@ -1005,9 +1005,10 @@ def display_rule_create():
                                help="Nome descritivo da regra de pontuação")
 
             pontos = st.number_input("Pontos", 
-                                   min_value=0,
+                                   min_value=-100,
+                                   max_value=100,
                                    step=1,
-                                   help="Quantidade de pontos para esta regra")
+                                   help="Quantidade de pontos para esta regra (negativo para penalidades)")
 
             submitted = st.form_submit_button("Criar Regra", type="primary")
 
