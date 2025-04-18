@@ -46,6 +46,8 @@ class SyncManager:
                         record[key] = value.isoformat()
                     elif pd.isna(value):  # Handle NaN values
                         record[key] = None
+                    elif key in ['lead_id', 'user_id'] and isinstance(value, (int, float)):
+                        record[key] = int(value) if pd.notna(value) else None
                 
                 record_hash = self._generate_hash(record)
                 
