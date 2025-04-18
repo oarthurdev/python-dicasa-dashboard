@@ -848,7 +848,6 @@ def display_login_page():
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
                 padding: 2rem;
                 max-width: 600px;
-                margin: 2rem auto;
             }
             .stTextInput input {
                 margin-bottom: 1rem;
@@ -857,11 +856,13 @@ def display_login_page():
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                margin: 2rem auto;
                 width: 100%;
             }
             div[data-testid="stImage"] > img {
                 margin: 0 auto;
+            }
+            div[data-testid="stImageContainer"]{
+                max-width: 50%;
             }
             .text-center {
                 text-align: center;
@@ -886,65 +887,43 @@ def display_login_page():
                 st.markdown('<p class="text-muted text-center">[Logo]</p>',
                             unsafe_allow_html=True)
 
-            # Espaço entre logo e formulário
-            st.markdown("<div style='margin-top: 30px;'></div>",
-                        unsafe_allow_html=True)
-
-            # Container do formulário centralizado
-            st.markdown("""
-                <div style="width: 100%; margin: 0 auto; padding: 30px; background-color: #ffffff; 
-                            border-radius: 10px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
-            """,
-                        unsafe_allow_html=True)
-
             st.markdown(
-                '<h4 class="text-center mb-4" style="text-align: center;">Acesse sua conta</h4>',
+                '<h4 class="text-center" style="text-align: center;">Acesse sua conta</h4>',
                 unsafe_allow_html=True)
 
             with st.form("login_form", clear_on_submit=True):
                 email = st.text_input("Email",
-                                    placeholder="Digite seu email",
-                                    help="Digite seu email corporativo")
+                                      placeholder="Digite seu email",
+                                      help="Digite seu email corporativo")
 
                 senha = st.text_input("Senha",
-                                    type="password",
-                                    placeholder="Digite sua senha",
-                                    help="Digite sua senha")
+                                      type="password",
+                                      placeholder="Digite sua senha",
+                                      help="Digite sua senha")
 
                 if st.form_submit_button("Entrar",
-                                       type="primary",
-                                       use_container_width=True):
-                if email and senha:
-                    try:
-                        response = supabase.client.auth.sign_in_with_password({
-                            "email":
-                            email,
-                            "password":
-                            senha
-                        })
-                        if response.user:
-                            st.success("Login realizado com sucesso!")
-                            st.session_state["authenticated"] = True
-                            st.query_params["page"] = "ranking"
-                            st.rerun()
-                        else:
-                            st.error(
-                                "Login falhou. Verifique suas credenciais.")
-                    except Exception as e:
-                        st.error(f"Erro no login: {str(e)}")
-                else:
-                    st.warning("Preencha todos os campos.")
-
-        st.markdown("""
-            <div class="text-center mt-3" style="text-align: center; margin-top: 20px;">
-                <a href="#" class="text-muted text-decoration-none small">Esqueci minha senha</a>
-            </div>
-        </div>
-        """,
-                    unsafe_allow_html=True)
-
-    # st.markdown('</div>', unsafe_allow_html=True)  # fecha form-wrapper
-    # st.markdown('</div>', unsafe_allow_html=True)  # fecha main
+                                         type="primary",
+                                         use_container_width=True):
+                    if email and senha:
+                        try:
+                            response = supabase.client.auth.sign_in_with_password(
+                                {
+                                    "email": email,
+                                    "password": senha
+                                })
+                            if response.user:
+                                st.success("Login realizado com sucesso!")
+                                st.session_state["authenticated"] = True
+                                st.query_params["page"] = "ranking"
+                                st.rerun()
+                            else:
+                                st.error(
+                                    "Login falhou. Verifique suas credenciais."
+                                )
+                        except Exception as e:
+                            st.error(f"Erro no login: {str(e)}")
+                    else:
+                        st.warning("Preencha todos os campos.")
 
 
 def main():
