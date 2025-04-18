@@ -11,6 +11,7 @@ import threading
 import logging
 from flask import Flask, jsonify
 from PIL import Image
+from gotrue import errors as gotrue
 
 # Import custom modules
 from libs import KommoAPI, SupabaseClient, SyncManager
