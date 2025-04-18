@@ -956,44 +956,45 @@ def display_rules_list():
     if st.button("➕ Criar Nova Regra", type="primary"):
         st.query_params["page"] = "settings/rule/create"
         st.rerun()
-        <style>
-            .settings-container {
-                background: white;
-                border-radius: 10px;
-                padding: 2rem;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .settings-title {
-                color: #1a1a1a;
-                margin-bottom: 1.5rem;
-                font-size: 2rem;
-            }
-            .rule-card {
-                background: #f8f9fa;
-                border-radius: 8px;
-                padding: 1rem;
-                margin-bottom: 1rem;
-                border: 1px solid #e9ecef;
-                transition: all 0.2s ease;
-            }
-            .rule-card:hover {
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            }
-            .points-badge {
-                background: #e9ecef;
-                padding: 0.25rem 0.75rem;
-                border-radius: 20px;
-                font-weight: 600;
-            }
-            .points-positive {
-                background: #d4edda;
-                color: #155724;
-            }
-            .points-negative {
-                background: #f8d7da;
-                color: #721c24;
-            }
-        </style>
+        st.markdown("""
+            <style>
+                .settings-container {
+                    background: white;
+                    border-radius: "10px";
+                    padding: 2rem;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }
+                .settings-title {
+                    color: #1a1a1a;
+                    margin-bottom: 1.5rem;
+                    font-size: 2rem;
+                }
+                .rule-card {
+                    background: #f8f9fa;
+                    border-radius: 8px;
+                    padding: 1rem;
+                    margin-bottom: 1rem;
+                    border: 1px solid #e9ecef;
+                    transition: all 0.2s ease;
+                }
+                .rule-card:hover {
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                }
+                .points-badge {
+                    background: #e9ecef;
+                    padding: 0.25rem 0.75rem;
+                    border-radius: 20px;
+                    font-weight: 600;
+                }
+                .points-positive {
+                    background: #d4edda;
+                    color: #155724;
+                }
+                .points-negative {
+                    background: #f8d7da;
+                    color: #721c24;
+                }
+            </style>
     """, unsafe_allow_html=True)
 
     # Buscar regras do Supabase
@@ -1100,7 +1101,7 @@ def display_rule_create():
                 try:
                     # Formatar nome da coluna
                     coluna_nome = format_rule_name(nome)
-
+                    logger.info(f"[RULE] Nome da coluna: {coluna_nome}")
                     # Inserir regra
                     supabase.client.table("rules").insert({
                         "nome": nome,
@@ -1108,17 +1109,22 @@ def display_rule_create():
                         "coluna_nome": coluna_nome
                     }).execute()
 
+                    logger.info("[RULE] Regra inserida com sucesso")
+                    logger.info("[RULE] Adicionando coluna na tabela broker_points")
                     # Adicionar coluna na tabela broker_points
                     supabase.client.rpc(
                         'add_column_to_broker_points',
                         {'column_name': coluna_nome, 'column_type': 'integer'}
                     ).execute()
 
+                    logger.info("[RULE] Coluna adicionada com sucesso")
+                    
                     st.success("Regra criada com sucesso!")
                     time.sleep(1)  # Give time for the success message to be shown
                     st.query_params["page"] = "settings/rules"
                     st.rerun()
                 except Exception as e:
+                    logger.info(f"[RULE] Erro ao criar regra: {str(e)}")
                     st.error(f"Erro ao criar regra: {str(e)}")
 
 def display_settings():
