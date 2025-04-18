@@ -116,11 +116,11 @@ class SupabaseClient:
 
             # Primeiro filtro: apenas pipeline_id = 8865067
             leads_df_clean = leads_df_clean[leads_df_clean['pipeline_id'] == 8865067]
-            
+
             if leads_df_clean.empty:
                 logger.warning("Nenhum lead com pipeline_id 8865067 encontrado")
                 return
-                
+
             # Segundo filtro: responsavel_id válido
             leads_df_clean = leads_df_clean[
                 leads_df_clean['responsavel_id'].isin(valid_broker_ids) | 
@@ -150,7 +150,7 @@ class SupabaseClient:
 
             # Limpar registros antigos com pipeline_id diferente
             self.client.table("leads").delete().not_.eq("pipeline_id", 8865067).execute()
-            
+
             # Upsert to Supabase
             result = self.client.table("leads").upsert(leads_data).execute()
 
@@ -511,13 +511,13 @@ class SupabaseClient:
                         leads = kommo_api.get_leads()
                         activities = kommo_api.get_activities()
                         break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    logger.warning(
-                        f"Tentativa {attempt + 1} falhou: {str(e)}. Tentando novamente em {retry_delay} segundos..."
-                    )
-                    time.sleep(retry_delay)
+                    except Exception as e:
+                        if attempt == max_retries - 1:
+                            raise
+                        logger.warning(
+                            f"Tentativa {attempt + 1} falhou: {str(e)}. Tentando novamente em {retry_delay} segundos..."
+                        )
+                        time.sleep(retry_delay)
 
             if brokers.empty or leads.empty or activities.empty:
                 logger.warning(
