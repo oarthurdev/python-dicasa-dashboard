@@ -950,11 +950,9 @@ def display_rules_list():
     st.markdown("""
         <div class="settings-container">
             <h1 class="settings-title">Regras de Pontuação</h1>
-            <div class="d-flex justify-content-end mb-4">
-                <button class="btn btn-primary" onclick="window.location.href='?page=settings/rule/create'">
-                    ➕ Criar Nova Regra
-                </button>
-            </div>
+            if st.button("➕ Criar Nova Regra", type="primary"):
+                st.query_params["page"] = "settings/rule/create"
+                st.rerun()
         </div>
         <style>
             .settings-container {
