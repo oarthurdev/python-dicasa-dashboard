@@ -919,6 +919,7 @@ def display_login_page():
                         if response.user:
                             st.success("Login realizado com sucesso!")
                             st.session_state["authenticated"] = True
+                            logger.info(f"[SESSION] Autenticated: {session_state.get("authenticated")}")
                             st.query_params["page"] = "ranking"
                             st.rerun()
                         else:
