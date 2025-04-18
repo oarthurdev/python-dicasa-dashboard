@@ -10,15 +10,19 @@ from libs.kommo_api import KommoAPI
 from libs.supabase_db import SupabaseClient
 from libs.sync_manager import SyncManager
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Separate logger for sync operations
+sync_logger = logging.getLogger('sync')
+sync_handler = logging.FileHandler('sync.log')
+sync_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+sync_handler.setFormatter(sync_formatter)
+sync_logger.addHandler(sync_handler)
+sync_logger.setLevel(logging.DEBUG)
 
 load_dotenv()
-
-# Logger separado para Webhooks
-webhook_logger = logging.getLogger("webhook_logger")
-webhook_logger.setLevel(logging.INFO)
-webhook_handler = logging.FileHandler("webhook.log")
-webhook_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-webhook_logger.addHandler(webhook_handler)
 
 webhook_bp = Blueprint('webhook', __name__, url_prefix='/webhook')
 
@@ -291,7 +295,30 @@ def handle_webhook():
     except Exception as e:
         webhook_logger.exception("Erro interno no processamento do webhook")
         return jsonify({"status": "error", "message": str(e)}), 500
-    
+
 @webhook_bp.route('/health', methods=['GET'])
-def webhook_health_check():
-    return jsonify({"status": "ok", "message": "Webhook ativo e saudável"}), 200
+def health_check():
+    """Health check endpoint that verifies API and database connectivity"""
+    try:
+        # Check API connection
+        kommo_api._make_request("users", params={"limit": 1})
+
+        # Check database connection
+        supabase.client.table("brokers").select("id").limit(1).execute()
+
+        status = {
+            "status": "healthy",
+            "api": "connected",
+            "database": "connected",
+            "last_sync": {
+                resource: sync_manager.last_sync[resource].isoformat() 
+                if sync_manager.last_sync[resource] else None
+                for resource in sync_manager.last_sync
+            }
+        }
+        return jsonify(status), 200
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e)
+        }), 500

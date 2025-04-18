@@ -252,52 +252,62 @@ class KommoAPI:
             logger.error(f"Erro ao buscar leads: {str(e)}")
             return pd.DataFrame()
 
-    def get_activities(self):
+    def get_activities(self, page_size=250, max_workers=3):
         """
-        Retrieve all activities from Kommo CRM with rate limiting
+        Retrieve all activities from Kommo CRM using parallel requests
         """
         try:
             logger.info("Retrieving activities from Kommo CRM")
 
-            activities_data = []
-            page = 1
-            empty_streak = 0
-            stop_after = 1  # Para após 3 páginas vazias consecutivas
-
             now = int(time.time())
             filter_from = now - (7 * 24 * 60 * 60)
 
-            while True:
-                # Rate limiting - espera 1 segundo entre requests
-                time.sleep(1)
-
-                response = self._make_request(
+            def fetch_page(page):
+                time.sleep(1)  # Rate limiting
+                return self._make_request(
                     "events",
                     params={
                         "page": page,
-                        "limit": 500,
-                        "filter[type]":
-                        "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
+                        "limit": page_size,
+                        "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
                         "filter[created_at][from]": filter_from,
                     })
 
-                events = response.get("_embedded", {}).get("events", [])
+            activities_data = []
+            page = 1
+            empty_streak = 0
+            stop_after = 1
 
-                if not events:
-                    empty_streak += 1
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                while True:
+                    # Fetch multiple pages in parallel
+                    future_to_page = {
+                        executor.submit(fetch_page, p): p 
+                        for p in range(page, page + max_workers)
+                    }
+
+                    for future in future_to_page:
+                        try:
+                            response = future.result()
+                            events = response.get("_embedded", {}).get("events", [])
+
+                            if not events:
+                                empty_streak += 1
+                                if empty_streak >= stop_after:
+                                    logger.info(f"Stopping: {stop_after} empty pages")
+                                    break
+                            else:
+                                empty_streak = 0
+                                activities_data.extend(events)
+                                logger.info(f"Page {future_to_page[future]} fetched: {len(events)} events")
+
+                        except Exception as e:
+                            logger.error(f"Error fetching page {future_to_page[future]}: {e}")
+
                     if empty_streak >= stop_after:
-                        logger.info(
-                            f"Parando busca: {stop_after} páginas vazias consecutivas"
-                        )
                         break
-                else:
-                    empty_streak = 0
-                    activities_data.extend(events)
 
-                page += 1
-                logger.info(
-                    f"Processada página {page-1}, encontrados {len(events)} eventos"
-                )
+                    page += max_workers
 
             logger.info(
                 f"Total de atividades recuperadas: {len(activities_data)}")
