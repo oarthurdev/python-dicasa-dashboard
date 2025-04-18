@@ -42,35 +42,36 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 
 @st.cache_resource
-
 @st.cache_resource
 def init_kommo_api():
-    return KommoAPI(api_url=os.getenv("KOMMO_API_URL"), 
-                   access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+    return KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
+                    access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+
 
 def health_check():
     """Health check endpoint that verifies API and database connectivity"""
     try:
         kommo_api = init_kommo_api()
         kommo_api._make_request("users", params={"limit": 1})
-        
+
         supabase = init_supabase_client()
         supabase.client.table("brokers").select("id").limit(1).execute()
-        
+
         status = {
             "status": "healthy",
-            "api": "connected", 
+            "api": "connected",
             "database": "connected",
             "timestamp": datetime.now().isoformat()
         }
         return make_response(jsonify(status), 200)
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
-        return make_response(jsonify({
-            "status": "unhealthy",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500)
+        return make_response(
+            jsonify({
+                "status": "unhealthy",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }), 500)
 
 
 def init_supabase_client():
@@ -942,8 +943,10 @@ def display_login_page():
 
                     try:
                         response = supabase.client.auth.sign_in_with_password({
-                            "email": email,
-                            "password": senha
+                            "email":
+                            email,
+                            "password":
+                            senha
                         })
 
                         if response.user:
@@ -956,7 +959,8 @@ def display_login_page():
                             st.success("Login realizado com sucesso!")
 
                             # Redirect to attempted page or ranking
-                            next_page = st.session_state.get("attempted_page", "ranking")
+                            next_page = st.session_state.get(
+                                "attempted_page", "ranking")
                             st.query_params["page"] = next_page
                             st.rerun()
                         else:
@@ -977,13 +981,15 @@ def format_rule_name(name):
     """Format rule name to be used as column name"""
     return name.lower().replace(' ', '_').replace('-', '_').replace('/', '_')
 
+
 def display_rules_list():
     st.markdown("""
         <div class="settings-container">
             <h1 class="settings-title">Regras de Pontuação</h1>
         </div>
-        """, unsafe_allow_html=True)
-    
+        """,
+                unsafe_allow_html=True)
+
     if st.button("➕ Criar Nova Regra", type="primary"):
         st.query_params["page"] = "settings/rule/create"
         st.rerun()
@@ -1026,7 +1032,8 @@ def display_rules_list():
                     color: #721c24;
                 }
             </style>
-    """, unsafe_allow_html=True)
+    """,
+                    unsafe_allow_html=True)
 
     # Buscar regras do Supabase
     rules = supabase.client.table("rules").select("*").execute()
@@ -1037,7 +1044,8 @@ def display_rules_list():
 
     # Mostrar regras em cards
     for rule in rules.data:
-        points_class = "points-positive" if rule['pontos'] >= 0 else "points-negative"
+        points_class = "points-positive" if rule[
+            'pontos'] >= 0 else "points-negative"
         st.markdown(f"""
             <div class="rule-card">
                 <div class="row align-items-center">
@@ -1052,41 +1060,47 @@ def display_rules_list():
                     </div>
                 </div>
             </div>
-        """, unsafe_allow_html=True)
+        """,
+                    unsafe_allow_html=True)
 
         # Handle delete functionality with Streamlit
         if st.button("Excluir", key=f"del_{rule['id']}", type="secondary"):
             try:
-                supabase.client.table("rules").delete().eq("id", rule['id']).execute()
-                supabase.client.rpc(
-                    'drop_column_from_broker_points',
-                    {'column_name': rule['coluna_nome']}
-                ).execute()
+                supabase.client.table("rules").delete().eq(
+                    "id", rule['id']).execute()
+                supabase.client.rpc('drop_column_from_broker_points', {
+                    'column_name': rule['coluna_nome']
+                }).execute()
                 st.success("Regra deletada com sucesso!")
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao deletar regra: {str(e)}")
 
+
 def display_rule_create():
     st.title("Criar Nova Regra")
 
     with st.form("create_rule", clear_on_submit=True):
-        nome = st.text_input("Nome da Regra", 
-                           placeholder="Ex: Leads respondidos em 1h",
-                           help="Nome descritivo da regra de pontuação")
+        nome = st.text_input("Nome da Regra",
+                             placeholder="Ex: Leads respondidos em 1h",
+                             help="Nome descritivo da regra de pontuação")
 
-        pontos = st.number_input("Pontos", 
-                               min_value=-1000,
-                               max_value=1000,
-                               value=0,
-                               step=1,
-                               help="Quantidade de pontos para esta regra (negativo para penalidades)")
+        pontos = st.number_input(
+            "Pontos",
+            min_value=-1000,
+            max_value=1000,
+            value=0,
+            step=1,
+            help=
+            "Quantidade de pontos para esta regra (negativo para penalidades)")
 
-        col1, col2 = st.columns([1,1])
+        col1, col2 = st.columns([1, 1])
         with col1:
-            cancel = st.form_submit_button("Cancelar", use_container_width=True)
+            cancel = st.form_submit_button("Cancelar",
+                                           use_container_width=True)
         with col2:
-            submitted = st.form_submit_button("Criar Regra", use_container_width=True)
+            submitted = st.form_submit_button("Criar Regra",
+                                              use_container_width=True)
 
         if cancel:
             st.query_params["page"] = "settings/rules"
@@ -1105,24 +1119,28 @@ def display_rule_create():
                 # Inserir regra primeiro
                 logger.info("[RULE] Inserindo regra")
                 response = supabase.client.table("rules").insert({
-                    "nome": nome,
-                    "pontos": pontos,
-                    "coluna_nome": coluna_nome
+                    "nome":
+                    nome,
+                    "pontos":
+                    pontos,
+                    "coluna_nome":
+                    coluna_nome
                 }).execute()
 
                 if not response.data:
                     raise Exception("Erro ao inserir regra no banco de dados")
-                
+
                 logger.info("[RULE] Regra inserida com sucesso")
 
                 # Depois adiciona a coluna na tabela broker_points
-                logger.info("[RULE] Adicionando coluna na tabela broker_points")
-                supabase.client.rpc(
-                    'add_column_to_broker_points',
-                    {'column_name': coluna_nome, 'column_type': 'integer'}
-                ).execute()
+                logger.info(
+                    "[RULE] Adicionando coluna na tabela broker_points")
+                supabase.client.rpc('add_column_to_broker_points', {
+                    'column_name': coluna_nome,
+                    'column_type': 'integer'
+                }).execute()
                 logger.info("[RULE] Coluna adicionada com sucesso")
-                
+
                 st.success("Regra criada com sucesso!")
                 time.sleep(1)
                 st.query_params["page"] = "settings/rules"
@@ -1133,7 +1151,8 @@ def display_rule_create():
                 st.error(f"Erro ao criar regra: {str(e)}")
                 # Se a regra foi criada mas houve erro na coluna, remove a regra
                 try:
-                    supabase.client.table("rules").delete().eq("coluna_nome", coluna_nome).execute()
+                    supabase.client.table("rules").delete().eq(
+                        "coluna_nome", coluna_nome).execute()
                 except:
                     pass
 
@@ -1142,12 +1161,12 @@ def display_rule_create():
                 st.error(f"Erro ao criar regra: {str(e)}")
                 # Tenta remover a coluna se ela foi criada mas a regra falhou
                 try:
-                    supabase.client.rpc(
-                        'drop_column_from_broker_points',
-                        {'column_name': coluna_nome}
-                    ).execute()
+                    supabase.client.rpc('drop_column_from_broker_points', {
+                        'column_name': coluna_nome
+                    }).execute()
                 except:
                     pass
+
 
 def display_settings():
     st.title("Configurações")
@@ -1158,17 +1177,20 @@ def display_settings():
         st.query_params["page"] = "settings/rules"
         st.rerun()
 
+
 def check_auth():
     """Check if user is authenticated and initialize session state"""
     if "authenticated" not in st.session_state:
         # Try to get session from Supabase
         try:
             session = supabase.client.auth.get_session()
-            st.session_state["authenticated"] = session is not None and session.user is not None
+            st.session_state[
+                "authenticated"] = session is not None and session.user is not None
         except Exception:
             st.session_state["authenticated"] = False
 
     return st.session_state["authenticated"]
+
 
 def main():
     # Get current page from query params
@@ -1176,9 +1198,6 @@ def main():
 
     # Check authentication status
     is_authenticated = check_auth()
-
-    logger.info(f"[SESSION] Authenticated: {str(is_authenticated)}")
-    logger.info(f"[SESSION] Current page: {current_page}")
 
     # Define protected pages
     protected_pages = ["settings", "settings/rules", "settings/rule/create"]
