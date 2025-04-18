@@ -1165,17 +1165,19 @@ def main():
     logger.info(f"[MAIN]Current page: {current_page}")
     logger.info(f"[MAIN] Active brokers: {active_brokers}")
 
-    if current_page != "ranking":
+    # Handle different page types
+    if current_page.startswith("broker/"):
         try:
             broker_id = int(current_page.split('/')[1])
             broker_exists = data['brokers'][data['brokers']['id'] == broker_id]
             if broker_exists.empty:
                 raise ValueError("Corretor inválido")
         except (IndexError, ValueError):
-            st.warning("Página inválida. Retornando ao ranking geral.")
+            st.warning("Corretor inválido. Retornando ao ranking geral.")
             st.session_state["current_page"] = "ranking"
             st.query_params["page"] = "ranking"
             current_page = "ranking"
+            broker_id = None
 
     rotate_views_on_reload()
 
