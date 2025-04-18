@@ -108,16 +108,19 @@ def background_data_loader():
         while True:
             try:
                 time.sleep(300)  # Aguarda 5 minutos entre cada sincronização
-                
+
                 brokers = kommo_api.get_users()
                 leads = kommo_api.get_leads()
                 activities = kommo_api.get_activities()
 
-                logger.info("Iniciando sincronização e atualização de pontos...")
+                logger.info(
+                    "Iniciando sincronização e atualização de pontos...")
 
                 if not brokers.empty and not leads.empty and not activities.empty:
                     sync_manager.sync_from_cache(brokers, leads, activities)
-                    auto_update_broker_points(brokers=brokers, leads=leads, activities=activities)
+                    auto_update_broker_points(brokers=brokers,
+                                              leads=leads,
+                                              activities=activities)
 
             except Exception as e:
                 logger.error(f"Error in background sync: {str(e)}")
@@ -926,7 +929,9 @@ def auto_update_broker_points(brokers=None, leads=None, activities=None):
     while True:
         try:
             logger.info("[Auto Update] Atualizando pontos dos corretores")
-            supabase.update_broker_points(brokers=brokers, leads=leads, activities=activities)
+            supabase.update_broker_points(brokers=brokers,
+                                          leads=leads,
+                                          activities=activities)
             logger.info("[Auto Update] Pontos atualizados com sucesso")
             logger.info(
                 "[Auto Update] Aguardando 5 minutos para a próxima atualização"
@@ -1068,11 +1073,14 @@ def display_rules_list():
                 <p class="settings-description">Gerencie as regras que definem como os pontos são distribuídos entre os corretores.</p>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+                unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([2,1,2])
+    col1, col2, col3 = st.columns([2, 1, 2])
     with col2:
-        if st.button("<i class='bi bi-plus-circle-fill'></i> Nova Regra", type="primary", use_container_width=True):
+        if st.button("<i class='bi bi-plus-circle-fill'></i> Nova Regra",
+                     type="primary",
+                     use_container_width=True):
             st.query_params["page"] = "settings/rule/create"
             st.rerun()
         st.markdown("""
@@ -1168,18 +1176,20 @@ def display_rule_create():
                 <p class="settings-description">Crie uma nova regra de pontuação para os corretores.</p>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+                unsafe_allow_html=True)
 
     with st.form("create_rule", clear_on_submit=True):
         st.markdown("""
             <div class="form-section">
                 <i class="bi bi-pencil-fill"></i> Informações da Regra
             </div>
-        """, unsafe_allow_html=True)
-        
+        """,
+                    unsafe_allow_html=True)
+
         nome = st.text_input("Nome da Regra",
-                            placeholder="Ex: Leads respondidos em 1h",
-                            help="Nome descritivo da regra de pontuação")
+                             placeholder="Ex: Leads respondidos em 1h",
+                             help="Nome descritivo da regra de pontuação")
 
         pontos = st.number_input(
             "Pontos",
@@ -1245,7 +1255,7 @@ def display_rule_create():
             except Exception as e:
                 logger.error(f"[RULE] Erro ao criar regra: {str(e)}")
                 st.error(f"Erro ao criar regra: {str(e)}")
-                
+
                 # Tenta limpar recursos criados em caso de erro
                 try:
                     # Remove a regra se foi criada
@@ -1256,7 +1266,9 @@ def display_rule_create():
                         'column_name': coluna_nome
                     }).execute()
                 except Exception as cleanup_error:
-                    logger.error(f"[RULE] Erro ao limpar recursos: {str(cleanup_error)}")
+                    logger.error(
+                        f"[RULE] Erro ao limpar recursos: {str(cleanup_error)}"
+                    )
 
 
 def display_settings():
@@ -1268,11 +1280,12 @@ def display_settings():
                 <p class="settings-description">Gerencie as configurações do sistema</p>
             </div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+                unsafe_allow_html=True)
 
     # Menu cards
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown("""
             <div class="settings-card" onclick="window.location.href='?page=settings/rules'" style="cursor: pointer;">
@@ -1280,7 +1293,8 @@ def display_settings():
                 <h3>Regras de Pontuação</h3>
                 <p>Gerencie as regras do sistema de gamificação</p>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                    unsafe_allow_html=True)
 
 
 def check_auth():
@@ -1375,7 +1389,7 @@ def main():
     if not st.session_state.get("background_started"):
         brokers_df = data['brokers']
         active_brokers = []
-        
+
         if not brokers_df.empty:
             if 'cargo' in brokers_df.columns:
                 active_brokers = brokers_df[brokers_df['cargo'] ==
@@ -1383,7 +1397,7 @@ def main():
             else:
                 # Se não houver coluna cargo, considera todos os brokers como ativos
                 active_brokers = brokers_df['id'].tolist()
-        
+
         st.session_state["active_brokers"] = active_brokers
 
         # st.session_state["rotation_thread"] = threading.Thread(
