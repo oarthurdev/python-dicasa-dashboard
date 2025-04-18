@@ -21,7 +21,7 @@ class SyncManager:
             'activities': None
         }
         self.cache = {
-            'users': {},
+            'brokers': {},
             'leads': {},
             'activities': {}
         }
