@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from dotenv import load_dotenv
 import threading
 import logging
-from flask import Flask, jsonify
+from flask import Flask, jsonify, make_response
 from PIL import Image
 from gotrue import errors as gotrue
 
@@ -42,6 +42,37 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 
 @st.cache_resource
+
+@st.cache_resource
+def init_kommo_api():
+    return KommoAPI(api_url=os.getenv("KOMMO_API_URL"), 
+                   access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+
+def health_check():
+    """Health check endpoint that verifies API and database connectivity"""
+    try:
+        kommo_api = init_kommo_api()
+        kommo_api._make_request("users", params={"limit": 1})
+        
+        supabase = init_supabase_client()
+        supabase.client.table("brokers").select("id").limit(1).execute()
+        
+        status = {
+            "status": "healthy",
+            "api": "connected", 
+            "database": "connected",
+            "timestamp": datetime.now().isoformat()
+        }
+        return make_response(jsonify(status), 200)
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return make_response(jsonify({
+            "status": "unhealthy",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500)
+
+
 def init_supabase_client():
     return SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
                           key=os.getenv("VITE_SUPABASE_ANON_KEY"))
