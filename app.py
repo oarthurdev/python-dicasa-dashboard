@@ -741,6 +741,7 @@ def display_broker_dashboard(broker_id, data):
                 <div style="font-size: 24px; font-weight: bold; color: #1E3A8A;">#{broker_rank}</div>
             </div>
             <div style="text-align: center;">
+                <div style="font-size: 14px; color: #6B7280;">Pontos</div>
                 <div style="font-size: 24px; font-weight: bold; color: #2563EB;">{broker_points}</div>
             </div>
         </div>
