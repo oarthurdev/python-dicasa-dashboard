@@ -40,6 +40,11 @@ class SyncManager:
             # Convert records for database
             processed_records = []
             for record in data_list:
+                # Convert Timestamp objects to ISO format strings
+                for key, value in record.items():
+                    if hasattr(value, 'isoformat'):  # Check if it's datetime-like
+                        record[key] = value.isoformat()
+                
                 record_hash = self._generate_hash(record)
                 
                 # Skip if record hasn't changed
