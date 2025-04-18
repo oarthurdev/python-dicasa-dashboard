@@ -1,0 +1,115 @@
+libs.sync_manager - INFO - Batch of 20 activities processed
+2025-04-18 23:05:38,003 - libs.sync_manager - INFO - Data sync completed successfully.
+2025-04-18 23:05:38,006 - __main__ - INFO - [Auto Update] Atualizando pontos dos corretores
+2025-04-18 23:05:38,007 - libs.supabase_db - INFO - Iniciando atualização dos pontos dos corretores...
+2025-04-18 23:05:38,007 - libs.kommo_api - INFO - Retrieving users from Kommo CRM
+2025-04-18 23:05:38,007 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/users
+2025-04-18 23:05:38,278 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:38,279 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/users
+2025-04-18 23:05:38,530 - libs.kommo_api - INFO - Response status: 204
+2025-04-18 23:05:38,530 - libs.kommo_api - WARNING - Empty response received from API
+2025-04-18 23:05:38,531 - libs.kommo_api - INFO - Buscando etapas do pipeline 8865067
+2025-04-18 23:05:38,531 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/leads/pipelines
+2025-04-18 23:05:38,764 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:38,766 - libs.kommo_api - INFO - Etapas carregadas com sucesso
+2025-04-18 23:05:38,766 - libs.kommo_api - INFO - Retrieving leads from Kommo CRM (pipeline_id = 8865067)
+2025-04-18 23:05:39,766 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/leads
+2025-04-18 23:05:40,289 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:40,296 - libs.kommo_api - INFO - Processada página 1, encontrados 250 leads
+2025-04-18 23:05:41,296 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/leads
+2025-04-18 23:05:42,023 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:42,032 - libs.kommo_api - INFO - Processada página 2, encontrados 250 leads
+2025-04-18 23:05:43,032 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/leads
+2025-04-18 23:05:43,651 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:43,656 - libs.kommo_api - INFO - Processada página 3, encontrados 176 leads
+2025-04-18 23:05:44,656 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/leads
+2025-04-18 23:05:44,970 - libs.kommo_api - INFO - Response status: 204
+2025-04-18 23:05:44,971 - libs.kommo_api - WARNING - Empty response received from API
+2025-04-18 23:05:44,971 - libs.kommo_api - INFO - Parando busca: 1 páginas vazias consecutivas
+2025-04-18 23:05:44,971 - libs.kommo_api - INFO - Total de leads com pipeline 8865067: 676
+2025-04-18 23:05:44,979 - libs.kommo_api - INFO - Retrieving activities from Kommo CRM
+2025-04-18 23:05:45,980 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:45,981 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:45,981 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:45,981 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:45,981 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:46,340 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:46,347 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:46,355 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:46,530 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:46,537 - libs.kommo_api - INFO - Page 1 fetched: 250 events
+2025-04-18 23:05:46,623 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:46,626 - libs.kommo_api - INFO - Page 2 fetched: 250 events
+2025-04-18 23:05:46,626 - libs.kommo_api - INFO - Page 3 fetched: 250 events
+2025-04-18 23:05:46,626 - libs.kommo_api - INFO - Page 4 fetched: 250 events
+2025-04-18 23:05:46,626 - libs.kommo_api - INFO - Page 5 fetched: 250 events
+2025-04-18 23:05:47,627 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:47,628 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:47,629 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:47,629 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:47,629 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:48,017 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:48,021 - libs.kommo_api - INFO - Page 6 fetched: 250 events
+2025-04-18 23:05:48,067 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:48,073 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:48,078 - libs.kommo_api - INFO - Page 7 fetched: 250 events
+2025-04-18 23:05:48,087 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:48,238 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:48,242 - libs.kommo_api - INFO - Page 8 fetched: 250 events
+2025-04-18 23:05:48,242 - libs.kommo_api - INFO - Page 9 fetched: 250 events
+2025-04-18 23:05:48,242 - libs.kommo_api - INFO - Page 10 fetched: 250 events
+2025-04-18 23:05:49,242 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:49,242 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:49,242 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:49,243 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:49,243 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:49,666 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:49,688 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:49,702 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:49,706 - libs.kommo_api - INFO - Page 11 fetched: 250 events
+2025-04-18 23:05:49,710 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:49,795 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:49,804 - libs.kommo_api - INFO - Page 12 fetched: 250 events
+2025-04-18 23:05:49,804 - libs.kommo_api - INFO - Page 13 fetched: 250 events
+2025-04-18 23:05:49,804 - libs.kommo_api - INFO - Page 14 fetched: 250 events
+2025-04-18 23:05:49,804 - libs.kommo_api - INFO - Page 15 fetched: 250 events
+2025-04-18 23:05:50,804 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:50,804 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:50,805 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:50,805 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:50,807 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:51,179 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:51,184 - libs.kommo_api - INFO - Page 16 fetched: 250 events
+2025-04-18 23:05:51,184 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:51,275 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:51,279 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:51,282 - libs.kommo_api - INFO - Page 17 fetched: 250 events
+2025-04-18 23:05:51,457 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:51,460 - libs.kommo_api - INFO - Page 18 fetched: 250 events
+2025-04-18 23:05:51,460 - libs.kommo_api - INFO - Page 19 fetched: 250 events
+2025-04-18 23:05:51,461 - libs.kommo_api - INFO - Page 20 fetched: 250 events
+2025-04-18 23:05:52,461 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:52,461 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:52,461 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:52,461 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:52,461 - libs.kommo_api - INFO - Making API request to: https://dicasaindaial.kommo.com/api/v4/events
+2025-04-18 23:05:52,722 - libs.kommo_api - INFO - Response status: 204
+2025-04-18 23:05:52,722 - libs.kommo_api - WARNING - Empty response received from API
+2025-04-18 23:05:52,771 - libs.kommo_api - INFO - Response status: 204
+2025-04-18 23:05:52,771 - libs.kommo_api - WARNING - Empty response received from API
+2025-04-18 23:05:52,808 - libs.kommo_api - INFO - Response status: 204
+2025-04-18 23:05:52,808 - libs.kommo_api - WARNING - Empty response received from API
+2025-04-18 23:05:52,813 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:52,840 - libs.kommo_api - INFO - Response status: 200
+2025-04-18 23:05:52,843 - libs.kommo_api - INFO - Page 21 fetched: 250 events
+2025-04-18 23:05:52,843 - libs.kommo_api - INFO - Page 22 fetched: 49 events
+2025-04-18 23:05:52,843 - libs.kommo_api - INFO - Stopping: 1 empty pages
+2025-04-18 23:05:52,844 - libs.kommo_api - INFO - Total de atividades recuperadas: 5299
+2025-04-18 23:05:52,888 - gamification - INFO - Calculating broker points based on gamification rules
+2025-04-18 23:05:55,036 - gamification - INFO - Broker points calculation completed
+2025-04-18 23:05:55,036 - libs.supabase_db - INFO - Upsert de 7 registros na tabela broker_points.
+2025-04-18 23:05:55,194 - httpx - INFO - HTTP Request: POST https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?columns=%22leads_com_reclamacao%22%2C%22leads_tempo_resposta_acima_12h%22%2C%22updated_at%22%2C%22acompanhamento_pos_venda%22%2C%22leads_respondidos_1h%22%2C%22resposta_rapida_3h%22%2C%22leads_5_dias_sem_mudanca%22%2C%22nome%22%2C%22todos_leads_respondidos%22%2C%22cadastro_completo%22%2C%22leads_atualizados_mesmo_dia%22%2C%22leads_ignorados_48h%22%2C%22id%22%2C%22leads_sem_interacao_24h%22%2C%22leads_visitados%22%2C%22feedbacks_positivos%22%2C%22vendas_realizadas%22%2C%22leads_respondidos_apos_18h%22%2C%22pontos%22%2C%22propostas_enviadas%22%2C%22leads_perdidos%22 "HTTP/2 200 OK"
+2025-04-18 23:05:55,195 - libs.supabase_db - INFO - Tabela broker_points atualizada com sucesso.
+2025-04-18 23:05:55,195 - libs.supabase_db - INFO - Tabela broker_points atualizada com sucesso. 7 registros atualizados.
+2025-04-18 23:05:55,198 - __main__ - INFO - [Auto Update] Pontos atualizados com sucesso
+2025-04-18 23:05:55,198 - __main__ - INFO - [Auto Update] Aguardando 5 minutos para a próxima atualização
