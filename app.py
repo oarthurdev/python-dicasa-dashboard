@@ -910,16 +910,22 @@ def display_login_page():
 
                     try:
                         response = supabase.client.auth.sign_in_with_password({
-                            "email":
-                            email,
-                            "password":
-                            senha
+                            "email": email,
+                            "password": senha
                         })
 
                         if response.user:
+                            # Set session in both Supabase and Streamlit
                             st.session_state["authenticated"] = True
+                            st.session_state["user"] = {
+                                "id": response.user.id,
+                                "email": response.user.email
+                            }
                             st.success("Login realizado com sucesso!")
-                            st.query_params["page"] = "ranking"
+                            
+                            # Redirect to attempted page or ranking
+                            next_page = st.session_state.get("attempted_page", "ranking")
+                            st.query_params["page"] = next_page
                             st.rerun()
                         else:
                             st.error("Email ou senha incorretos.")
@@ -1024,40 +1030,46 @@ def display_settings():
         st.query_params["page"] = "settings/rules"
         st.rerun()
 
-def main():
-    # Inicializar estado de autenticação se necessário
+def check_auth():
+    """Check if user is authenticated and initialize session state"""
     if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
+        # Try to get session from Supabase
+        try:
+            session = supabase.client.auth.get_session()
+            st.session_state["authenticated"] = session is not None and session.user is not None
+        except Exception:
+            st.session_state["authenticated"] = False
+            
+    return st.session_state["authenticated"]
 
+def main():
     # Get current page from query params
     current_page = st.query_params.get("page", "ranking")
     
-    # Initialize session state if needed
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-
-    logger.info(f"[SESSION] Authenticated: {str(st.session_state.get('authenticated'))}")
+    # Check authentication status
+    is_authenticated = check_auth()
+    
+    logger.info(f"[SESSION] Authenticated: {str(is_authenticated)}")
     logger.info(f"[SESSION] Current page: {current_page}")
 
-    # Handle authentication logic
+    # Define protected pages
+    protected_pages = ["settings", "settings/rules", "settings/rule/create"]
+    
+    # Handle page access and redirects
+    if current_page in protected_pages and not is_authenticated:
+        st.session_state["attempted_page"] = current_page
+        st.error("Você precisa estar autenticado para acessar esta página")
+        st.query_params["page"] = "login"
+        st.rerun()
+        return
+        
     if current_page == "login":
-        if st.session_state["authenticated"]:
-            # If already authenticated, redirect to last attempted page or ranking
+        if is_authenticated:
             next_page = st.session_state.get("attempted_page", "ranking")
             st.query_params["page"] = next_page
             st.rerun()
         else:
             display_login_page()
-        return
-        
-    # Check authentication for protected pages
-    if current_page.startswith("settings"):
-        if not st.session_state["authenticated"]:
-            # Store attempted page before redirecting
-            st.session_state["attempted_page"] = current_page
-            st.error("Você precisa estar autenticado para acessar esta página")
-            st.query_params["page"] = "login"
-            st.rerun()
             return
 
     def rotate_views_on_reload():
