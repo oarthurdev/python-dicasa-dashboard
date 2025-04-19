@@ -82,6 +82,41 @@ def init_supabase_client():
 supabase = init_supabase_client()
 
 
+def rotate_views_on_reload():
+    view_manager = get_view_manager()
+
+    if "active_brokers" not in st.session_state:
+        st.session_state["active_brokers"] = []
+
+    current_page = st.query_params.get("page", "ranking")
+    if current_page in ["settings", "settings/rules", "settings/rule/create"]:
+        return
+
+    # Atualiza lista de brokers ativos
+    broker_points = supabase.client.table("broker_points").select("id").order(
+        "id").execute()
+    active_brokers = [b['id'] for b in broker_points.data
+                      ] if broker_points.data else []
+    view_manager.set_active_brokers(active_brokers)
+
+    if "last_rotation_check" not in st.session_state:
+        st.session_state["last_rotation_check"] = time.time()
+        return
+
+    now = time.time()
+    elapsed = now - st.session_state["last_rotation_check"]
+
+    logger.info(f"[ROTATE] Verificando rotação de views: {elapsed} segundos")
+
+    if elapsed >= 10:
+        next_page = view_manager.get_next_page()
+        st.session_state["current_page"] = next_page
+        st.query_params["page"] = next_page
+        st.session_state["last_rotation_check"] = now
+        logger.info(f"[ROTATE] Redirecionando para {next_page}")
+        st.rerun()
+
+
 def background_data_loader():
     """
     This function runs in the background to continuously monitor Kommo API
@@ -107,6 +142,7 @@ def background_data_loader():
 
         while True:
             try:
+                rotate_views_on_reload()
                 time.sleep(300)  # Aguarda 5 minutos entre cada sincronização
 
                 brokers = kommo_api.get_users()
@@ -947,7 +983,7 @@ def auto_update_broker_points(brokers=None, leads=None, activities=None):
 # Inicializar ViewManager como recurso global
 @st.cache_resource
 def get_view_manager():
-    return ViewManager(rotation_interval=5)
+    return ViewManager()
 
 
 def display_login_page():
@@ -1337,33 +1373,6 @@ def main():
         else:
             display_login_page()
             return
-
-    def rotate_views_on_reload():
-        view_manager = get_view_manager()
-
-        if "active_brokers" not in st.session_state:
-            st.session_state["active_brokers"] = []
-
-        # Não rotacionar se estiver em páginas de configuração
-        current_page = st.query_params.get("page", "ranking")
-        if current_page in ["settings", "settings/rules", "settings/rule/create"]:
-            return
-
-        # Atualiza lista de brokers ativos da tabela broker_points em ordem
-        broker_points = supabase.client.table("broker_points").select("id").order("id").execute()
-        active_brokers = [b['id'] for b in broker_points.data] if broker_points.data else []
-        view_manager.set_active_brokers(active_brokers)
-
-        current_time = time.time()
-        last_sync_time = st.session_state.get("last_sync_time", 0)
-        elapsed = current_time - last_sync_time
-
-        if elapsed >= 10:  # rotaciona a cada 10 segundos
-            next_page = view_manager.get_next_page()
-            st.session_state["current_page"] = next_page
-            st.session_state["last_sync_time"] = current_time
-            st.query_params["page"] = next_page
-            st.rerun()
 
     # Gerenciar rotação de páginas
     # handle_page_rotation()
