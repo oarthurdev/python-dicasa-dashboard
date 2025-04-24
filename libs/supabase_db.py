@@ -458,7 +458,6 @@ class SupabaseClient:
                 'acompanhamento_pos_venda': 0,
                 'leads_sem_interacao_24h': 0,
                 'leads_ignorados_48h': 0,
-                'leads_com_reclamacao': 0,
                 'leads_perdidos': 0,
                 'leads_respondidos_apos_18h': 0,
                 'leads_tempo_resposta_acima_12h': 0,
@@ -548,9 +547,8 @@ class SupabaseClient:
                 'resposta_rapida_3h', 'todos_leads_respondidos',
                 'cadastro_completo', 'acompanhamento_pos_venda',
                 'leads_sem_interacao_24h', 'leads_ignorados_48h',
-                'leads_com_reclamacao', 'leads_perdidos',
-                'leads_respondidos_apos_18h', 'leads_tempo_resposta_acima_12h',
-                'leads_5_dias_sem_mudanca'
+                'leads_perdidos', 'leads_respondidos_apos_18h', 
+                'leads_tempo_resposta_acima_12h', 'leads_5_dias_sem_mudanca'
             ]
 
             for field in required_fields:

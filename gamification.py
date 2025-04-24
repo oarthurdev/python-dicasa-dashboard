@@ -58,7 +58,6 @@ def calculate_broker_points(broker_data, lead_data, activity_data):
         # Initialize metrics (negative)
         points_df['leads_sem_interacao_24h'] = 0
         points_df['leads_ignorados_48h'] = 0
-        points_df['leads_com_reclamacao'] = 0
         points_df['leads_perdidos'] = 0
 
         # Initialize alert metrics (no points deduction, just for display)
@@ -260,7 +259,7 @@ def calculate_broker_points(broker_data, lead_data, activity_data):
                         no_interaction_count += 1
 
                 points_df.at[idx, 'leads_sem_interacao_24h'] = no_interaction_count
-                points_df.at[idx, 'pontos'] -= no_interaction_count * 3
+                points_df.at[idx, 'pontos'] -= no_interaction_count * 0 
 
             # Rule: Lead ignorado por mais de 48h (-5 pts)
             # Count leads ignored for more than 48 hours
@@ -286,19 +285,9 @@ def calculate_broker_points(broker_data, lead_data, activity_data):
                             ignored_leads += 1
 
                 points_df.at[idx, 'leads_ignorados_48h'] = ignored_leads
-                points_df.at[idx, 'pontos'] -= ignored_leads * 5
+                points_df.at[idx, 'pontos'] -= ignored_leads * 0
 
-            # Rule: Lead com reclamação registrada (-4 pts)
-            # Look for activities indicating complaints
-            if not broker_activities.empty:
-                complaint_count = len(broker_activities[
-                    broker_activities['tipo'].str.contains('reclamação|problema|insatisfação', na=False, case=False) |
-                    broker_activities['valor_novo'].str.contains('reclamação|problema|insatisfação', na=False, case=False)
-                ])
-
-                points_df.at[idx, 'leads_com_reclamacao'] = complaint_count
-                points_df.at[idx, 'pontos'] -= complaint_count * 4
-
+     
             # Rule: Perda de lead para concorrente (-6 pts)
             # Count leads lost to competitors
             if not broker_leads.empty:
@@ -309,7 +298,7 @@ def calculate_broker_points(broker_data, lead_data, activity_data):
                 ])
 
                 points_df.at[idx, 'leads_perdidos'] = lost_leads
-                points_df.at[idx, 'pontos'] -= lost_leads * 6
+                points_df.at[idx, 'pontos'] -= lost_leads * 1
 
             # ===== ALERTS (no points impact) =====
 
