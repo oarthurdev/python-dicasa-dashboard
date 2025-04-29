@@ -575,9 +575,10 @@ class SupabaseClient:
                 logger.warning("Nenhum corretor ativo encontrado.")
                 return
 
-            # Calcula os pontos
+            # Carrega as regras e calcula os pontos
+            rules = self.load_rules()
             points_df = calculate_broker_points(active_brokers, leads,
-                                                activities)
+                                              activities, rules)
 
             # Garante que todos os campos necessários existam
             required_fields = [
