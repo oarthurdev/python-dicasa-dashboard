@@ -23,8 +23,48 @@ class SupabaseClient:
         try:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
+            
+            # Load Kommo API configuration
+            self.kommo_config = self.load_kommo_config()
+            # Load gamification rules
+            self.rules = self.load_rules()
+            
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
+            raise
+            
+    def load_kommo_config(self):
+        """Load Kommo API configuration from Supabase"""
+        try:
+            result = self.client.table("kommo_config").select("*").execute()
+            if hasattr(result, "error") and result.error:
+                raise Exception(f"Supabase error: {result.error}")
+                
+            if not result.data:
+                raise ValueError("No Kommo API configuration found")
+                
+            return result.data[0]
+        except Exception as e:
+            logger.error(f"Failed to load Kommo config: {str(e)}")
+            raise
+            
+    def load_rules(self):
+        """Load gamification rules from Supabase"""
+        try:
+            result = self.client.table("rules").select("*").execute()
+            if hasattr(result, "error") and result.error:
+                raise Exception(f"Supabase error: {result.error}")
+                
+            if not result.data:
+                raise ValueError("No gamification rules found")
+                
+            rules_dict = {}
+            for rule in result.data:
+                rules_dict[rule['coluna_nome']] = rule['pontos']
+                
+            return rules_dict
+        except Exception as e:
+            logger.error(f"Failed to load rules: {str(e)}")
             raise
 
     def upsert_brokers(self, brokers_df):
