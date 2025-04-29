@@ -31,8 +31,8 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 @st.cache_resource
 def init_kommo_api():
-    return KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
-                    access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+    supabase = init_supabase_client()
+    return KommoAPI(supabase_client=supabase)
 
 
 def init_supabase_client():
