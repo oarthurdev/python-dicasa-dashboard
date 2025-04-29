@@ -136,6 +136,30 @@ class KommoAPI:
             logger.error(f"Failed to retrieve users: {str(e)}")
             raise
 
+    def _get_date_filters(self):
+        """Obtém os filtros de data da configuração"""
+        try:
+            config = self.supabase_client.load_kommo_config()
+            start_date = config.get('sync_start_date')
+            end_date = config.get('sync_end_date')
+            
+            if start_date:
+                # Converte para timestamp unix
+                start_ts = int(datetime.fromisoformat(start_date.replace('Z', '+00:00')).timestamp())
+            else:
+                start_ts = None
+                
+            if end_date:
+                # Converte para timestamp unix
+                end_ts = int(datetime.fromisoformat(end_date.replace('Z', '+00:00')).timestamp())
+            else:
+                end_ts = None
+                
+            return start_ts, end_ts
+        except Exception as e:
+            logger.error(f"Erro ao obter filtros de data: {str(e)}")
+            return None, None
+
     def get_leads(self):
         """
         Retrieve leads from Kommo CRM filtering only pipeline_id = 8865067
@@ -169,18 +193,20 @@ class KommoAPI:
 
             while True:
                 time.sleep(1)
-                response = self._make_request(
-                    "leads",
-                    params={
-                        "page":
-                        page,
-                        "limit":
-                        250,
-                        "filter[pipeline_id]":
-                        8865067,
-                        "with":
-                        "contacts,pipeline_id,loss_reason,catalog_elements,company"
-                    })
+                start_ts, end_ts = self._get_date_filters()
+                params = {
+                    "page": page,
+                    "limit": 250,
+                    "filter[pipeline_id]": 8865067,
+                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                }
+                
+                if start_ts:
+                    params["filter[created_at][from]"] = start_ts
+                if end_ts:
+                    params["filter[created_at][to]"] = end_ts
+                
+                response = self._make_request("leads", params=params)
 
                 leads = response.get("_embedded", {}).get("leads", [])
                 filtered_page_leads = [
@@ -274,10 +300,14 @@ class KommoAPI:
                     params={
                         "page": page,
                         "limit": page_size,
-                        "filter[type]":
-                        "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
-                        "filter[created_at][from]": filter_from,
+                        "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
                     })
+
+                start_ts, end_ts = self._get_date_filters()
+                if start_ts:
+                    params["filter[created_at][from]"] = start_ts
+                if end_ts:
+                    params["filter[created_at][to]"] = end_ts
 
             activities_data = []
             page = 1
