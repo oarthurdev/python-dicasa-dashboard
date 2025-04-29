@@ -140,10 +140,18 @@ class SyncManager:
             raise
 
     def needs_sync(self, resource: str) -> bool:
+        # Verifica se já existem dados no banco
+        result = self.supabase.client.table(resource).select("id").limit(1).execute()
+        has_data = bool(result.data)
+
         last = self.last_sync.get(resource)
         if not last:
             return True
-        return (datetime.now() - last) > timedelta(seconds=self.sync_interval)
+            
+        # Só aplica delay se já existirem dados
+        if has_data:
+            return (datetime.now() - last) > timedelta(seconds=self.sync_interval)
+        return True
 
     def update_sync_time(self, resource: str):
         self.last_sync[resource] = datetime.now()
