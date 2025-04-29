@@ -24,8 +24,8 @@ class SupabaseClient:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
             
-            # Insere log de inicialização
-            self.insert_log("INFO", "Supabase client initialized successfully")
+            # Load Kommo API configuration
+            self.kommo_config = self.load_kommo_config()
             
     def insert_log(self, type: str, message: str):
         """Insere um log na tabela sync_logs"""
@@ -37,9 +37,6 @@ class SupabaseClient:
             }).execute()
         except Exception as e:
             logger.error(f"Failed to insert log: {str(e)}")
-            
-            # Load Kommo API configuration
-            self.kommo_config = self.load_kommo_config()
             # Load gamification rules
             self.rules = self.load_rules()
             
@@ -615,13 +612,25 @@ class SupabaseClient:
             # Adiciona timestamp de atualização
             points_df['updated_at'] = pd.Timestamp.now()
 
+            # Registra os pontos atualizados de cada corretor
+            for _, row in points_df.iterrows():
+                self.insert_log(
+                    "INFO",
+                    f"Pontos atualizados - Corretor: {row['nome']} | "
+                    f"Total: {row['pontos']} | "
+                    f"Leads 1h: {row['leads_respondidos_1h']} | "
+                    f"Leads visitados: {row['leads_visitados']} | "
+                    f"Propostas: {row['propostas_enviadas']} | "
+                    f"Vendas: {row['vendas_realizadas']}"
+                )
+
             # Atualiza o banco com retry em caso de erro
             for attempt in range(max_retries):
                 try:
                     self.upsert_broker_points(points_df)
-                    logger.info(
-                        f"Tabela broker_points atualizada com sucesso. {len(points_df)} registros atualizados."
-                    )
+                    msg = f"Tabela broker_points atualizada com sucesso. {len(points_df)} registros atualizados."
+                    logger.info(msg)
+                    self.insert_log("INFO", msg)
                     break
                 except Exception as e:
                     if attempt == max_retries - 1:
