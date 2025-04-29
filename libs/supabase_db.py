@@ -23,10 +23,15 @@ class SupabaseClient:
         try:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
-            
+
             # Load Kommo API configuration
             self.kommo_config = self.load_kommo_config()
-            
+            # Load gamification rules
+            self.rules = self.load_rules()
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase client: {str(e)}")
+            raise
+
     def insert_log(self, type: str, message: str):
         """Insere um log na tabela sync_logs"""
         try:
@@ -37,13 +42,7 @@ class SupabaseClient:
             }).execute()
         except Exception as e:
             logger.error(f"Failed to insert log: {str(e)}")
-            # Load gamification rules
-            self.rules = self.load_rules()
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize Supabase client: {str(e)}")
-            raise
-            
+
     def load_kommo_config(self):
         """Load Kommo API configuration from Supabase"""
         try:
