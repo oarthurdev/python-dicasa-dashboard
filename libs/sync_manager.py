@@ -69,12 +69,17 @@ class SyncManager:
                     processed_records).execute()
                 
                 if hasattr(result, "error") and result.error:
+                    self.supabase.insert_log("ERROR", f"Supabase error: {result.error}")
                     raise Exception(f"Supabase error: {result.error}")
                 
-                logger.info(f"Batch of {len(processed_records)} {data_type} processed")
+                msg = f"Batch of {len(processed_records)} {data_type} processed"
+                logger.info(msg)
+                self.supabase.insert_log("INFO", msg)
 
         except Exception as e:
-            logger.error(f"Error processing batch of {data_type}: {str(e)}")
+            error_msg = f"Error processing batch of {data_type}: {str(e)}"
+            logger.error(error_msg)
+            self.supabase.insert_log("ERROR", error_msg)
             raise
 
     def sync_from_cache(self, brokers, leads, activities):

@@ -24,6 +24,20 @@ class SupabaseClient:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
             
+            # Insere log de inicialização
+            self.insert_log("INFO", "Supabase client initialized successfully")
+            
+    def insert_log(self, type: str, message: str):
+        """Insere um log na tabela sync_logs"""
+        try:
+            self.client.table("sync_logs").insert({
+                "timestamp": datetime.now().isoformat(),
+                "type": type,
+                "message": message
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to insert log: {str(e)}")
+            
             # Load Kommo API configuration
             self.kommo_config = self.load_kommo_config()
             # Load gamification rules
@@ -577,8 +591,10 @@ class SupabaseClient:
 
             # Carrega as regras e calcula os pontos
             rules = self.load_rules()
+            self.insert_log("INFO", "Iniciando cálculo de pontos")
             points_df = calculate_broker_points(active_brokers, leads,
                                               activities, rules)
+            self.insert_log("INFO", "Cálculo de pontos concluído")
 
             # Garante que todos os campos necessários existam
             required_fields = [
