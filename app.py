@@ -31,8 +31,8 @@ st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 @st.cache_resource
 def init_kommo_api():
-    return KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
-                    access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
+    supabase = init_supabase_client()
+    return KommoAPI(supabase_client=supabase)
 
 
 def init_supabase_client():
@@ -49,12 +49,10 @@ def background_data_loader():
     for changes and update the database accordingly
     """
     try:
-        kommo_api = KommoAPI(api_url=os.getenv(
-            "KOMMO_API_URL", "https://dicasaindaial.kommo.com/api/v4"),
-                             access_token=os.getenv("ACCESS_TOKEN_KOMMO"))
-
         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
                                   key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+                                  
+        kommo_api = KommoAPI(supabase_client=supabase)
 
         sync_manager = SyncManager(kommo_api, supabase)
         last_sync_time = None
