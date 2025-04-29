@@ -272,31 +272,41 @@ class KommoAPI:
             logger.error(f"Erro ao buscar leads: {str(e)}")
             return pd.DataFrame()
 
-    def get_activities(self, page_size=250, max_workers=5):
+    def get_activities(self, page_size=250, max_workers=5, max_pages=100):
         """
-        Retrieve all activities from Kommo CRM using parallel requests
+        Retrieve activities from Kommo CRM using parallel requests with proper filtering
+        
+        Args:
+            page_size (int): Number of records per page
+            max_workers (int): Maximum number of parallel requests
+            max_pages (int): Maximum number of pages to fetch
+        
+        Returns:
+            pd.DataFrame: Processed activities data
         """
         try:
             logger.info("Retrieving activities from Kommo CRM")
-
-            now = int(time.time())
-            filter_from = now - (7 * 24 * 60 * 60)
+            
+            start_ts, end_ts = self._get_date_filters()
+            base_params = {
+                "limit": page_size,
+                "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
+            }
+            
+            if start_ts:
+                base_params["filter[created_at][from]"] = start_ts
+            if end_ts:
+                base_params["filter[created_at][to]"] = end_ts
 
             def fetch_page(page):
-                time.sleep(1)  # Rate limiting
-                return self._make_request(
-                    "events",
-                    params={
-                        "page": page,
-                        "limit": page_size,
-                        "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
-                    })
-
-                start_ts, end_ts = self._get_date_filters()
-                if start_ts:
-                    params["filter[created_at][from]"] = start_ts
-                if end_ts:
-                    params["filter[created_at][to]"] = end_ts
+                try:
+                    time.sleep(1)  # Rate limiting
+                    params = {**base_params, "page": page}
+                    response = self._make_request("events", params=params)
+                    return response.get("_embedded", {}).get("events", [])
+                except Exception as e:
+                    logger.error(f"Error fetching page {page}: {e}")
+                    return []
 
             activities_data = []
             page = 1
@@ -304,82 +314,73 @@ class KommoAPI:
             stop_after = 1
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                while True:
-                    # Fetch multiple pages in parallel
-                    future_to_page = {
-                        executor.submit(fetch_page, p): p
-                        for p in range(page, page + max_workers)
-                    }
+                while page <= max_pages:
+                    # Define batch of pages to fetch
+                    current_batch = range(page, min(page + max_workers, max_pages + 1))
+                    futures = {executor.submit(fetch_page, p): p for p in current_batch}
 
-                    for future in future_to_page:
-                        try:
-                            response = future.result()
-                            events = response.get("_embedded",
-                                                  {}).get("events", [])
+                    batch_empty = True
+                    for future in as_completed(futures):
+                        page_num = futures[future]
+                        events = future.result()
 
-                            if not events:
-                                empty_streak += 1
-                                if empty_streak >= stop_after:
-                                    logger.info(
-                                        f"Stopping: {stop_after} empty pages")
-                                    break
-                            else:
-                                empty_streak = 0
-                                activities_data.extend(events)
-                                logger.info(
-                                    f"Page {future_to_page[future]} fetched: {len(events)} events"
-                                )
+                        if events:
+                            batch_empty = False
+                            activities_data.extend(events)
+                            logger.info(f"Page {page_num} fetched: {len(events)} events")
 
-                        except Exception as e:
-                            logger.error(
-                                f"Error fetching page {future_to_page[future]}: {e}"
-                            )
+                    if batch_empty:
+                        empty_streak += 1
+                        if empty_streak >= stop_after:
+                            logger.info(f"Stopping: {stop_after} empty batches")
+                            break
+                    else:
+                        empty_streak = 0
 
-                    if empty_streak >= stop_after:
+                    page += len(current_batch)
+                    
+                    # Safety check for maximum pages
+                    if page > max_pages:
+                        logger.info(f"Reached maximum number of pages ({max_pages})")
                         break
 
-                    page += max_workers
+            total_activities = len(activities_data)
+            logger.info(f"Total de atividades recuperadas: {total_activities}")
+            
+            if not activities_data:
+                logger.warning("Nenhuma atividade encontrada")
+                return pd.DataFrame()
 
-            logger.info(
-                f"Total de atividades recuperadas: {len(activities_data)}")
+            # Processamento otimizado usando list comprehension
+            type_mapping = {
+                "lead_status_changed": "mudança_status",
+                "incoming_chat_message": "mensagem_recebida",
+                "outgoing_chat_message": "mensagem_enviada",
+                "task_completed": "tarefa_concluida"
+            }
 
-            # Processamento
-            processed_activities = []
-            for activity in activities_data:
-                created_at = datetime.fromtimestamp(
-                    activity.get("created_at",
-                                 0)) if activity.get("created_at") else None
+            processed_activities = [{
+                "id": activity.get("id"),
+                "lead_id": activity.get("entity_id") if activity.get("entity_type") == "lead" else None,
+                "user_id": activity.get("created_by"),
+                "tipo": type_mapping.get(activity.get("type"), "outro"),
+                "valor_anterior": activity.get("value_before"),
+                "valor_novo": activity.get("value_after"),
+                "criado_em": datetime.fromtimestamp(activity.get("created_at", 0)) if activity.get("created_at") else None
+            } for activity in activities_data]
 
-                activity_type = {
-                    "lead_status_changed": "mudança_status",
-                    "incoming_chat_message": "mensagem_recebida",
-                    "outgoing_chat_message": "mensagem_enviada",
-                    "task_completed": "tarefa_concluida"
-                }.get(activity.get("type"), "outro")
+            # Criar DataFrame e processar datas de uma vez
+            df = pd.DataFrame(processed_activities)
+            if not df.empty and "criado_em" in df.columns:
+                df["dia_semana"] = df["criado_em"].dt.strftime("%A")
+                df["hora"] = df["criado_em"].dt.hour
 
-                processed_activities.append({
-                    "id":
-                    activity.get("id"),
-                    "lead_id":
-                    activity.get("entity_id")
-                    if activity.get("entity_type") == "lead" else None,
-                    "user_id":
-                    activity.get("created_by"),
-                    "tipo":
-                    activity_type,
-                    "valor_anterior":
-                    activity.get("value_before"),
-                    "valor_novo":
-                    activity.get("value_after"),
-                    "criado_em":
-                    created_at,
-                    "dia_semana":
-                    created_at.strftime("%A") if created_at else None,
-                    "hora":
-                    created_at.hour if created_at else None
-                })
+            logger.info("Processamento de atividades concluído com sucesso")
+            return df
 
-            return pd.DataFrame(processed_activities)
+        except Exception as e:
+            logger.error(f"Failed to retrieve activities: {str(e)}")
+            raise
 
         except Exception as e:
             logger.error(f"Failed to retrieve activities: {str(e)}")
