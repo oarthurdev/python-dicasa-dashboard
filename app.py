@@ -24,13 +24,11 @@ hide_streamlit_style = """
             </style>
             """
 
-st.set_page_config(page_title="Dicasa - Sync with kommo",
-                   layout="wide")
+st.set_page_config(page_title="Dicasa - Sync with kommo", layout="wide")
 
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
 
-@st.cache_resource
 @st.cache_resource
 def init_kommo_api():
     return KommoAPI(api_url=os.getenv("KOMMO_API_URL"),
@@ -92,6 +90,7 @@ def background_data_loader():
     except Exception as e:
         logger.error(f"Failed to initialize background sync: {str(e)}")
 
+
 # Lock para sincronização do state
 state_lock = threading.Lock()
 
@@ -114,11 +113,12 @@ def auto_update_broker_points(brokers=None, leads=None, activities=None):
             logger.error(f"[Auto Update] Erro ao atualizar pontos: {str(e)}")
         time.sleep(10)
 
+
 def main():
-    data_thread = threading.Thread(
-            target=background_data_loader, daemon=True)
-    
+    data_thread = threading.Thread(target=background_data_loader, daemon=True)
+
     data_thread.start()
+
 
 if __name__ == "__main__":
     main()
