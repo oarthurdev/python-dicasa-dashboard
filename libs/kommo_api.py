@@ -41,7 +41,7 @@ class KommoAPI:
         """
         Make a request to the Kommo API with retry logic
         """
-        url = f"{self.api_url}/api/v4/{endpoint}"
+        url = f"{self.api_url}/{endpoint}"
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json"
@@ -143,20 +143,8 @@ class KommoAPI:
             # Load config directly from supabase since it's already loaded in constructor
             start_date = self.api_config.get('sync_start_date')
             end_date = self.api_config.get('sync_end_date')
-            
-            if start_date:
-                # Converte para timestamp unix
-                start_ts = int(datetime.fromisoformat(start_date.replace('Z', '+00:00')).timestamp())
-            else:
-                start_ts = None
-                
-            if end_date:
-                # Converte para timestamp unix
-                end_ts = int(datetime.fromisoformat(end_date.replace('Z', '+00:00')).timestamp())
-            else:
-                end_ts = None
-                
-            return start_ts, end_ts
+    
+            return start_date, end_date
         except Exception as e:
             logger.error(f"Erro ao obter filtros de data: {str(e)}")
             return None, None
