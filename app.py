@@ -68,8 +68,6 @@ def background_data_loader():
 
         while True:
             try:
-                time.sleep(300)  # Aguarda 5 minutos entre cada sincronização
-
                 brokers = kommo_api.get_users()
                 leads = kommo_api.get_leads()
                 activities = kommo_api.get_activities()
