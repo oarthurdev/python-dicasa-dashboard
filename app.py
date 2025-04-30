@@ -110,10 +110,36 @@ def auto_update_broker_points(brokers=None, leads=None, activities=None):
         time.sleep(10)
 
 
+def sync_data():
+    try:
+        supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
+                                key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+        kommo_api = KommoAPI(supabase_client=supabase)
+        sync_manager = SyncManager(kommo_api, supabase)
+        
+        brokers = kommo_api.get_users()
+        leads = kommo_api.get_leads()
+        activities = kommo_api.get_activities()
+        
+        if not brokers.empty and not leads.empty and not activities.empty:
+            sync_manager.sync_from_cache(brokers, leads, activities)
+            return {"status": "success", "message": "Sync completed successfully"}
+        else:
+            return {"status": "error", "message": "Failed to fetch data"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 def main():
     data_thread = threading.Thread(target=background_data_loader, daemon=True)
-
     data_thread.start()
+
+    # Add sync endpoint
+    if st.session_state.get('page') == 'sync':
+        force = st.session_state.get('force', False)
+        if force:
+            with st.spinner('Forcing sync...'):
+                result = sync_data()
+                st.json(result)
 
 
 if __name__ == "__main__":
