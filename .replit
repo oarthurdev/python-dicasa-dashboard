@@ -11,3 +11,14 @@ run = ["sh", "-c", "python app.py"]
 [[ports]]
 localPort = 8501
 externalPort = 80
+
+[workflows]
+
+[[workflows.workflow]]
+name = "Flask Server"
+author = 41944810
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python server.py"
