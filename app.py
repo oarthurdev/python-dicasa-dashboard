@@ -66,18 +66,22 @@ def background_data_loader():
 
         while True:
             try:
-                brokers = kommo_api.get_users()
-                leads = kommo_api.get_leads()
-                activities = kommo_api.get_activities()
+                if sync_manager.needs_sync('brokers') or sync_manager.needs_sync('leads') or sync_manager.needs_sync('activities'):
+                    brokers = kommo_api.get_users()
+                    leads = kommo_api.get_leads()
+                    activities = kommo_api.get_activities()
 
-                logger.info(
-                    "Iniciando sincronização e atualização de pontos...")
+                    logger.info(
+                        "Iniciando sincronização e atualização de pontos...")
 
-                if not brokers.empty and not leads.empty and not activities.empty:
-                    sync_manager.sync_from_cache(brokers, leads, activities)
-                    auto_update_broker_points(brokers=brokers,
-                                              leads=leads,
-                                              activities=activities)
+                    if not brokers.empty and not leads.empty and not activities.empty:
+                        sync_manager.sync_from_cache(brokers, leads, activities)
+                        auto_update_broker_points(brokers=brokers,
+                                                leads=leads,
+                                                activities=activities)
+                else:
+                    logger.info("Aguardando próximo ciclo de sincronização...")
+                    time.sleep(300)  # Wait 5 minutes before next check
 
             except Exception as e:
                 logger.error(f"Error in background sync: {str(e)}")
