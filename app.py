@@ -117,13 +117,17 @@ def sync_data():
         kommo_api = KommoAPI(supabase_client=supabase)
         sync_manager = SyncManager(kommo_api, supabase)
         
+        # Reset last sync times to force immediate sync
+        sync_manager.last_sync = {k: None for k in sync_manager.last_sync.keys()}
+        
         brokers = kommo_api.get_users()
         leads = kommo_api.get_leads()
         activities = kommo_api.get_activities()
         
         if not brokers.empty and not leads.empty and not activities.empty:
+            # Using original sync_from_cache but with reset last_sync times
             sync_manager.sync_from_cache(brokers, leads, activities)
-            return {"status": "success", "message": "Sync completed successfully"}
+            return {"status": "success", "message": "Forced sync completed successfully"}
         else:
             return {"status": "error", "message": "Failed to fetch data"}
     except Exception as e:
