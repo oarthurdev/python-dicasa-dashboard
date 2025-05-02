@@ -1,4 +1,4 @@
-modules = ["python-3.12"]
+modules = ["python-3.11", "python-3.12"]
 run = "streamlit run app.py"
 
 [nix]
@@ -7,6 +7,10 @@ packages = ["glibcLocales"]
 
 [deployment]
 run = ["sh", "-c", "python app.py"]
+
+[[ports]]
+localPort = 5000
+externalPort = 5000
 
 [[ports]]
 localPort = 8501
