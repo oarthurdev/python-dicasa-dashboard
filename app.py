@@ -91,7 +91,7 @@ def background_data_loader():
 state_lock = threading.Lock()
 
 
-def auto_update_broker_points(brokers=None, leads=None, activities=None):
+def auto_update_broker_points(brokers=None, leads=None, activities=None, force=False):
     while True:
         try:
             logger.info("[Auto Update] Atualizando pontos dos corretores")
@@ -99,15 +99,20 @@ def auto_update_broker_points(brokers=None, leads=None, activities=None):
                                           leads=leads,
                                           activities=activities)
             logger.info("[Auto Update] Pontos atualizados com sucesso")
-            logger.info(
-                "[Auto Update] Aguardando 5 minutos para a próxima atualização"
-            )
-            time.sleep(300)
+            
+            if not force:
+                logger.info("[Auto Update] Aguardando 5 minutos para a próxima atualização")
+                time.sleep(300)
+                st.rerun()
+            else:
+                break
 
-            st.rerun()
         except Exception as e:
             logger.error(f"[Auto Update] Erro ao atualizar pontos: {str(e)}")
-        time.sleep(10)
+            if not force:
+                time.sleep(10)
+            else:
+                break
 
 
 def sync_data():
