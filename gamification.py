@@ -12,10 +12,39 @@ def calculate_broker_points(broker_data, lead_data, activity_data, rules):
     """
     try:
         logger.info("Calculating broker points based on dynamic rules")
+        
+        def check_broker_activity(activities, now):
+            """Verifica se houve atividade no horário comercial"""
+            if activities.empty:
+                return False
+                
+            # Converte o horário atual para apenas hora
+            current_time = now.time()
+            
+            # Define os períodos de trabalho
+            morning_start = datetime.strptime('08:30', '%H:%M').time()
+            morning_end = datetime.strptime('12:00', '%H:%M').time()
+            afternoon_start = datetime.strptime('13:30', '%H:%M').time()
+            afternoon_end = datetime.strptime('18:00', '%H:%M').time()
+            
+            # Filtra atividades das últimas 3 horas
+            three_hours_ago = now - timedelta(hours=3)
+            recent_activities = activities[activities['criado_em'] >= three_hours_ago]
+            
+            if recent_activities.empty:
+                # Verifica se estamos no horário comercial
+                is_working_hours = (
+                    (morning_start <= current_time <= morning_end) or
+                    (afternoon_start <= current_time <= afternoon_end)
+                )
+                return not is_working_hours
+                
+            return False
 
         # Create a new DataFrame to store the points
         points_df = broker_data[['id', 'nome']].copy()
         points_df['pontos'] = 0
+        points_df['corretor_ocioso_mais_de_3h'] = 0
 
         # Initialize all rule columns with zero
         for rule_name in rules.keys():
@@ -31,6 +60,10 @@ def calculate_broker_points(broker_data, lead_data, activity_data, rules):
             # Get leads and activities for this broker
             broker_leads = lead_data[lead_data['responsavel_id'] == broker_id]
             broker_activities = activity_data[activity_data['user_id'] == broker_id]
+            
+            # Verifica ociosidade
+            is_idle = check_broker_activity(broker_activities, now)
+            points_df.at[idx, 'corretor_ocioso_mais_de_3h'] = 1 if is_idle else 0
 
             if not broker_leads.empty and not broker_activities.empty:
                 # Lead respondido em até 1 hora
