@@ -25,7 +25,8 @@ class SyncManager:
             'leads': {},
             'activities': {}
         }
-        self.sync_interval = 300  # seconds (5 minutes)
+        kommo_config = self.supabase.load_kommo_config()
+        self.sync_interval = kommo_config['sync_interval'] * 60  # convert minutes to seconds
 
     def _generate_hash(self, data: Dict) -> str:
         """Generate a hash for data comparison"""
@@ -138,6 +139,14 @@ class SyncManager:
                     self._process_batch(batch, 'activities')
                 self.update_sync_time('activities')
 
+            # Update kommo_config sync timestamps
+            now = datetime.now()
+            next_sync = now + timedelta(minutes=self.sync_interval/60)
+            self.supabase.client.table("kommo_config").update({
+                "last_sync": now.isoformat(),
+                "next_sync": next_sync.isoformat()
+            }).execute()
+            
             logger.info("Data sync completed successfully.")
 
         except Exception as e:
