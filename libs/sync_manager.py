@@ -148,13 +148,19 @@ class SyncManager:
 
             # Update kommo_config sync timestamps
             now = datetime.now()
-            next_sync = now + timedelta(minutes=self.sync_interval / 60)
-            self.supabase.client.table("kommo_config").update({
-                "last_sync":
-                now.isoformat(),
-                "next_sync":
-                next_sync.isoformat()
-            }).eq("active", True).execute()
+            config_data = self.supabase.client.table("kommo_config").select(
+                "last_sync", "sync_interval").eq("active", True).execute().data
+            if config_data:
+                last_sync = datetime.fromisoformat(config_data[0]['last_sync'])
+                self.sync_interval = int(config_data[0]['sync_interval']) * 60
+                next_sync = last_sync + timedelta(minutes=self.sync_interval / 60)
+                self.supabase.client.table("kommo_config").update({
+                    "last_sync": now.isoformat(),
+                    "next_sync": next_sync.isoformat()
+                }).eq("active", True).execute()
+            else:
+                logger.error("kommo_config not found")
+
 
             logger.info("Data sync completed successfully.")
 
