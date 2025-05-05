@@ -28,7 +28,9 @@ def sync():
             
             if not brokers.empty and not leads.empty and not activities.empty:
                 sync_manager.sync_from_cache(brokers, leads, activities)
-                return jsonify({"status": "success", "message": "Forced sync completed successfully"})
+                # Atualiza os pontos após sincronização
+                supabase.update_broker_points(brokers=brokers, leads=leads, activities=activities)
+                return jsonify({"status": "success", "message": "Forced sync and points update completed successfully"})
             else:
                 return jsonify({"status": "error", "message": "Failed to fetch data"}), 400
         else:
