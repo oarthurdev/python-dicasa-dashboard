@@ -312,7 +312,10 @@ class KommoAPI:
                     time.sleep(1)  # Rate limiting
                     params = {**base_params, "page": page}
                     response = self._make_request("events", params=params)
-                    return response.get("_embedded", {}).get("events", [])
+                    # Se o status for 204, continua a execução
+                    if isinstance(response, dict):
+                        return response.get("_embedded", {}).get("events", [])
+                    return []
                 except Exception as e:
                     logger.error(f"Error fetching page {page}: {e}")
                     return []
