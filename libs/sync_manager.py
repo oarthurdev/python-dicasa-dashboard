@@ -105,30 +105,39 @@ class SyncManager:
             if activities is None:
                 activities = self.kommo_api.get_activities()
 
-            # Process each data type in parallel
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                futures = []
+            # Process in sequence to maintain referential integrity
+            if not brokers.empty:
+                existing_brokers = self._get_existing_records('brokers')
+                brokers_records = brokers.to_dict('records')
+                for i in range(0, len(brokers_records), self.batch_size):
+                    batch = brokers_records[i:i + self.batch_size]
+                    self._process_batch(batch, 'brokers', existing_brokers)
 
-                if not brokers.empty:
-                    existing_brokers = self._get_existing_records('brokers')
-                    brokers_records = brokers.to_dict('records')
-                    for i in range(0, len(brokers_records), self.batch_size):
-                        batch = brokers_records[i:i + self.batch_size]
-                        futures.append(executor.submit(self._process_batch, batch, 'brokers', existing_brokers))
+            if not leads.empty:
+                existing_leads = self._get_existing_records('leads')
+                leads_records = leads.to_dict('records')
+                for i in range(0, len(leads_records), self.batch_size):
+                    batch = leads_records[i:i + self.batch_size]
+                    self._process_batch(batch, 'leads', existing_leads)
 
-                if not leads.empty:
-                    existing_leads = self._get_existing_records('leads')
-                    leads_records = leads.to_dict('records')
-                    for i in range(0, len(leads_records), self.batch_size):
-                        batch = leads_records[i:i + self.batch_size]
-                        futures.append(executor.submit(self._process_batch, batch, 'leads', existing_leads))
-
+            # Validate foreign keys before processing activities
+            if not activities.empty:
+                # Get valid IDs
+                valid_leads = set(leads['id'].unique()) if not leads.empty else set()
+                valid_brokers = set(brokers['id'].unique()) if not brokers.empty else set()
+                
+                # Filter activities
+                activities = activities[
+                    (activities['lead_id'].isin(valid_leads) | activities['lead_id'].isna()) &
+                    (activities['user_id'].isin(valid_brokers) | activities['user_id'].isna())
+                ]
+                
                 if not activities.empty:
                     existing_activities = self._get_existing_records('activities')
                     activities_records = activities.to_dict('records')
                     for i in range(0, len(activities_records), self.batch_size):
                         batch = activities_records[i:i + self.batch_size]
-                        futures.append(executor.submit(self._process_batch, batch, 'activities', existing_activities))
+                        self._process_batch(batch, 'activities', existing_activities)
 
                 # Wait for all batches to complete
                 for future in futures:
