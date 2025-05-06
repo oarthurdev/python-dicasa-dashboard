@@ -276,14 +276,15 @@ class KommoAPI:
             logger.error(f"Erro ao buscar leads: {str(e)}")
             return pd.DataFrame()
 
-    def get_activities(self, page_size=250, max_workers=5, max_pages=500):
+    def get_activities(self, page_size=100, max_workers=3, max_pages=500, chunk_size=10):
         """
-        Retrieve activities from Kommo CRM using parallel requests with proper filtering
+        Retrieve activities from Kommo CRM using optimized chunked parallel requests
         
         Args:
-            page_size (int): Number of records per page
+            page_size (int): Number of records per page (reduced to avoid rate limits)
             max_workers (int): Maximum number of parallel requests
             max_pages (int): Maximum number of pages to fetch
+            chunk_size (int): Number of pages to process in each chunk
         
         Returns:
             pd.DataFrame: Processed activities data
@@ -321,27 +322,49 @@ class KommoAPI:
             empty_streak = 0
             stop_after = 1
 
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                while page <= max_pages:
-                    # Define batch of pages to fetch
-                    current_batch = range(
-                        page, min(page + max_workers, max_pages + 1))
+            def process_chunk(start_page, end_page):
+                chunk_data = []
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     futures = {
                         executor.submit(fetch_page, p): p
-                        for p in current_batch
+                        for p in range(start_page, end_page)
                     }
-
-                    batch_empty = True
                     for future in as_completed(futures):
-                        page_num = futures[future]
-                        events = future.result()
+                        try:
+                            events = future.result()
+                            if events:
+                                chunk_data.extend(events)
+                                logger.info(f"Page {futures[future]} fetched: {len(events)} events")
+                        except Exception as e:
+                            if "429" in str(e):
+                                wait_time = min(2 ** (futures[future] % 5), 32)  # Exponential backoff
+                                logger.warning(f"Rate limit hit, waiting {wait_time}s before retry")
+                                time.sleep(wait_time)
+                                # Retry once after backoff
+                                try:
+                                    events = fetch_page(futures[future])
+                                    if events:
+                                        chunk_data.extend(events)
+                                except Exception as retry_e:
+                                    logger.error(f"Retry failed for page {futures[future]}: {retry_e}")
+                            else:
+                                logger.error(f"Error fetching page {futures[future]}: {e}")
+                return chunk_data
 
-                        if events:
-                            batch_empty = False
-                            activities_data.extend(events)
-                            logger.info(
-                                f"Page {page_num} fetched: {len(events)} events"
-                            )
+            while page <= max_pages:
+                chunk_end = min(page + chunk_size, max_pages + 1)
+                chunk_data = process_chunk(page, chunk_end)
+                
+                if not chunk_data:
+                    logger.info(f"No more data found after page {page}")
+                    break
+                
+                activities_data.extend(chunk_data)
+                page = chunk_end
+                
+                # Add delay between chunks to avoid rate limits
+                if page <= max_pages:
+                    time.sleep(2)
 
                     if batch_empty:
                         empty_streak += 1
