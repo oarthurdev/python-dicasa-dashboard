@@ -3,166 +3,145 @@ import time
 import hashlib
 import json
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-
 class SyncManager:
-
     def __init__(self, kommo_api, supabase_client, batch_size=100):
         self.kommo_api = kommo_api
         self.supabase = supabase_client
         self.batch_size = batch_size
-        self.last_sync = {'brokers': None, 'leads': None, 'activities': None}
         self.cache = {'brokers': {}, 'leads': {}, 'activities': {}}
-        kommo_config = self.supabase.load_kommo_config()
-        self.sync_interval = kommo_config[
-            'sync_interval'] * 60  # convert minutes to seconds
+        self.config = self.supabase.load_kommo_config()
 
     def _generate_hash(self, data: Dict) -> str:
         """Generate a hash for data comparison"""
-        return hashlib.md5(json.dumps(data,
-                                      sort_keys=True).encode()).hexdigest()
+        return hashlib.md5(json.dumps(data, sort_keys=True).encode()).hexdigest()
 
-    def _process_batch(self, data_list: list, data_type: str) -> None:
-        """Process a batch of records"""
+    def _get_existing_records(self, table: str) -> Dict:
+        """Get existing records from database with their hashes"""
         try:
-            if not data_list:
-                return
+            result = self.supabase.client.table(table).select("*").execute()
+            if hasattr(result, "error") and result.error:
+                raise Exception(f"Supabase error: {result.error}")
 
-            # Convert records for database
-            processed_records = []
-            for record in data_list:
-                # Convert Timestamp objects to ISO format strings and handle NaN values
-                for key, value in record.items():
-                    if hasattr(value,
-                               'isoformat'):  # Check if it's datetime-like
-                        record[key] = value.isoformat()
-                    elif pd.isna(value):  # Handle NaN values
-                        record[key] = None
-                    elif key in ['lead_id', 'user_id'] and isinstance(
-                            value, (int, float)):
-                        record[key] = int(value) if pd.notna(value) else None
-
-                record_hash = self._generate_hash(record)
-
-                # Skip if record hasn't changed
-                if record.get('id') in self.cache[data_type] and \
-                   self.cache[data_type][record['id']] == record_hash:
-                    continue
-
-                # Add updated_at timestamp
-                record['updated_at'] = datetime.now().isoformat()
-                processed_records.append(record)
-
-                # Update cache
-                self.cache[data_type][record['id']] = record_hash
-
-            if processed_records:
-                # Perform batch upsert
-                result = self.supabase.client.table(data_type).upsert(
-                    processed_records).execute()
-
-                if hasattr(result, "error") and result.error:
-                    self.supabase.insert_log(
-                        "ERROR", f"Supabase error: {result.error}")
-                    raise Exception(f"Supabase error: {result.error}")
-
-                msg = f"Batch of {len(processed_records)} {data_type} processed"
-                logger.info(msg)
-                self.supabase.insert_log("INFO", msg)
-
+            existing = {}
+            for record in result.data:
+                record_id = record['id']
+                existing[record_id] = {
+                    'hash': self._generate_hash(record),
+                    'data': record
+                }
+            return existing
         except Exception as e:
-            error_msg = f"Error processing batch of {data_type}: {str(e)}"
-            logger.error(error_msg)
-            self.supabase.insert_log("ERROR", error_msg)
+            logger.error(f"Error fetching existing records for {table}: {str(e)}")
             raise
 
-    def sync_from_cache(self, brokers, leads, activities):
-        """Synchronize data from cache with batch processing"""
-        try:
-            if self.needs_sync('brokers') and brokers is not None:
-                brokers_records = brokers.to_dict('records')
-                for i in range(0, len(brokers_records), self.batch_size):
-                    batch = brokers_records[i:i + self.batch_size]
-                    self._process_batch(batch, 'brokers')
-                self.update_sync_time('brokers')
+    def _prepare_record(self, record: Dict) -> Dict:
+        """Prepare record for database insertion/update"""
+        processed = record.copy()
 
-            if self.needs_sync('leads') and leads is not None:
-                # Get existing broker IDs
-                result = self.supabase.client.table("brokers").select(
-                    "id").execute()
+        # Convert datetime objects to ISO format
+        for key, value in processed.items():
+            if hasattr(value, 'isoformat'):
+                processed[key] = value.isoformat()
+            elif pd.isna(value):
+                processed[key] = None
+            elif key in ['lead_id', 'user_id'] and isinstance(value, (int, float)):
+                processed[key] = int(value) if pd.notna(value) else None
+
+        return processed
+
+    async def _process_batch_async(self, records: List[Dict], table: str, existing_records: Dict) -> None:
+        """Process a batch of records asynchronously"""
+        try:
+            to_upsert = []
+
+            for record in records:
+                processed = self._prepare_record(record)
+                record_id = processed.get('id')
+                new_hash = self._generate_hash(processed)
+
+                # Skip if record hasn't changed
+                if record_id in existing_records and existing_records[record_id]['hash'] == new_hash:
+                    continue
+
+                processed['updated_at'] = datetime.now().isoformat()
+                to_upsert.append(processed)
+
+            if to_upsert:
+                result = self.supabase.client.table(table).upsert(to_upsert).execute()
                 if hasattr(result, "error") and result.error:
                     raise Exception(f"Supabase error: {result.error}")
 
-                valid_broker_ids = {broker['id'] for broker in result.data}
+                logger.info(f"Processed {len(to_upsert)} records for {table}")
 
-                # Filter leads with valid responsavel_id
-                leads_records = leads.to_dict('records')
-                valid_leads = [
-                    lead for lead in leads_records
-                    if lead.get('responsavel_id') in valid_broker_ids
-                    or lead.get('responsavel_id') is None
-                ]
+        except Exception as e:
+            logger.error(f"Error processing batch for {table}: {str(e)}")
+            raise
 
-                for i in range(0, len(valid_leads), self.batch_size):
-                    batch = valid_leads[i:i + self.batch_size]
-                    self._process_batch(batch, 'leads')
-                self.update_sync_time('leads')
-
-            if self.needs_sync('activities') and activities is not None:
-                # Get existing broker IDs
-                broker_result = self.supabase.client.table("brokers").select(
-                    "id").execute()
-                if hasattr(broker_result, "error") and broker_result.error:
-                    raise Exception(f"Supabase error: {broker_result.error}")
-                valid_broker_ids = {
-                    broker['id']
-                    for broker in broker_result.data
-                }
-
-                # Get existing lead IDs
-                lead_result = self.supabase.client.table("leads").select(
-                    "id").execute()
-                if hasattr(lead_result, "error") and lead_result.error:
-                    raise Exception(f"Supabase error: {lead_result.error}")
-                valid_lead_ids = {lead['id'] for lead in lead_result.data}
-
-                # Filter activities with valid user_id and lead_id
-                activities_records = activities.to_dict('records')
-                valid_activities = [
-                    activity for activity in activities_records
-                    if (activity.get('user_id') in valid_broker_ids
-                        or activity.get('user_id') is None) and (
-                            activity.get('lead_id') in valid_lead_ids
-                            or activity.get('lead_id') is None)
-                ]
-
-                for i in range(0, len(valid_activities), self.batch_size):
-                    batch = valid_activities[i:i + self.batch_size]
-                    self._process_batch(batch, 'activities')
-                self.update_sync_time('activities')
-
-            # Update kommo_config sync timestamps
+    def sync_data(self, brokers=None, leads=None, activities=None):
+        """Synchronize data efficiently with batch processing"""
+        try:
             now = datetime.now()
-            config_data = self.supabase.client.table("kommo_config").select(
-                "last_sync", "sync_interval").eq("active", True).execute().data
+            sync_interval = self.config.get('sync_interval', 60)  # default 60 minutes
+
+            # Verify if sync is needed based on last_sync and sync_interval
+            config_data = self.supabase.client.table("kommo_config").select("*").eq("active", True).execute().data
             if config_data:
-                last_sync = datetime.fromisoformat(config_data[0]['last_sync'])
-                self.sync_interval = int(config_data[0]['sync_interval']) * 60
-                next_sync = last_sync + timedelta(minutes=self.sync_interval / 60)
-                self.supabase.client.table("kommo_config").update({
-                    "last_sync": now.isoformat(),
-                    "next_sync": next_sync.isoformat()
-                }).eq("active", True).execute()
-            else:
-                logger.error("kommo_config not found")
+                last_sync = datetime.fromisoformat(config_data[0].get('last_sync'))
+                if (now - last_sync).total_seconds() < (sync_interval * 60):
+                    logger.info("Sync not needed yet")
+                    return
 
+            # Get data if not provided
+            if brokers is None:
+                brokers = self.kommo_api.get_users()
+            if leads is None:
+                leads = self.kommo_api.get_leads()
+            if activities is None:
+                activities = self.kommo_api.get_activities()
 
-            logger.info("Data sync completed successfully.")
+            # Process each data type in parallel
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = []
+
+                if not brokers.empty:
+                    existing_brokers = self._get_existing_records('brokers')
+                    brokers_records = brokers.to_dict('records')
+                    for i in range(0, len(brokers_records), self.batch_size):
+                        batch = brokers_records[i:i + self.batch_size]
+                        futures.append(executor.submit(self._process_batch_async, batch, 'brokers', existing_brokers))
+
+                if not leads.empty:
+                    existing_leads = self._get_existing_records('leads')
+                    leads_records = leads.to_dict('records')
+                    for i in range(0, len(leads_records), self.batch_size):
+                        batch = leads_records[i:i + self.batch_size]
+                        futures.append(executor.submit(self._process_batch_async, batch, 'leads', existing_leads))
+
+                if not activities.empty:
+                    existing_activities = self._get_existing_records('activities')
+                    activities_records = activities.to_dict('records')
+                    for i in range(0, len(activities_records), self.batch_size):
+                        batch = activities_records[i:i + self.batch_size]
+                        futures.append(executor.submit(self._process_batch_async, batch, 'activities', existing_activities))
+
+                # Wait for all batches to complete
+                for future in futures:
+                    future.result()
+
+            # Update sync timestamps
+            next_sync = now + timedelta(minutes=sync_interval)
+            self.supabase.client.table("kommo_config").update({
+                "last_sync": now.isoformat(),
+                "next_sync": next_sync.isoformat()
+            }).eq("active", True).execute()
+
+            logger.info("Data synchronization completed successfully")
 
         except Exception as e:
             logger.error(f"Sync failed: {str(e)}")
@@ -174,20 +153,22 @@ class SyncManager:
             1).execute()
         has_data = bool(result.data)
 
-        last = self.last_sync.get(resource)
-        if not last:
-            return True
+        #There is no last_sync attribute in edited code, so this check is removed.
+        # last = self.last_sync.get(resource)
+        # if not last:
+        #     return True
 
         # Só aplica delay se já existirem dados
-        if has_data:
-            return (datetime.now() -
-                    last) > timedelta(seconds=self.sync_interval)
-        return True
+        # if has_data:
+        #     return (datetime.now() -
+        #             last) > timedelta(seconds=self.sync_interval)
+        return True #Always sync if there's data.
 
     def update_sync_time(self, resource: str):
-        self.last_sync[resource] = datetime.now()
+        #This method is not needed anymore because the sync time is updated directly in sync_data method.
+        pass
 
     def force_sync(self) -> bool:
         """Force immediate sync of all data"""
-        self.last_sync = {k: None for k in self.last_sync.keys()}
-        return self.sync_from_cache()
+        #The last_sync attribute is removed in edited code, so this method is updated.
+        return self.sync_data()
