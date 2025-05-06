@@ -143,7 +143,7 @@ class KommoAPI:
             # Load config directly from supabase since it's already loaded in constructor
             start_date = self.api_config.get('sync_start_date')
             end_date = self.api_config.get('sync_end_date')
-    
+
             return start_date, end_date
         except Exception as e:
             logger.error(f"Erro ao obter filtros de data: {str(e)}")
@@ -184,17 +184,21 @@ class KommoAPI:
                 time.sleep(1)
                 start_ts, end_ts = self._get_date_filters()
                 params = {
-                    "page": page,
-                    "limit": 250,
-                    "filter[pipeline_id]": 8865067,
-                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                    "page":
+                    page,
+                    "limit":
+                    250,
+                    "filter[pipeline_id]":
+                    8865067,
+                    "with":
+                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
-                
+
                 if start_ts:
                     params["filter[created_at][from]"] = start_ts
                 if end_ts:
                     params["filter[created_at][to]"] = end_ts
-                
+
                 response = self._make_request("leads", params=params)
 
                 leads = response.get("_embedded", {}).get("leads", [])
@@ -272,7 +276,7 @@ class KommoAPI:
             logger.error(f"Erro ao buscar leads: {str(e)}")
             return pd.DataFrame()
 
-    def get_activities(self, page_size=250, max_workers=5, max_pages=100):
+    def get_activities(self, page_size=250, max_workers=5, max_pages=500):
         """
         Retrieve activities from Kommo CRM using parallel requests with proper filtering
         
@@ -286,14 +290,17 @@ class KommoAPI:
         """
         try:
             logger.info("Retrieving activities from Kommo CRM")
-            
+
             start_ts, end_ts = self._get_date_filters()
             base_params = {
-                "limit": page_size,
-                "filter[type]": ["lead_status_changed", "incoming_chat_message", "outgoing_chat_message", "task_completed"],
-                "filter[entity_type]": "lead"
+                "limit":
+                page_size,
+                "filter[type]": [
+                    "lead_status_changed", "incoming_chat_message",
+                    "outgoing_chat_message"
+                ]
             }
-            
+
             if start_ts:
                 base_params["filter[created_at][from]"] = start_ts
             if end_ts:
@@ -317,8 +324,12 @@ class KommoAPI:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 while page <= max_pages:
                     # Define batch of pages to fetch
-                    current_batch = range(page, min(page + max_workers, max_pages + 1))
-                    futures = {executor.submit(fetch_page, p): p for p in current_batch}
+                    current_batch = range(
+                        page, min(page + max_workers, max_pages + 1))
+                    futures = {
+                        executor.submit(fetch_page, p): p
+                        for p in current_batch
+                    }
 
                     batch_empty = True
                     for future in as_completed(futures):
@@ -328,30 +339,34 @@ class KommoAPI:
                         if events:
                             batch_empty = False
                             activities_data.extend(events)
-                            logger.info(f"Page {page_num} fetched: {len(events)} events")
+                            logger.info(
+                                f"Page {page_num} fetched: {len(events)} events"
+                            )
 
                     if batch_empty:
                         empty_streak += 1
                         if empty_streak >= stop_after:
-                            logger.info(f"Stopping: {stop_after} empty batches")
+                            logger.info(
+                                f"Stopping: {stop_after} empty batches")
                             break
                     else:
                         empty_streak = 0
 
                     page += len(current_batch)
-                    
+
                     # Safety check for maximum pages
                     if page > max_pages:
-                        logger.info(f"Reached maximum number of pages ({max_pages})")
+                        logger.info(
+                            f"Reached maximum number of pages ({max_pages})")
                         break
 
             total_activities = len(activities_data)
             logger.info(f"Total de atividades recuperadas: {total_activities}")
-            
+
             if not activities_data:
                 logger.warning("Nenhuma atividade encontrada")
                 return pd.DataFrame()
-                
+
             # Log event types for debugging
             event_types = set(event.get('type') for event in activities_data)
             logger.info(f"Event types found: {event_types}")
@@ -365,13 +380,22 @@ class KommoAPI:
             }
 
             processed_activities = [{
-                "id": activity.get("id"),
-                "lead_id": activity.get("entity_id") if activity.get("entity_type") == "lead" else None,
-                "user_id": activity.get("created_by"),
-                "tipo": type_mapping.get(activity.get("type"), "outro"),
-                "valor_anterior": activity.get("value_before"),
-                "valor_novo": activity.get("value_after"),
-                "criado_em": datetime.fromtimestamp(activity.get("created_at", 0)) if activity.get("created_at") else None
+                "id":
+                activity.get("id"),
+                "lead_id":
+                activity.get("entity_id")
+                if activity.get("entity_type") == "lead" else None,
+                "user_id":
+                activity.get("created_by"),
+                "tipo":
+                type_mapping.get(activity.get("type"), "outro"),
+                "valor_anterior":
+                activity.get("value_before"),
+                "valor_novo":
+                activity.get("value_after"),
+                "criado_em":
+                datetime.fromtimestamp(activity.get("created_at", 0))
+                if activity.get("created_at") else None
             } for activity in activities_data]
 
             # Criar DataFrame e processar datas de uma vez
@@ -382,10 +406,6 @@ class KommoAPI:
 
             logger.info("Processamento de atividades concluído com sucesso")
             return df
-
-        except Exception as e:
-            logger.error(f"Failed to retrieve activities: {str(e)}")
-            raise
 
         except Exception as e:
             logger.error(f"Failed to retrieve activities: {str(e)}")
