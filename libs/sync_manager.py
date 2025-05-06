@@ -55,8 +55,8 @@ class SyncManager:
 
         return processed
 
-    async def _process_batch_async(self, records: List[Dict], table: str, existing_records: Dict) -> None:
-        """Process a batch of records asynchronously"""
+    def _process_batch(self, records: List[Dict], table: str, existing_records: Dict) -> None:
+        """Process a batch of records"""
         try:
             to_upsert = []
 
@@ -114,21 +114,21 @@ class SyncManager:
                     brokers_records = brokers.to_dict('records')
                     for i in range(0, len(brokers_records), self.batch_size):
                         batch = brokers_records[i:i + self.batch_size]
-                        futures.append(executor.submit(self._process_batch_async, batch, 'brokers', existing_brokers))
+                        futures.append(executor.submit(self._process_batch, batch, 'brokers', existing_brokers))
 
                 if not leads.empty:
                     existing_leads = self._get_existing_records('leads')
                     leads_records = leads.to_dict('records')
                     for i in range(0, len(leads_records), self.batch_size):
                         batch = leads_records[i:i + self.batch_size]
-                        futures.append(executor.submit(self._process_batch_async, batch, 'leads', existing_leads))
+                        futures.append(executor.submit(self._process_batch, batch, 'leads', existing_leads))
 
                 if not activities.empty:
                     existing_activities = self._get_existing_records('activities')
                     activities_records = activities.to_dict('records')
                     for i in range(0, len(activities_records), self.batch_size):
                         batch = activities_records[i:i + self.batch_size]
-                        futures.append(executor.submit(self._process_batch_async, batch, 'activities', existing_activities))
+                        futures.append(executor.submit(self._process_batch, batch, 'activities', existing_activities))
 
                 # Wait for all batches to complete
                 for future in futures:
