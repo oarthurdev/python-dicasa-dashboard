@@ -1,10 +1,8 @@
 import logging
-import time
 import hashlib
 import json
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List
-from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -138,10 +136,6 @@ class SyncManager:
                     for i in range(0, len(activities_records), self.batch_size):
                         batch = activities_records[i:i + self.batch_size]
                         self._process_batch(batch, 'activities', existing_activities)
-
-                # Wait for all batches to complete
-                for future in futures:
-                    future.result()
 
             # Update sync timestamps
             next_sync = now + timedelta(minutes=sync_interval)
