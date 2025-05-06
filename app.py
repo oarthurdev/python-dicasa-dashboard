@@ -75,7 +75,7 @@ def background_data_loader():
                         "Iniciando sincronização e atualização de pontos...")
 
                     if not brokers.empty and not leads.empty and not activities.empty:
-                        sync_manager.sync_from_cache(brokers, leads, activities)
+                        sync_manager.sync_data(brokers=brokers, leads=leads, activities=activities)
                         auto_update_broker_points(brokers=brokers,
                                                 leads=leads,
                                                 activities=activities)

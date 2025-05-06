@@ -27,7 +27,7 @@ def sync():
             activities = kommo_api.get_activities()
             
             if not brokers.empty and not leads.empty and not activities.empty:
-                sync_manager.sync_from_cache(brokers, leads, activities)
+                sync_manager.sync_data(brokers=brokers, leads=leads, activities=activities)
                 # Atualiza os pontos após sincronização
                 supabase.update_broker_points(brokers=brokers, leads=leads, activities=activities)
                 return jsonify({"status": "success", "message": "Forced sync and points update completed successfully"})
