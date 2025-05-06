@@ -290,7 +290,8 @@ class KommoAPI:
             start_ts, end_ts = self._get_date_filters()
             base_params = {
                 "limit": page_size,
-                "filter[type]": "lead_status_changed,incoming_chat_message,outgoing_chat_message,task_completed",
+                "filter[type]": ["lead_status_changed", "incoming_chat_message", "outgoing_chat_message", "task_completed"],
+                "filter[entity_type]": "lead"
             }
             
             if start_ts:
@@ -350,6 +351,10 @@ class KommoAPI:
             if not activities_data:
                 logger.warning("Nenhuma atividade encontrada")
                 return pd.DataFrame()
+                
+            # Log event types for debugging
+            event_types = set(event.get('type') for event in activities_data)
+            logger.info(f"Event types found: {event_types}")
 
             # Processamento otimizado usando list comprehension
             type_mapping = {
