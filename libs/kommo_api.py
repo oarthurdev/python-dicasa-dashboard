@@ -366,22 +366,14 @@ class KommoAPI:
                 if page <= max_pages:
                     time.sleep(2)
 
-                    if batch_empty:
+                    if not chunk_data:
                         empty_streak += 1
                         if empty_streak >= stop_after:
                             logger.info(
-                                f"Stopping: {stop_after} empty batches")
+                                f"Stopping: {stop_after} empty chunks")
                             break
                     else:
                         empty_streak = 0
-
-                    page += len(current_batch)
-
-                    # Safety check for maximum pages
-                    if page > max_pages:
-                        logger.info(
-                            f"Reached maximum number of pages ({max_pages})")
-                        break
 
             total_activities = len(activities_data)
             logger.info(f"Total de atividades recuperadas: {total_activities}")
