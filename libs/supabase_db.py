@@ -23,9 +23,6 @@ class SupabaseClient:
         try:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
-
-            # Setup subscription to kommo_config table
-            self.client.table("kommo_config").on("INSERT", self._handle_config_insert).subscribe()
             
             # Try to load config, but don't fail if not found
             try:
