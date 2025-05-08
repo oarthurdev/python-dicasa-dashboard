@@ -57,7 +57,6 @@ def background_data_loader():
             if supabase.kommo_config:
                 kommo_api = KommoAPI(supabase_client=supabase)
                 sync_manager = SyncManager(kommo_api, supabase)
-                last_sync_time = None
                 break
             time.sleep(5)  # Wait for configuration to be added
             logger.info("Waiting for Kommo configuration...")
