@@ -136,13 +136,26 @@ class SupabaseClient:
                 company_id = self._get_company_id(new_config['api_url'],
                                                   new_config['access_token'])
                 self.client.table("kommo_config").update({
-                    'company_id':
-                    company_id
+                    'company_id': company_id,
+                    'active': True
                 }).eq('id', new_config['id']).execute()
 
-                # Trigger initial sync
-                self._sync_all_data({**new_config, 'company_id': company_id})
-                logger.info("Initial sync completed successfully")
+                # Trigger initial sync with company_id
+                kommo_api = KommoAPI(api_url=new_config['api_url'],
+                                    access_token=new_config['access_token'])
+                sync_manager = SyncManager(kommo_api, self)
+                
+                brokers = kommo_api.get_users()
+                leads = kommo_api.get_leads()
+                activities = kommo_api.get_activities()
+
+                # Sync all data with company_id
+                sync_manager.sync_data(brokers=brokers, 
+                                     leads=leads, 
+                                     activities=activities,
+                                     company_id=company_id)
+                
+                logger.info(f"Initial sync completed successfully for company {company_id}")
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise

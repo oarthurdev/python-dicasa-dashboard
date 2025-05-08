@@ -81,22 +81,31 @@ class SyncManager:
             logger.error(f"Error processing batch for {table}: {str(e)}")
             raise
 
-    def sync_data(self, brokers=None, leads=None, activities=None):
+    def sync_data(self, brokers=None, leads=None, activities=None, company_id=None):
         """Synchronize data efficiently with batch processing"""
         try:
             now = datetime.now()
             sync_interval = self.config.get('sync_interval', 60)  # default 60 minutes
 
-            # Verify if sync is needed based on last_sync and sync_interval
-            config_data = self.supabase.client.table("kommo_config").select("*").eq("active", True).execute().data
-            if config_data and config_data[0].get('last_sync'):
-                try:
-                    last_sync = datetime.fromisoformat(str(config_data[0].get('last_sync')))
-                    if (now - last_sync).total_seconds() < (sync_interval * 60):
-                        logger.info("Sync not needed yet")
-                        return
-                except (ValueError, TypeError):
-                    logger.warning("Invalid last_sync format, proceeding with sync")
+            # Get company_id from config if not provided
+            if not company_id:
+                config_data = self.supabase.client.table("kommo_config").select("*").eq("active", True).execute().data
+                if not config_data:
+                    logger.error("No active configuration found")
+                    return
+                company_id = config_data[0].get('company_id')
+                if not company_id:
+                    logger.error("No company_id found in configuration")
+                    return
+
+                if config_data[0].get('last_sync'):
+                    try:
+                        last_sync = datetime.fromisoformat(str(config_data[0].get('last_sync')))
+                        if (now - last_sync).total_seconds() < (sync_interval * 60):
+                            logger.info("Sync not needed yet")
+                            return
+                    except (ValueError, TypeError):
+                        logger.warning("Invalid last_sync format, proceeding with sync")
 
             # Get data if not provided
             if brokers is None:
@@ -108,13 +117,20 @@ class SyncManager:
 
             # Process in sequence to maintain referential integrity
             if not brokers.empty:
+                # Add company_id to brokers
+                brokers['company_id'] = company_id
                 existing_brokers = self._get_existing_records('brokers')
                 brokers_records = brokers.to_dict('records')
                 for i in range(0, len(brokers_records), self.batch_size):
                     batch = brokers_records[i:i + self.batch_size]
                     self._process_batch(batch, 'brokers', existing_brokers)
+                
+                # Initialize broker points with company_id
+                self.supabase.initialize_broker_points(company_id)
 
             if not leads.empty:
+                # Add company_id to leads
+                leads['company_id'] = company_id
                 existing_leads = self._get_existing_records('leads')
                 leads_records = leads.to_dict('records')
                 for i in range(0, len(leads_records), self.batch_size):
@@ -123,6 +139,8 @@ class SyncManager:
 
             # Validate foreign keys before processing activities
             if not activities.empty:
+                # Add company_id to activities
+                activities['company_id'] = company_id
                 # Get valid IDs
                 valid_leads = set(leads['id'].unique()) if not leads.empty else set()
                 valid_brokers = set(brokers['id'].unique()) if not brokers.empty else set()
