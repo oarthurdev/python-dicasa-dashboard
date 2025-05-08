@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import logging
 from datetime import datetime
+import requests
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,20 +24,21 @@ class SupabaseClient:
         try:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
-            
+
             # Try to load config, but don't fail if not found
             try:
                 self.kommo_config = self.load_kommo_config()
             except ValueError:
-                logger.warning("No Kommo config found. Waiting for configuration...")
+                logger.warning(
+                    "No Kommo config found. Waiting for configuration...")
                 self.kommo_config = None
-            
+
             # Load gamification rules
             self.rules = self.load_rules()
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise
-            
+
     def _handle_config_insert(self, event):
         """Handle new kommo_config insertion"""
         try:
@@ -44,13 +46,15 @@ class SupabaseClient:
             if new_config:
                 logger.info("New Kommo configuration detected")
                 self.kommo_config = new_config
-                
+
                 # Get company_id and update config
-                company_id = self._get_company_id(new_config['api_url'], new_config['access_token'])
+                company_id = self._get_company_id(new_config['api_url'],
+                                                  new_config['access_token'])
                 self.client.table("kommo_config").update({
-                    'company_id': company_id
+                    'company_id':
+                    company_id
                 }).eq('id', new_config['id']).execute()
-                
+
                 # Trigger initial sync
                 self._sync_all_data({**new_config, 'company_id': company_id})
                 logger.info("Initial sync completed successfully")
@@ -62,10 +66,14 @@ class SupabaseClient:
         """Insere um log na tabela sync_logs"""
         try:
             self.client.table("sync_logs").insert({
-                "timestamp": datetime.now().isoformat(),
-                "type": type,
-                "message": message,
-                "company_id": self.kommo_config.get('company_id')
+                "timestamp":
+                datetime.now().isoformat(),
+                "type":
+                type,
+                "message":
+                message,
+                "company_id":
+                self.kommo_config.get('company_id')
             }).execute()
         except Exception as e:
             logger.error(f"Failed to insert log: {str(e)}")
@@ -76,30 +84,33 @@ class SupabaseClient:
             result = self.client.table("kommo_config").select("*").execute()
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
-                
+
             if not result.data:
                 raise ValueError("No Kommo API configuration found")
-                
+
             config = result.data[0]
             # Start sync if config is new or changed
             if config.get('company_id') is None:
-                company_id = self._get_company_id(config['api_url'], config['access_token'])
-                self.client.table("kommo_config").update({'company_id': company_id}).eq('id', config['id']).execute()
+                company_id = self._get_company_id(config['api_url'],
+                                                  config['access_token'])
+                self.client.table("kommo_config").update({
+                    'company_id':
+                    company_id
+                }).eq('id', config['id']).execute()
                 config['company_id'] = company_id
                 self._sync_all_data(config)
-            
+
             return config
         except Exception as e:
             logger.error(f"Failed to load Kommo config: {str(e)}")
             raise
-            
+
     def _get_company_id(self, api_url, access_token):
         """Get company ID from Kommo API"""
         try:
             response = requests.get(
                 f"{api_url}/api/v4/account",
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
+                headers={"Authorization": f"Bearer {access_token}"})
             response.raise_for_status()
             return response.json().get('id')
         except Exception as e:
@@ -109,45 +120,46 @@ class SupabaseClient:
     def _sync_all_data(self, config):
         """Trigger sync for all tables with company_id"""
         try:
-            kommo_api = KommoAPI(api_url=config['api_url'], access_token=config['access_token'])
+            kommo_api = KommoAPI(api_url=config['api_url'],
+                                 access_token=config['access_token'])
             brokers = kommo_api.get_users()
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
-            
+
             # Add company_id to all DataFrames
             for df in [brokers, leads, activities]:
                 if not df.empty:
                     df['company_id'] = config['company_id']
-            
+
             # Sync all data
             self.upsert_brokers(brokers)
             self.upsert_leads(leads)
             self.upsert_activities(activities)
-            
+
             # Initialize broker points with company_id
             self.initialize_broker_points(config['company_id'])
-            
+
         except Exception as e:
             logger.error(f"Failed to sync data: {str(e)}")
             raise
         except Exception as e:
             logger.error(f"Failed to load Kommo config: {str(e)}")
             raise
-            
+
     def load_rules(self):
         """Load gamification rules from Supabase"""
         try:
             result = self.client.table("rules").select("*").execute()
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
-                
+
             if not result.data:
                 raise ValueError("No gamification rules found")
-                
+
             rules_dict = {}
             for rule in result.data:
                 rules_dict[rule['coluna_nome']] = rule['pontos']
-                
+
             return rules_dict
         except Exception as e:
             logger.error(f"Failed to load rules: {str(e)}")
@@ -666,7 +678,7 @@ class SupabaseClient:
             rules = self.load_rules()
             self.insert_log("INFO", "Iniciando cálculo de pontos")
             points_df = calculate_broker_points(active_brokers, leads,
-                                              activities, rules)
+                                                activities, rules)
             self.insert_log("INFO", "Cálculo de pontos concluído")
 
             # Garante que todos os campos necessários existam
@@ -677,7 +689,7 @@ class SupabaseClient:
                 'resposta_rapida_3h', 'todos_leads_respondidos',
                 'cadastro_completo', 'acompanhamento_pos_venda',
                 'leads_sem_interacao_24h', 'leads_ignorados_48h',
-                'leads_perdidos', 'leads_respondidos_apos_18h', 
+                'leads_perdidos', 'leads_respondidos_apos_18h',
                 'leads_tempo_resposta_acima_12h', 'leads_5_dias_sem_mudanca'
             ]
 
@@ -691,14 +703,12 @@ class SupabaseClient:
             # Registra os pontos atualizados de cada corretor
             for _, row in points_df.iterrows():
                 self.insert_log(
-                    "INFO",
-                    f"Pontos atualizados - Corretor: {row['nome']} | "
+                    "INFO", f"Pontos atualizados - Corretor: {row['nome']} | "
                     f"Total: {row['pontos']} | "
                     f"Leads 1h: {row['leads_respondidos_1h']} | "
                     f"Leads visitados: {row['leads_visitados']} | "
                     f"Propostas: {row['propostas_enviadas']} | "
-                    f"Vendas: {row['vendas_realizadas']}"
-                )
+                    f"Vendas: {row['vendas_realizadas']}")
 
             # Atualiza o banco com retry em caso de erro
             for attempt in range(max_retries):
