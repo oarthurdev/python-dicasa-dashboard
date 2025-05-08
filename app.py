@@ -51,11 +51,16 @@ def background_data_loader():
     try:
         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
                                   key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-                                  
-        kommo_api = KommoAPI(supabase_client=supabase)
-
-        sync_manager = SyncManager(kommo_api, supabase)
-        last_sync_time = None
+        
+        # Initialize components only when configuration exists
+        while True:
+            if supabase.kommo_config:
+                kommo_api = KommoAPI(supabase_client=supabase)
+                sync_manager = SyncManager(kommo_api, supabase)
+                last_sync_time = None
+                break
+            time.sleep(5)  # Wait for configuration to be added
+            logger.info("Waiting for Kommo configuration...")
 
         # Initial check for broker_points data
         existing = supabase.client.table("broker_points").select("*").limit(

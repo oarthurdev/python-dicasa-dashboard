@@ -24,20 +24,50 @@ class SupabaseClient:
         try:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
-
-            # Try to load config, but don't fail if not found
-            try:
-                self.kommo_config = self.load_kommo_config()
-            except ValueError:
-                logger.warning(
-                    "No Kommo config found. Waiting for configuration...")
-                self.kommo_config = None
-
-            # Load gamification rules
-            self.rules = self.load_rules()
+            self.kommo_config = None
+            self.rules = None
+            
+            # Subscribe to kommo_config changes
+            self.client.table("kommo_config").on("INSERT", self._handle_config_insert).subscribe()
+            self.client.table("kommo_config").on("UPDATE", self._handle_config_update).subscribe()
+            
+            # Try initial load of config and rules
+            self._load_initial_config()
+            
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise
+
+    def _load_initial_config(self):
+        """Try to load initial configuration without raising errors"""
+        try:
+            self.kommo_config = self.load_kommo_config()
+            self.rules = self.load_rules()
+        except ValueError:
+            logger.info("Waiting for Kommo configuration to be added...")
+        except Exception as e:
+            logger.error(f"Error loading initial configuration: {str(e)}")
+
+    def _handle_config_update(self, event):
+        """Handle kommo_config updates"""
+        try:
+            updated_config = event.get("new", {})
+            if updated_config and updated_config != self.kommo_config:
+                logger.info("Kommo configuration updated")
+                self.kommo_config = updated_config
+                
+                if not updated_config.get('company_id'):
+                    company_id = self._get_company_id(updated_config['api_url'],
+                                                    updated_config['access_token'])
+                    self.client.table("kommo_config").update({
+                        'company_id': company_id
+                    }).eq('id', updated_config['id']).execute()
+                    updated_config['company_id'] = company_id
+                
+                self._sync_all_data(updated_config)
+                logger.info("Configuration update handled successfully")
+        except Exception as e:
+            logger.error(f"Failed to handle config update: {str(e)}")
 
     def _handle_config_insert(self, event):
         """Handle new kommo_config insertion"""
