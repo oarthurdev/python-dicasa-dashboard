@@ -188,8 +188,6 @@ class KommoAPI:
                     page,
                     "limit":
                     250,
-                    "filter[pipeline_id]":
-                    8865067,
                     "with":
                     "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
@@ -202,12 +200,11 @@ class KommoAPI:
                 response = self._make_request("leads", params=params)
 
                 leads = response.get("_embedded", {}).get("leads", [])
-                filtered_page_leads = [
-                    lead for lead in leads
-                    if lead.get("pipeline_id") == 8865067
-                ]
+                # Get all leads without pipeline filtering
+                filtered_leads = leads
 
-                if not filtered_page_leads:
+
+                if not filtered_leads:
                     empty_streak += 1
                     if empty_streak >= stop_after:
                         logger.info(
@@ -216,10 +213,10 @@ class KommoAPI:
                         break
                 else:
                     empty_streak = 0
-                    filtered_leads.extend(filtered_page_leads)
+                    
 
                 logger.info(
-                    f"Processada página {page}, encontrados {len(filtered_page_leads)} leads"
+                    f"Processada página {page}, encontrados {len(filtered_leads)} leads"
                 )
                 page += 1
 
@@ -279,13 +276,13 @@ class KommoAPI:
     def get_activities(self, page_size=100, max_workers=3, max_pages=500, chunk_size=10):
         """
         Retrieve activities from Kommo CRM using optimized chunked parallel requests
-        
+
         Args:
             page_size (int): Number of records per page (reduced to avoid rate limits)
             max_workers (int): Maximum number of parallel requests
             max_pages (int): Maximum number of pages to fetch
             chunk_size (int): Number of pages to process in each chunk
-        
+
         Returns:
             pd.DataFrame: Processed activities data
         """
@@ -357,14 +354,14 @@ class KommoAPI:
             while page <= max_pages:
                 chunk_end = min(page + chunk_size, max_pages + 1)
                 chunk_data = process_chunk(page, chunk_end)
-                
+
                 if not chunk_data:
                     logger.info(f"No more data found after page {page}")
                     break
-                
+
                 activities_data.extend(chunk_data)
                 page = chunk_end
-                
+
                 # Add delay between chunks to avoid rate limits
                 if page <= max_pages:
                     time.sleep(2)

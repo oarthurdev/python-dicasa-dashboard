@@ -417,13 +417,9 @@ class SupabaseClient:
 
             valid_broker_ids = {broker['id'] for broker in brokers_result.data}
 
-            # Primeiro filtro: apenas pipeline_id = 8865067
-            leads_df_clean = leads_df_clean[leads_df_clean['pipeline_id'] ==
-                                            8865067]
-
+            # No pipeline filtering
             if leads_df_clean.empty:
-                logger.warning(
-                    "Nenhum lead com pipeline_id 8865067 encontrado")
+                logger.warning("No leads found")
                 return
 
             # Segundo filtro: responsavel_id válido
@@ -454,9 +450,7 @@ class SupabaseClient:
                             value, float) and value.is_integer():
                         lead[key] = int(value)
 
-            # Limpar registros antigos com pipeline_id diferente
-            self.client.table("leads").delete().not_.eq(
-                "pipeline_id", 8865067).execute()
+            # No pipeline-based deletion
 
             # Upsert to Supabase
             result = self.client.table("leads").upsert(leads_data).execute()
