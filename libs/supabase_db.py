@@ -124,6 +124,44 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to handle config update: {str(e)}")
 
+    def _sync_company_data(self, config, company_id):
+        """Separate thread function to handle company data synchronization"""
+        try:
+            logger.info(f"Starting sync thread for company {company_id}")
+            kommo_api = KommoAPI(api_url=config['api_url'],
+                                access_token=config['access_token'])
+            sync_manager = SyncManager(kommo_api, self)
+            
+            brokers = kommo_api.get_users()
+            leads = kommo_api.get_leads()
+            activities = kommo_api.get_activities()
+
+            # Add company_id to all DataFrames
+            if not brokers.empty:
+                brokers['company_id'] = company_id
+            if not leads.empty:
+                leads['company_id'] = company_id
+            if not activities.empty:
+                activities['company_id'] = company_id
+
+            # Sync all data with company_id
+            sync_manager.sync_data(brokers=brokers, 
+                                 leads=leads, 
+                                 activities=activities,
+                                 company_id=company_id)
+            
+            # Initialize broker points for this company
+            self.initialize_broker_points(company_id)
+            
+            # Update broker points after sync
+            self.update_broker_points(brokers=brokers,
+                                    leads=leads,
+                                    activities=activities)
+            
+            logger.info(f"Initial sync completed successfully for company {company_id}")
+        except Exception as e:
+            logger.error(f"Error in sync thread for company {company_id}: {str(e)}")
+
     def _handle_config_insert(self, event):
         """Handle new kommo_config insertion"""
         try:
@@ -134,44 +172,22 @@ class SupabaseClient:
 
                 # Get company_id and update config
                 company_id = self._get_company_id(new_config['api_url'],
-                                                  new_config['access_token'])
+                                              new_config['access_token'])
                 self.client.table("kommo_config").update({
                     'company_id': company_id,
                     'active': True
                 }).eq('id', new_config['id']).execute()
 
-                # Trigger initial sync with company_id
-                kommo_api = KommoAPI(api_url=new_config['api_url'],
-                                    access_token=new_config['access_token'])
-                sync_manager = SyncManager(kommo_api, self)
-                
-                brokers = kommo_api.get_users()
-                leads = kommo_api.get_leads()
-                activities = kommo_api.get_activities()
-
-                # Add company_id to all DataFrames
-                if not brokers.empty:
-                    brokers['company_id'] = company_id
-                if not leads.empty:
-                    leads['company_id'] = company_id
-                if not activities.empty:
-                    activities['company_id'] = company_id
-
-                # Sync all data with company_id
-                sync_manager.sync_data(brokers=brokers, 
-                                     leads=leads, 
-                                     activities=activities,
-                                     company_id=company_id)
-                
-                # Initialize broker points for this company
-                self.initialize_broker_points(company_id)
-                
-                # Update broker points after sync
-                self.update_broker_points(brokers=brokers,
-                                        leads=leads,
-                                        activities=activities)
-                
-                logger.info(f"Initial sync completed successfully for company {company_id}")
+                # Create and start sync thread for this company
+                import threading
+                sync_thread = threading.Thread(
+                    target=self._sync_company_data,
+                    args=(new_config, company_id),
+                    name=f"sync_thread_{company_id}",
+                    daemon=True
+                )
+                sync_thread.start()
+                logger.info(f"Started sync thread for company {company_id}")
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise
