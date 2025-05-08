@@ -38,7 +38,8 @@ class SupabaseClient:
             self.client.table("sync_logs").insert({
                 "timestamp": datetime.now().isoformat(),
                 "type": type,
-                "message": message
+                "message": message,
+                "company_id": self.kommo_config.get('company_id')
             }).execute()
         except Exception as e:
             logger.error(f"Failed to insert log: {str(e)}")
@@ -53,7 +54,53 @@ class SupabaseClient:
             if not result.data:
                 raise ValueError("No Kommo API configuration found")
                 
-            return result.data[0]
+            config = result.data[0]
+            # Start sync if config is new or changed
+            if config.get('company_id') is None:
+                company_id = self._get_company_id(config['api_url'], config['access_token'])
+                self.client.table("kommo_config").update({'company_id': company_id}).eq('id', config['id']).execute()
+                config['company_id'] = company_id
+                self._sync_all_data(config)
+            
+            return config
+            
+    def _get_company_id(self, api_url, access_token):
+        """Get company ID from Kommo API"""
+        try:
+            response = requests.get(
+                f"{api_url}/api/v4/account",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            response.raise_for_status()
+            return response.json().get('id')
+        except Exception as e:
+            logger.error(f"Failed to get company ID: {str(e)}")
+            raise
+
+    def _sync_all_data(self, config):
+        """Trigger sync for all tables with company_id"""
+        try:
+            kommo_api = KommoAPI(api_url=config['api_url'], access_token=config['access_token'])
+            brokers = kommo_api.get_users()
+            leads = kommo_api.get_leads()
+            activities = kommo_api.get_activities()
+            
+            # Add company_id to all DataFrames
+            for df in [brokers, leads, activities]:
+                if not df.empty:
+                    df['company_id'] = config['company_id']
+            
+            # Sync all data
+            self.upsert_brokers(brokers)
+            self.upsert_leads(leads)
+            self.upsert_activities(activities)
+            
+            # Initialize broker points with company_id
+            self.initialize_broker_points(config['company_id'])
+            
+        except Exception as e:
+            logger.error(f"Failed to sync data: {str(e)}")
+            raise
         except Exception as e:
             logger.error(f"Failed to load Kommo config: {str(e)}")
             raise
@@ -454,11 +501,12 @@ class SupabaseClient:
             logger.error(f"Erro ao fazer upsert em broker_points: {e}")
             raise
 
-    def initialize_broker_points(self):
+    def initialize_broker_points(self, company_id=None):
         """
         Cria registros na tabela broker_points para todos os corretores cadastrados,
         com os campos de pontuação zerados. Evita duplicações.
         """
+        company_id = company_id or self.kommo_config.get('company_id')
         try:
             # Buscar corretores com cargo "Corretor"
             brokers_result = self.client.table("brokers").select(
