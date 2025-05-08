@@ -49,8 +49,7 @@ def background_data_loader():
     for changes and update the database accordingly
     """
     try:
-        supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
-                                  key=os.getenv("VITE_SUPABASE_ANON_KEY"))
+        global supabase
         
         # Initialize components only when configuration exists
         while True:
@@ -59,7 +58,6 @@ def background_data_loader():
                 sync_manager = SyncManager(kommo_api, supabase)
                 break
             time.sleep(5)  # Wait for configuration to be added
-            logger.info("Waiting for Kommo configuration...")
 
         # Initial check for broker_points data
         existing = supabase.client.table("broker_points").select("*").limit(
