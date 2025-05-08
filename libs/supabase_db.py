@@ -149,11 +149,27 @@ class SupabaseClient:
                 leads = kommo_api.get_leads()
                 activities = kommo_api.get_activities()
 
+                # Add company_id to all DataFrames
+                if not brokers.empty:
+                    brokers['company_id'] = company_id
+                if not leads.empty:
+                    leads['company_id'] = company_id
+                if not activities.empty:
+                    activities['company_id'] = company_id
+
                 # Sync all data with company_id
                 sync_manager.sync_data(brokers=brokers, 
                                      leads=leads, 
                                      activities=activities,
                                      company_id=company_id)
+                
+                # Initialize broker points for this company
+                self.initialize_broker_points(company_id)
+                
+                # Update broker points after sync
+                self.update_broker_points(brokers=brokers,
+                                        leads=leads,
+                                        activities=activities)
                 
                 logger.info(f"Initial sync completed successfully for company {company_id}")
         except Exception as e:
