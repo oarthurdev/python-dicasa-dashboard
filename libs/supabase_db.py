@@ -5,6 +5,7 @@ import numpy as np
 import logging
 from datetime import datetime
 import requests
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,10 +28,10 @@ class SupabaseClient:
             self.kommo_config = None
             self.rules = None
             self.last_check = datetime.now()
-            
+
             # Try initial load of config and rules
             self._load_initial_config()
-            
+
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise
@@ -41,7 +42,7 @@ class SupabaseClient:
             config = self.client.table("kommo_config").select("*").eq("active", True).execute()
             if config.data:
                 self.kommo_config = config.data[0]
-                
+
                 if not self.kommo_config.get('company_id'):
                     company_id = self._get_company_id(self.kommo_config['api_url'],
                                                   self.kommo_config['access_token'])
@@ -49,16 +50,16 @@ class SupabaseClient:
                         'company_id': company_id
                     }).eq('id', self.kommo_config['id']).execute()
                     self.kommo_config['company_id'] = company_id
-                
+
                 try:
                     self.rules = self.load_rules()
                 except Exception as e:
                     logger.warning(f"Could not load rules: {e}")
                     self.rules = {}
-                
+
                 logger.info("Initial configuration loaded successfully")
                 return
-            
+
             logger.info("Waiting for Kommo configuration to be added...")
         except Exception as e:
             logger.error(f"Error loading initial configuration: {str(e)}")
@@ -69,7 +70,7 @@ class SupabaseClient:
             if updated_config and updated_config != self.kommo_config:
                 logger.info("Kommo configuration updated")
                 self.kommo_config = updated_config
-                
+
                 if not updated_config.get('company_id'):
                     company_id = self._get_company_id(updated_config['api_url'],
                                                     updated_config['access_token'])
@@ -77,7 +78,7 @@ class SupabaseClient:
                         'company_id': company_id
                     }).eq('id', updated_config['id']).execute()
                     updated_config['company_id'] = company_id
-                
+
                 self._sync_all_data(updated_config)
                 logger.info("Configuration update handled successfully")
         except Exception as e:
@@ -89,28 +90,28 @@ class SupabaseClient:
             current_time = datetime.now()
             if (current_time - self.last_check).total_seconds() < 30:  # Check every 30 seconds
                 return
-                
+
             self.last_check = current_time
             result = self.client.table("kommo_config").select("*").execute()
-            
+
             if not result.data:
                 return
-                
+
             new_config = result.data[0]
-            
+
             if not self.kommo_config:
                 logger.info("New Kommo configuration detected")
                 self._handle_config_insert({"new": new_config})
             elif new_config != self.kommo_config:
                 logger.info("Kommo configuration updated")
                 self._handle_config_update(new_config)
-                
+
         except Exception as e:
             logger.error(f"Failed to check config changes: {str(e)}")
             if updated_config and updated_config != self.kommo_config:
                 logger.info("Kommo configuration updated")
                 self.kommo_config = updated_config
-                
+
                 if not updated_config.get('company_id'):
                     company_id = self._get_company_id(updated_config['api_url'],
                                                     updated_config['access_token'])
@@ -118,7 +119,7 @@ class SupabaseClient:
                         'company_id': company_id
                     }).eq('id', updated_config['id']).execute()
                     updated_config['company_id'] = company_id
-                
+
                 self._sync_all_data(updated_config)
                 logger.info("Configuration update handled successfully")
         except Exception as e:
@@ -131,7 +132,7 @@ class SupabaseClient:
             kommo_api = KommoAPI(api_url=config['api_url'],
                                 access_token=config['access_token'])
             sync_manager = SyncManager(kommo_api, self)
-            
+
             brokers = kommo_api.get_users()
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
@@ -149,15 +150,15 @@ class SupabaseClient:
                                  leads=leads, 
                                  activities=activities,
                                  company_id=company_id)
-            
+
             # Initialize broker points for this company
             self.initialize_broker_points(company_id)
-            
+
             # Update broker points after sync
             self.update_broker_points(brokers=brokers,
                                     leads=leads,
                                     activities=activities)
-            
+
             logger.info(f"Initial sync completed successfully for company {company_id}")
         except Exception as e:
             logger.error(f"Error in sync thread for company {company_id}: {str(e)}")
@@ -179,15 +180,33 @@ class SupabaseClient:
                 }).eq('id', new_config['id']).execute()
 
                 # Trigger sync through FastAPI endpoint
-                import requests
                 try:
-                    response = requests.post(f"http://localhost:5000/start_sync/{company_id}")
+                    import requests
+                    response = requests.post(f"http://0.0.0.0:5000/start_sync/{company_id}")
                     if response.status_code == 200:
                         logger.info(f"Sync started for company {company_id}")
+
+                        # Monitor sync status
+                        while True:
+                            status_response = requests.get(f"http://0.0.0.0:5000/sync_status/{company_id}")
+                            if status_response.status_code == 200:
+                                status_data = status_response.json()
+                                if status_data['status'] == 'running':
+                                    time.sleep(30)  # Check every 30 seconds
+                                    continue
+                                elif status_data['status'] == 'not_found':
+                                    logger.error(f"Sync thread not found for company {company_id}")
+                                    break
+                                else:
+                                    logger.info(f"Sync completed for company {company_id}")
+                                    break
+                            else:
+                                logger.error("Failed to get sync status")
+                                break
                     else:
                         logger.error(f"Failed to start sync for company {company_id}")
                 except Exception as e:
-                    logger.error(f"Error starting sync: {str(e)}")
+                    logger.error(f"Error in sync process: {str(e)}")
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise
