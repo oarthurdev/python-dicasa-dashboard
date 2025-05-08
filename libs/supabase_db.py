@@ -58,8 +58,25 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Error loading initial configuration: {str(e)}")
 
-    def _handle_config_update(self, event):
+    def _handle_config_update(self, updated_config):
         """Handle kommo_config updates"""
+        try:
+            if updated_config and updated_config != self.kommo_config:
+                logger.info("Kommo configuration updated")
+                self.kommo_config = updated_config
+                
+                if not updated_config.get('company_id'):
+                    company_id = self._get_company_id(updated_config['api_url'],
+                                                    updated_config['access_token'])
+                    self.client.table("kommo_config").update({
+                        'company_id': company_id
+                    }).eq('id', updated_config['id']).execute()
+                    updated_config['company_id'] = company_id
+                
+                self._sync_all_data(updated_config)
+                logger.info("Configuration update handled successfully")
+        except Exception as e:
+            logger.error(f"Failed to handle config update: {str(e)}")
 
     def check_config_changes(self):
         """Check for configuration changes periodically"""
@@ -81,13 +98,10 @@ class SupabaseClient:
                 self._handle_config_insert({"new": new_config})
             elif new_config != self.kommo_config:
                 logger.info("Kommo configuration updated")
-                self._handle_config_update({"new": new_config})
+                self._handle_config_update(new_config)
                 
         except Exception as e:
             logger.error(f"Failed to check config changes: {str(e)}")
-
-        try:
-            updated_config = event.get("new", {})
             if updated_config and updated_config != self.kommo_config:
                 logger.info("Kommo configuration updated")
                 self.kommo_config = updated_config

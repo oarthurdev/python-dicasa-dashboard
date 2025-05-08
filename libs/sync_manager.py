@@ -89,11 +89,14 @@ class SyncManager:
 
             # Verify if sync is needed based on last_sync and sync_interval
             config_data = self.supabase.client.table("kommo_config").select("*").eq("active", True).execute().data
-            if config_data:
-                last_sync = datetime.fromisoformat(config_data[0].get('last_sync'))
-                if (now - last_sync).total_seconds() < (sync_interval * 60):
-                    logger.info("Sync not needed yet")
-                    return
+            if config_data and config_data[0].get('last_sync'):
+                try:
+                    last_sync = datetime.fromisoformat(str(config_data[0].get('last_sync')))
+                    if (now - last_sync).total_seconds() < (sync_interval * 60):
+                        logger.info("Sync not needed yet")
+                        return
+                except (ValueError, TypeError):
+                    logger.warning("Invalid last_sync format, proceeding with sync")
 
             # Get data if not provided
             if brokers is None:
