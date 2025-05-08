@@ -26,10 +26,7 @@ class SupabaseClient:
             logger.info("Supabase client initialized successfully")
             self.kommo_config = None
             self.rules = None
-            
-            # Subscribe to kommo_config changes
-            self.client.table("kommo_config").on("INSERT", self._handle_config_insert).subscribe()
-            self.client.table("kommo_config").on("UPDATE", self._handle_config_update).subscribe()
+            self.last_check = datetime.now()
             
             # Try initial load of config and rules
             self._load_initial_config()
@@ -50,6 +47,32 @@ class SupabaseClient:
 
     def _handle_config_update(self, event):
         """Handle kommo_config updates"""
+
+    def check_config_changes(self):
+        """Check for configuration changes periodically"""
+        try:
+            current_time = datetime.now()
+            if (current_time - self.last_check).total_seconds() < 30:  # Check every 30 seconds
+                return
+                
+            self.last_check = current_time
+            result = self.client.table("kommo_config").select("*").execute()
+            
+            if not result.data:
+                return
+                
+            new_config = result.data[0]
+            
+            if not self.kommo_config:
+                logger.info("New Kommo configuration detected")
+                self._handle_config_insert({"new": new_config})
+            elif new_config != self.kommo_config:
+                logger.info("Kommo configuration updated")
+                self._handle_config_update({"new": new_config})
+                
+        except Exception as e:
+            logger.error(f"Failed to check config changes: {str(e)}")
+
         try:
             updated_config = event.get("new", {})
             if updated_config and updated_config != self.kommo_config:

@@ -71,6 +71,8 @@ def background_data_loader():
 
         while True:
             try:
+                supabase.check_config_changes()  # Check for config changes
+                
                 if sync_manager.needs_sync('brokers') or sync_manager.needs_sync('leads') or sync_manager.needs_sync('activities'):
                     brokers = kommo_api.get_users()
                     leads = kommo_api.get_leads()
