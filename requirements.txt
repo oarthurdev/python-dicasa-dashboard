@@ -9,3 +9,5 @@ streamlit>=1.44.1
 supabase>=2.15.0
 flask>=2.3.3
 gotrue
+fastapi
+uvicorn

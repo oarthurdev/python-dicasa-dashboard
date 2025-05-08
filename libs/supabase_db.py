@@ -178,16 +178,16 @@ class SupabaseClient:
                     'active': True
                 }).eq('id', new_config['id']).execute()
 
-                # Create and start sync thread for this company
-                import threading
-                sync_thread = threading.Thread(
-                    target=self._sync_company_data,
-                    args=(new_config, company_id),
-                    name=f"sync_thread_{company_id}",
-                    daemon=True
-                )
-                sync_thread.start()
-                logger.info(f"Started sync thread for company {company_id}")
+                # Trigger sync through FastAPI endpoint
+                import requests
+                try:
+                    response = requests.post(f"http://localhost:5000/start_sync/{company_id}")
+                    if response.status_code == 200:
+                        logger.info(f"Sync started for company {company_id}")
+                    else:
+                        logger.error(f"Failed to start sync for company {company_id}")
+                except Exception as e:
+                    logger.error(f"Error starting sync: {str(e)}")
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise
