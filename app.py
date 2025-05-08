@@ -81,12 +81,14 @@ def background_data_loader():
 
                     if not brokers.empty and not leads.empty and not activities.empty:
                         sync_manager.sync_data(brokers=brokers, leads=leads, activities=activities)
+                        # Força atualização de pontos e aguarda finalização
                         auto_update_broker_points(brokers=brokers,
                                                 leads=leads,
-                                                activities=activities)
-                else:
-                    logger.info("Aguardando próximo ciclo de sincronização...")
-                    time.sleep(300)  # Wait 5 minutes before next check
+                                                activities=activities,
+                                                force=True)
+                
+                logger.info("Aguardando próximo ciclo de sincronização...")
+                time.sleep(300)  # Wait 5 minutes before next check
 
             except Exception as e:
                 logger.error(f"Error in background sync: {str(e)}")
