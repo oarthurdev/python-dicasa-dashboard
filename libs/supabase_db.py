@@ -36,6 +36,9 @@ class SupabaseClient:
             
             # Load gamification rules
             self.rules = self.load_rules()
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase client: {str(e)}")
+            raise
             
     def _handle_config_insert(self, event):
         """Handle new kommo_config insertion"""
