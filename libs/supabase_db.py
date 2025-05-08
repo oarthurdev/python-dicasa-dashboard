@@ -24,10 +24,36 @@ class SupabaseClient:
             self.client = create_client(self.url, self.key)
             logger.info("Supabase client initialized successfully")
 
-            # Load Kommo API configuration
-            self.kommo_config = self.load_kommo_config()
+            # Setup subscription to kommo_config table
+            self.client.table("kommo_config").on("INSERT", self._handle_config_insert).subscribe()
+            
+            # Try to load config, but don't fail if not found
+            try:
+                self.kommo_config = self.load_kommo_config()
+            except ValueError:
+                logger.warning("No Kommo config found. Waiting for configuration...")
+                self.kommo_config = None
+            
             # Load gamification rules
             self.rules = self.load_rules()
+            
+    def _handle_config_insert(self, event):
+        """Handle new kommo_config insertion"""
+        try:
+            new_config = event.get("new", {})
+            if new_config:
+                logger.info("New Kommo configuration detected")
+                self.kommo_config = new_config
+                
+                # Get company_id and update config
+                company_id = self._get_company_id(new_config['api_url'], new_config['access_token'])
+                self.client.table("kommo_config").update({
+                    'company_id': company_id
+                }).eq('id', new_config['id']).execute()
+                
+                # Trigger initial sync
+                self._sync_all_data({**new_config, 'company_id': company_id})
+                logger.info("Initial sync completed successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Supabase client: {str(e)}")
             raise
