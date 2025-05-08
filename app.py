@@ -53,6 +53,7 @@ def background_data_loader():
         
         # Initialize components only when configuration exists
         while True:
+            supabase._load_initial_config()  # Recarrega a configuração
             if supabase.kommo_config:
                 kommo_api = KommoAPI(supabase_client=supabase)
                 sync_manager = SyncManager(kommo_api, supabase)

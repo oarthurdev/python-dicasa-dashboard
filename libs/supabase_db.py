@@ -38,23 +38,28 @@ class SupabaseClient:
     def _load_initial_config(self):
         """Try to load initial configuration without raising errors"""
         try:
-            config = self.client.table("kommo_config").select("*").execute()
+            config = self.client.table("kommo_config").select("*").eq("active", True).execute()
             if config.data:
                 self.kommo_config = config.data[0]
-                # Start sync if config is new or changed
-                if self.kommo_config.get('company_id') is None:
+                
+                if not self.kommo_config.get('company_id'):
                     company_id = self._get_company_id(self.kommo_config['api_url'],
                                                   self.kommo_config['access_token'])
                     self.client.table("kommo_config").update({
                         'company_id': company_id
                     }).eq('id', self.kommo_config['id']).execute()
                     self.kommo_config['company_id'] = company_id
-                    self._sync_all_data(self.kommo_config)
                 
-                self.rules = self.load_rules()
+                try:
+                    self.rules = self.load_rules()
+                except Exception as e:
+                    logger.warning(f"Could not load rules: {e}")
+                    self.rules = {}
+                
                 logger.info("Initial configuration loaded successfully")
-            else:
-                logger.info("Waiting for Kommo configuration to be added...")
+                return
+            
+            logger.info("Waiting for Kommo configuration to be added...")
         except Exception as e:
             logger.error(f"Error loading initial configuration: {str(e)}")
 
