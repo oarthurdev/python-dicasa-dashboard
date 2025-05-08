@@ -63,6 +63,9 @@ class SupabaseClient:
                 self._sync_all_data(config)
             
             return config
+        except Exception as e:
+            logger.error(f"Failed to load Kommo config: {str(e)}")
+            raise
             
     def _get_company_id(self, api_url, access_token):
         """Get company ID from Kommo API"""
