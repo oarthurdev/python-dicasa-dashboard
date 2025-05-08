@@ -6,12 +6,15 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def calculate_broker_points(broker_data, lead_data, activity_data, rules):
+def calculate_broker_points(broker_data, lead_data, activity_data, rules, company_id=None):
     """
     Calculate points for each broker based on dynamic rules loaded from Supabase
     """
     try:
         logger.info("Calculating broker points based on dynamic rules")
+        
+        if company_id is None and 'company_id' in broker_data.columns:
+            company_id = broker_data['company_id'].iloc[0]
 
         def check_broker_activity(activities, now):
             """Verifica se houve atividade no horário comercial"""
@@ -48,6 +51,7 @@ def calculate_broker_points(broker_data, lead_data, activity_data, rules):
         points_df = broker_data[['id', 'nome']].copy()
         points_df['pontos'] = 0
         points_df['corretor_ocioso_mais_de_3h'] = 0
+        points_df['company_id'] = company_id
 
         # Initialize all rule columns with zero
         for rule_name in rules.keys():

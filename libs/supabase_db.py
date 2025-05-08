@@ -776,7 +776,8 @@ class SupabaseClient:
             rules = self.load_rules()
             self.insert_log("INFO", "Iniciando cálculo de pontos")
             points_df = calculate_broker_points(active_brokers, leads,
-                                                activities, rules)
+                                              activities, rules,
+                                              company_id=self.kommo_config.get('company_id'))
             self.insert_log("INFO", "Cálculo de pontos concluído")
 
             # Garante que todos os campos necessários existam
