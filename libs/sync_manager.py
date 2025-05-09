@@ -129,7 +129,9 @@ class SyncManager:
                 self.supabase.initialize_broker_points(company_id)
 
             if not leads.empty:
-                # Add company_id to leads
+                # Add company_id to leads and filter by account_id matching company_id
+                account_id = self.kommo_api.api_config.get('account_id')
+                leads = leads[leads['account_id'] == account_id].copy()
                 leads['company_id'] = company_id
                 existing_leads = self._get_existing_records('leads')
                 leads_records = leads.to_dict('records')

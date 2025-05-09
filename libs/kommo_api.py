@@ -183,12 +183,9 @@ class KommoAPI:
                 time.sleep(1)
                 start_ts, end_ts = self._get_date_filters()
                 params = {
-                    "page":
-                    page,
-                    "limit":
-                    250,
-                    "with":
-                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                    "page": page,
+                    "limit": 250,
+                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
 
                 if start_ts:
