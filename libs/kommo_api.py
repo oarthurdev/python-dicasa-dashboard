@@ -214,8 +214,9 @@ class KommoAPI:
                 )
                 page += 1
 
-            logger.info(
-                f"Total de leads com pipeline 8865067: {len(filtered_leads)}")
+            logger.info(f"Total de leads encontrados: {len(filtered_leads)}")
+            if filtered_leads:
+                logger.info(f"Exemplo do primeiro lead: {filtered_leads[0]}")
 
             processed_leads = []
             for lead in filtered_leads:
