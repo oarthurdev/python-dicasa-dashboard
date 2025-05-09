@@ -162,13 +162,12 @@ class KommoAPI:
 
             status_map = {}
             for pipeline in pipelines:
-                if pipeline.get("id") == 8865067:
-                    for status in pipeline.get("_embedded",
-                                               {}).get("statuses", []):
-                        status_id = status.get("id")
-                        status_name = status.get("name")
-                        status_map[status_id] = status_name
-                    break
+                for status in pipeline.get("_embedded",
+                                           {}).get("statuses", []):
+                    status_id = status.get("id")
+                    status_name = status.get("name")
+                    status_map[status_id] = status_name
+                break
 
             logger.info("Etapas carregadas com sucesso")
 
@@ -203,7 +202,6 @@ class KommoAPI:
                 # Get all leads without pipeline filtering
                 filtered_leads = leads
 
-
                 if not filtered_leads:
                     empty_streak += 1
                     if empty_streak >= stop_after:
@@ -213,7 +211,6 @@ class KommoAPI:
                         break
                 else:
                     empty_streak = 0
-                    
 
                 logger.info(
                     f"Processada página {page}, encontrados {len(filtered_leads)} leads"
@@ -273,7 +270,11 @@ class KommoAPI:
             logger.error(f"Erro ao buscar leads: {str(e)}")
             return pd.DataFrame()
 
-    def get_activities(self, page_size=100, max_workers=3, max_pages=500, chunk_size=10):
+    def get_activities(self,
+                       page_size=100,
+                       max_workers=3,
+                       max_pages=500,
+                       chunk_size=10):
         """
         Retrieve activities from Kommo CRM using optimized chunked parallel requests
 
@@ -334,11 +335,16 @@ class KommoAPI:
                             events = future.result()
                             if events:
                                 chunk_data.extend(events)
-                                logger.info(f"Page {futures[future]} fetched: {len(events)} events")
+                                logger.info(
+                                    f"Page {futures[future]} fetched: {len(events)} events"
+                                )
                         except Exception as e:
                             if "429" in str(e):
-                                wait_time = min(2 ** (futures[future] % 5), 32)  # Exponential backoff
-                                logger.warning(f"Rate limit hit, waiting {wait_time}s before retry")
+                                wait_time = min(2**(futures[future] % 5),
+                                                32)  # Exponential backoff
+                                logger.warning(
+                                    f"Rate limit hit, waiting {wait_time}s before retry"
+                                )
                                 time.sleep(wait_time)
                                 # Retry once after backoff
                                 try:
@@ -346,9 +352,13 @@ class KommoAPI:
                                     if events:
                                         chunk_data.extend(events)
                                 except Exception as retry_e:
-                                    logger.error(f"Retry failed for page {futures[future]}: {retry_e}")
+                                    logger.error(
+                                        f"Retry failed for page {futures[future]}: {retry_e}"
+                                    )
                             else:
-                                logger.error(f"Error fetching page {futures[future]}: {e}")
+                                logger.error(
+                                    f"Error fetching page {futures[future]}: {e}"
+                                )
                 return chunk_data
 
             while page <= max_pages:
@@ -369,8 +379,7 @@ class KommoAPI:
                     if not chunk_data:
                         empty_streak += 1
                         if empty_streak >= stop_after:
-                            logger.info(
-                                f"Stopping: {stop_after} empty chunks")
+                            logger.info(f"Stopping: {stop_after} empty chunks")
                             break
                     else:
                         empty_streak = 0
