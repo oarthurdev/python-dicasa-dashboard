@@ -16,7 +16,9 @@ class KommoAPI:
 
     def __init__(self, api_url=None, access_token=None, supabase_client=None):
         if supabase_client:
-            self.api_config = supabase_client.kommo_config or supabase_client.load_kommo_config()
+            self.api_config = supabase_client.load_kommo_config()
+
+            logger.info(f"Kommo API config loaded: {self.api_config}")
             if not self.api_config:
                 raise ValueError("No Kommo configuration found in Supabase")
             self.api_url = self.api_config.get('api_url')
@@ -157,7 +159,7 @@ class KommoAPI:
         and map status_id to status name (etapa)
         """
         try:
-            logger.info(f"API Config: {self.api_config}")
+            logger.info(f"API Config: {self}")
             # Get pipeline_id from config
             pipeline_id = self.api_config.get('pipeline_id')
             if not pipeline_id:
