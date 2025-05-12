@@ -246,26 +246,25 @@ class SupabaseClient:
     def load_kommo_config(self):
         """Load Kommo API configuration from Supabase"""
         try:
-            result = self.client.table("kommo_config").select("*").execute()
+            result = self.client.table("kommo_config").select("*").eq("active", True).execute()
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
 
             if not result.data:
-                raise ValueError("No Kommo API configuration found")
+                raise ValueError("No active Kommo API configuration found")
 
-            config = result.data[0]
-            # Start sync if config is new or changed
-            if config.get('company_id') is None:
-                company_id = self._get_company_id(config['api_url'],
-                                                  config['access_token'])
-                self.client.table("kommo_config").update({
-                    'company_id':
-                    company_id
-                }).eq('id', config['id']).execute()
-                config['company_id'] = company_id
-                self._sync_all_data(config)
+            configs = result.data
+            for config in configs:
+                if config.get('company_id') is None:
+                    company_id = self._get_company_id(config['api_url'],
+                                                    config['access_token'])
+                    self.client.table("kommo_config").update({
+                        'company_id': company_id
+                    }).eq('id', config['id']).execute()
+                    config['company_id'] = company_id
+                    self._sync_all_data(config)
 
-            return config
+            return configs
         except Exception as e:
             logger.error(f"Failed to load Kommo config: {str(e)}")
             raise

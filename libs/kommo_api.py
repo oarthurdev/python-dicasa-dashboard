@@ -23,11 +23,15 @@ class KommoAPI:
 
         try:
             if supabase_client:
-                self.api_config = supabase_client.load_kommo_config()
-                if not self.api_config:
-                    raise ValueError(
-                        "No Kommo configuration found in Supabase")
-                logger.info(f"Kommo API config loaded: {self.api_config}")
+                configs = supabase_client.load_kommo_config()
+                if not configs:
+                    raise ValueError("No active Kommo configurations found in Supabase")
+                self.api_configs = configs
+                # Use first config as default for backward compatibility
+                self.api_config = configs[0]
+                logger.info(f"Found {len(configs)} active Kommo configurations")
+                for config in configs:
+                    logger.info(f"Kommo API config loaded for company {config.get('company_id')}: {config}")
                 self.api_url = self.api_config.get('api_url')
                 self.access_token = self.api_config.get('access_token')
             else:
