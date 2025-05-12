@@ -142,35 +142,45 @@ class SyncManager:
                 for i in range(0, len(brokers_records), self.batch_size):
                     batch = brokers_records[i:i + self.batch_size]
                     self._process_batch(batch, 'brokers', existing_brokers)
+                logger.info(f"Processed {len(brokers)} brokers")
 
                 # Initialize broker points with company_id
                 self.supabase.initialize_broker_points(company_id)
 
-            if not leads.empty:
-                # Add company_id to leads without filtering by account_id
+            # Process leads
+            if isinstance(leads, pd.DataFrame) and not leads.empty:
+                # Add company_id to leads without filtering
                 leads['company_id'] = company_id
                 existing_leads = self._get_existing_records('leads')
                 leads_records = leads.to_dict('records')
+                
                 for i in range(0, len(leads_records), self.batch_size):
                     batch = leads_records[i:i + self.batch_size]
                     self._process_batch(batch, 'leads', existing_leads)
+                logger.info(f"Processed {len(leads)} leads")
 
-            # Validate foreign keys before processing activities
-            if not activities.empty:
+            # Process activities
+            if isinstance(activities, pd.DataFrame) and not activities.empty:
                 # Add company_id to activities
                 activities['company_id'] = company_id
                 # Get valid IDs
-                valid_leads = set(
-                    leads['id'].unique()) if not leads.empty else set()
-                valid_brokers = set(
-                    brokers['id'].unique()) if not brokers.empty else set()
+                valid_leads = set(leads['id'].unique()) if isinstance(leads, pd.DataFrame) and not leads.empty else set()
+                valid_brokers = set(brokers['id'].unique()) if isinstance(brokers, pd.DataFrame) and not brokers.empty else set()
 
-                # Filter activities
-                activities = activities[
-                    (activities['lead_id'].isin(valid_leads)
-                     | activities['lead_id'].isna())
-                    & (activities['user_id'].isin(valid_brokers)
-                       | activities['user_id'].isna())]
+                # Filter activities but keep them if lead_id or user_id is null
+                filtered_activities = activities[
+                    (activities['lead_id'].isin(valid_leads) | activities['lead_id'].isna()) &
+                    (activities['user_id'].isin(valid_brokers) | activities['user_id'].isna())
+                ].copy()
+                
+                if not filtered_activities.empty:
+                    existing_activities = self._get_existing_records('activities')
+                    activities_records = filtered_activities.to_dict('records')
+                    
+                    for i in range(0, len(activities_records), self.batch_size):
+                        batch = activities_records[i:i + self.batch_size]
+                        self._process_batch(batch, 'activities', existing_activities)
+                    logger.info(f"Processed {len(filtered_activities)} activities")
 
                 if not activities.empty:
                     existing_activities = self._get_existing_records(
