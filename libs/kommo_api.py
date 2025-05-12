@@ -175,10 +175,11 @@ class KommoAPI:
             # Get pipeline_id and company_id from config for proper filtering
             pipeline_id = self.api_config.get('pipeline_id')
             company_id = self.api_config.get('company_id')
-            
+
             if not pipeline_id or not company_id:
                 logger.warning(
-                    "No pipeline_id or company_id found in config, fetching all leads")
+                    "No pipeline_id or company_id found in config, fetching all leads"
+                )
 
             logger.info(
                 f"Buscando etapas do pipeline {pipeline_id if pipeline_id else 'all'}"
@@ -210,24 +211,27 @@ class KommoAPI:
             per_page = 250
             empty_streak = 0
             stop_after = 1
-            
+
             while True:
                 params = {
-                    "page": page,
-                    "limit": per_page,
-                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                    "page":
+                    page,
+                    "limit":
+                    per_page,
+                    "with":
+                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
-                
+
                 # Add date filters if configured
                 start_ts, end_ts = self._get_date_filters()
                 if start_ts:
                     params["filter[created_at][from]"] = start_ts
                 if end_ts:
                     params["filter[created_at][to]"] = end_ts
-                    
+
                 response = self._make_request("leads", params=params)
                 leads = response.get("_embedded", {}).get("leads", [])
-                
+
                 if leads:
                     filtered_leads.extend(leads)
                     empty_streak = 0
@@ -236,18 +240,18 @@ class KommoAPI:
                     if empty_streak >= stop_after:
                         logger.info(f"Stopping: {stop_after} empty pages")
                         break
-                
+
                 # Check if we received less than per_page items
                 if len(leads) < per_page:
                     break
-                    
+
                 page += 1
                 time.sleep(0.5)  # Rate limiting
-                    if empty_streak >= stop_after:
-                        logger.info(
-                            f"Parando busca: {stop_after} páginas vazias consecutivas"
-                        )
-                        break
+                if empty_streak >= stop_after:
+                    logger.info(
+                        f"Parando busca: {stop_after} páginas vazias consecutivas"
+                    )
+                    break
                 else:
                     empty_streak = 0
 
@@ -311,11 +315,11 @@ class KommoAPI:
             return pd.DataFrame()
 
     def get_activities(self,
-                      company_id=None,
-                      page_size=250,
-                      max_workers=5,
-                      max_pages=500,
-                      chunk_size=10):
+                       company_id=None,
+                       page_size=250,
+                       max_workers=5,
+                       max_pages=500,
+                       chunk_size=10):
         """
         Retrieve activities from Kommo CRM for specific company
         Args:
