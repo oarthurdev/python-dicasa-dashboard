@@ -16,12 +16,13 @@ logger.setLevel(logging.INFO)
 
 class KommoAPI:
 
-    def __init__(self, api_url=None, access_token=None):
+    def __init__(self, api_url=None, access_token=None, api_config=None):
         try:
             logger.info("Initializing KommoAPI")
-
-            self.api_url = api_url or os.getenv("KOMMO_API_URL")
-            self.access_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
+            
+            self.api_config = api_config
+            self.api_url = api_url or (api_config.get('api_url') if api_config else None) or os.getenv("KOMMO_API_URL")
+            self.access_token = access_token or (api_config.get('access_token') if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
 
             if not self.api_url or not self.access_token:
                 raise ValueError("API URL and access token must be provided")
