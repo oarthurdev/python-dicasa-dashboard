@@ -117,30 +117,20 @@ class SyncManager:
                     logger.info(f"Sync not needed yet for company {company_id}")
                     return
 
-            # Get company_id from config if not provided
-            if not company_id:
-                config_data = self.supabase.client.table(
-                    "kommo_config").select("*").eq("active",
-                                                   True).execute().data
-                if not config_data:
-                    logger.error("No active configuration found")
-                    return
-                company_id = config_data[0].get('company_id')
-                if not company_id:
-                    logger.error("No company_id found in configuration")
-                    return
+            # Já validamos o company_id no início, não precisamos buscar novamente
+            config_data = self.supabase.client.table("kommo_config").select("*").eq("company_id", company_id).execute().data
+            if not config_data:
+                logger.error(f"No configuration found for company {company_id}")
+                return
 
-                if config_data[0].get('last_sync'):
-                    try:
-                        last_sync = datetime.fromisoformat(
-                            str(config_data[0].get('last_sync')))
-                        if (now - last_sync).total_seconds() < (sync_interval *
-                                                                60):
-                            logger.info("Sync not needed yet")
-                            return
-                    except (ValueError, TypeError):
-                        logger.warning(
-                            "Invalid last_sync format, proceeding with sync")
+            if config_data[0].get('last_sync'):
+                try:
+                    last_sync = datetime.fromisoformat(str(config_data[0].get('last_sync')))
+                    if (now - last_sync).total_seconds() < (sync_interval * 60):
+                        logger.info(f"Sync not needed yet for company {company_id}")
+                        return
+                except (ValueError, TypeError):
+                    logger.warning("Invalid last_sync format, proceeding with sync")
 
             # Get data if not provided
             if brokers is None:
