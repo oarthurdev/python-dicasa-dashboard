@@ -15,7 +15,8 @@ class SyncManager:
         self.supabase = supabase_client
         self.batch_size = batch_size
         self.cache = {'brokers': {}, 'leads': {}, 'activities': {}}
-        self.config = self.supabase.load_kommo_config()
+        configs = self.supabase.load_kommo_config()
+        self.config = configs[0] if isinstance(configs, list) else configs
 
     def _generate_hash(self, data: Dict) -> str:
         """Generate a hash for data comparison"""
