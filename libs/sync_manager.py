@@ -179,7 +179,7 @@ class SyncManager:
                 # Filter activities but keep them if lead_id or user_id is null
                 filtered_activities = activities[
                     (activities['lead_id'].isin(valid_leads) | activities['lead_id'].isna()) &
-                    (activities['user_id'].isin(valid_brokers) | activities['user_id'].isna())
+                    (activities['user_id'].isin(valid_broker_ids) | activities['user_id'].isna())
                 ].copy()
                 
                 if not filtered_activities.empty:

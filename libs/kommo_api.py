@@ -171,11 +171,13 @@ class KommoAPI:
         and map status_id to status name (etapa)
         """
         try:
-            # Get pipeline_id from config
+            # Get pipeline_id and company_id from config for proper filtering
             pipeline_id = self.api_config.get('pipeline_id')
-            if not pipeline_id:
+            company_id = self.api_config.get('company_id')
+            
+            if not pipeline_id or not company_id:
                 logger.warning(
-                    "No pipeline_id found in config, fetching all leads")
+                    "No pipeline_id or company_id found in config, fetching all leads")
 
             logger.info(
                 f"Buscando etapas do pipeline {pipeline_id if pipeline_id else 'all'}"
