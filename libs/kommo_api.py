@@ -25,15 +25,15 @@ class KommoAPI:
         if not self.api_url or not self.access_token:
             raise ValueError("API URL and access token must be provided")
 
-            if not self.api_url or not self.access_token:
-                raise ValueError("API URL and access token must be provided")
+        if not self.api_url or not self.access_token:
+            raise ValueError("API URL and access token must be provided")
 
-            # Ensure API URL does not end with slash
-            if self.api_url.endswith('/'):
-                self.api_url = self.api_url[:-1]
+        # Ensure API URL does not end with slash
+        if self.api_url.endswith('/'):
+            self.api_url = self.api_url[:-1]
 
-            logger.info("KommoAPI initialized successfully")
-        except Exception as e:
+        logger.info("KommoAPI initialized successfully")
+    except Exception as e:
             logger.error(f"Error initializing KommoAPI: {str(e)}")
             raise
 
