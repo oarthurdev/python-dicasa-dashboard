@@ -19,7 +19,8 @@ def sync_company_data(company_id: str, config: dict):
     try:
         logger.info(f"Starting sync thread for company {company_id}")
         kommo_api = KommoAPI(api_url=config['api_url'],
-                             access_token=config['access_token'])
+                             access_token=config['access_token'],
+                             supabase_client=supabase_client)
         sync_manager = SyncManager(kommo_api, supabase_client)
 
         while True:

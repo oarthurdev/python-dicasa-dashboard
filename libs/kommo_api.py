@@ -15,21 +15,25 @@ logger.setLevel(logging.INFO)
 
 
 class KommoAPI:
+
     def __init__(self, api_url=None, access_token=None, supabase_client=None):
-        logger.info("Initializing KommoAPI")  # Changed to INFO for better visibility
+        logger.info(
+            "Initializing KommoAPI")  # Changed to INFO for better visibility
         self.api_config = {}
-        
+
         try:
             if supabase_client:
                 self.api_config = supabase_client.load_kommo_config()
                 if not self.api_config:
-                    raise ValueError("No Kommo configuration found in Supabase")
+                    raise ValueError(
+                        "No Kommo configuration found in Supabase")
                 logger.info(f"Kommo API config loaded: {self.api_config}")
                 self.api_url = self.api_config.get('api_url')
                 self.access_token = self.api_config.get('access_token')
             else:
                 self.api_url = api_url or os.getenv("KOMMO_API_URL")
-                self.access_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
+                self.access_token = access_token or os.getenv(
+                    "ACCESS_TOKEN_KOMMO")
 
             if not self.api_url or not self.access_token:
                 raise ValueError("API URL and access token must be provided")
@@ -37,7 +41,7 @@ class KommoAPI:
             # Ensure API URL does not end with slash
             if self.api_url.endswith('/'):
                 self.api_url = self.api_url[:-1]
-                
+
             logger.info("KommoAPI initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing KommoAPI: {str(e)}")
@@ -167,7 +171,6 @@ class KommoAPI:
         and map status_id to status name (etapa)
         """
         try:
-            logger.info(f"API Config: {self}")
             # Get pipeline_id from config
             pipeline_id = self.api_config.get('pipeline_id')
             if not pipeline_id:
