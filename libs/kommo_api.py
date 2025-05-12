@@ -155,20 +155,27 @@ class KommoAPI:
         and map status_id to status name (etapa)
         """
         try:
+            logger.info(f"API Config: {self.api_config}")
             # Get pipeline_id from config
             pipeline_id = self.api_config.get('pipeline_id')
             if not pipeline_id:
-                logger.warning("No pipeline_id found in config, fetching all leads")
+                logger.warning(
+                    "No pipeline_id found in config, fetching all leads")
 
-            logger.info(f"Buscando etapas do pipeline {pipeline_id if pipeline_id else 'all'}")
+            logger.info(
+                f"Buscando etapas do pipeline {pipeline_id if pipeline_id else 'all'}"
+            )
             pipeline_response = self._make_request("leads/pipelines")
-            pipelines = pipeline_response.get("_embedded", {}).get("pipelines", [])
+            pipelines = pipeline_response.get("_embedded",
+                                              {}).get("pipelines", [])
 
             status_map = {}
             for pipeline in pipelines:
                 # Only get statuses for configured pipeline if pipeline_id exists
-                if not pipeline_id or str(pipeline.get('id')) == str(pipeline_id):
-                    for status in pipeline.get("_embedded", {}).get("statuses", []):
+                if not pipeline_id or str(
+                        pipeline.get('id')) == str(pipeline_id):
+                    for status in pipeline.get("_embedded",
+                                               {}).get("statuses", []):
                         status_id = status.get("id")
                         status_name = status.get("name")
                         status_map[status_id] = status_name
@@ -189,11 +196,14 @@ class KommoAPI:
                 time.sleep(1)
                 start_ts, end_ts = self._get_date_filters()
                 params = {
-                    "page": page,
-                    "limit": 250,
-                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                    "page":
+                    page,
+                    "limit":
+                    250,
+                    "with":
+                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
-                
+
                 # Add pipeline filter if configured
                 if pipeline_id:
                     params["filter[pipeline_id]"] = pipeline_id
