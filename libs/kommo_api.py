@@ -144,11 +144,9 @@ class KommoAPI:
     def _get_date_filters(self):
         """Obtém os filtros de data da configuração"""
         try:
-            # Load config directly from supabase since it's already loaded in constructor
-            start_date = self.api_config.get('sync_start_date')
-            end_date = self.api_config.get('sync_end_date')
-
-            return start_date, end_date
+            # Por enquanto retornamos None para não filtrar por data
+            # Em uma implementação futura, podemos adicionar esses filtros
+            return None, None
         except Exception as e:
             logger.error(f"Erro ao obter filtros de data: {str(e)}")
             return None, None
