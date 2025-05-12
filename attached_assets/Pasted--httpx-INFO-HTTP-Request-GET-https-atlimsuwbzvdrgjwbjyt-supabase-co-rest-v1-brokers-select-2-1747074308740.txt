@@ -1,0 +1,11 @@
+ httpx - INFO - HTTP Request: GET https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/brokers?select=%2A "HTTP/2 200 OK"
+2025-05-12 18:22:17,187 - httpx - INFO - HTTP Request: POST https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/brokers?columns=%22updated_at%22%2C%22nome%22%2C%22criado_em%22%2C%22foto_url%22%2C%22cargo%22%2C%22email%22%2C%22company_id%22%2C%22id%22 "HTTP/2 201 Created"
+2025-05-12 18:22:17,188 - libs.sync_manager - INFO - Processed 12 records for brokers
+2025-05-12 18:22:17,260 - httpx - INFO - HTTP Request: GET https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/brokers?select=id%2Cnome&cargo=eq.Corretor "HTTP/2 200 OK"
+2025-05-12 18:22:17,332 - httpx - INFO - HTTP Request: GET https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?select=id&id=in.%2811371851%2C11381735%2C11381759%2C11381795%2C11381807%2C11381811%2C11383879%2C11392047%2C11405271%29 "HTTP/2 200 OK"
+2025-05-12 18:22:17,542 - httpx - INFO - HTTP Request: POST https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?on_conflict=id&columns=%22todos_leads_respondidos%22%2C%22leads_respondidos_1h%22%2C%22updated_at%22%2C%22leads_atualizados_mesmo_dia%22%2C%22leads_ignorados_48h%22%2C%22propostas_enviadas%22%2C%22leads_sem_interacao_24h%22%2C%22feedbacks_positivos%22%2C%22leads_visitados%22%2C%22vendas_realizadas%22%2C%22pontos%22%2C%22leads_perdidos%22%2C%22nome%22%2C%22cadastro_completo%22%2C%22leads_tempo_resposta_acima_12h%22%2C%22leads_respondidos_apos_18h%22%2C%22acompanhamento_pos_venda%22%2C%22resposta_rapida_3h%22%2C%22leads_5_dias_sem_mudanca%22%2C%22id%22 "HTTP/2 201 Created"
+2025-05-12 18:22:17,543 - libs.supabase_db - INFO - 9 registros criados em broker_points com sucesso.
+2025-05-12 18:22:17,614 - httpx - INFO - HTTP Request: PATCH https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/kommo_config?active=eq.True "HTTP/2 200 OK"
+2025-05-12 18:22:17,616 - libs.sync_manager - INFO - Data synchronization completed successfully
+2025-05-12 18:22:17,616 - libs.supabase_db - INFO - Iniciando atualização dos pontos dos corretores...
+2025-05-12 18:22:17,617 - libs.supabase_db - WARNING - Dados insuficientes para cálculo de pontos. Verifique se todas as tabelas estão preenchidas.
