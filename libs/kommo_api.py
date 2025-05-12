@@ -205,9 +205,11 @@ class KommoAPI:
             logger.info(
                 "Retrieving leads from Kommo CRM (pipeline_id = 8865067)")
 
-            all_leads = []
+            filtered_leads = []
             page = 1
             per_page = 250
+            empty_streak = 0
+            stop_after = 1
             
             while True:
                 params = {
@@ -226,10 +228,14 @@ class KommoAPI:
                 response = self._make_request("leads", params=params)
                 leads = response.get("_embedded", {}).get("leads", [])
                 
-                if not leads:
-                    break
-                    
-                all_leads.extend(leads)
+                if leads:
+                    filtered_leads.extend(leads)
+                    empty_streak = 0
+                else:
+                    empty_streak += 1
+                    if empty_streak >= stop_after:
+                        logger.info(f"Stopping: {stop_after} empty pages")
+                        break
                 
                 # Check if we received less than per_page items
                 if len(leads) < per_page:
@@ -237,9 +243,6 @@ class KommoAPI:
                     
                 page += 1
                 time.sleep(0.5)  # Rate limiting
-
-                if not filtered_leads:
-                    empty_streak += 1
                     if empty_streak >= stop_after:
                         logger.info(
                             f"Parando busca: {stop_after} páginas vazias consecutivas"
