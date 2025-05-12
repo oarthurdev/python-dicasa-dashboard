@@ -149,9 +149,16 @@ class KommoAPI:
             start_date = self.api_config.get('sync_start_date')
             end_date = self.api_config.get('sync_end_date')
 
-            # Convert to timestamps if dates are provided
-            start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp()) if start_date else None
-            end_ts = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp()) if end_date else None
+            # Handle numeric timestamps or string dates
+            if isinstance(start_date, (int, float)):
+                start_ts = int(start_date)
+            else:
+                start_ts = int(datetime.strptime(str(start_date), "%Y-%m-%d").timestamp()) if start_date else None
+
+            if isinstance(end_date, (int, float)):
+                end_ts = int(end_date)
+            else:
+                end_ts = int(datetime.strptime(str(end_date), "%Y-%m-%d").timestamp()) if end_date else None
 
             return start_ts, end_ts
         except Exception as e:
