@@ -8,13 +8,16 @@ import logging
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class KommoAPI:
 
     def __init__(self, api_url=None, access_token=None, supabase_client=None):
+        logger.debug("Initializing KommoAPI")
         self.api_config = {}
         if supabase_client:
             self.api_config = supabase_client.load_kommo_config()
