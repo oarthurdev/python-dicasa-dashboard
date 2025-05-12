@@ -36,3 +36,12 @@ mode = "sequential"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "python server.py"
+
+[[workflows.workflow]]
+name = "Sync API"
+author = 42603014
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python sync_api.py"
