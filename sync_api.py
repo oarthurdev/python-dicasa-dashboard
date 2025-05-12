@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify
 import threading
 import logging
@@ -21,10 +20,13 @@ threads_status = {}
 sync_threads = {}
 supabase = SupabaseClient()
 
+
 def sync_data(company_id, sync_interval):
     """Execute sync function for a specific company"""
     while True:
         try:
+            local_supabase = SupabaseClient()
+
             logger.info(f"Starting sync for company {company_id}")
             threads_status[company_id] = {
                 'status': 'running',
@@ -33,20 +35,22 @@ def sync_data(company_id, sync_interval):
             }
 
             # Initialize APIs and sync manager
-            kommo_api = KommoAPI(supabase_client=supabase)
-            sync_manager = SyncManager(kommo_api, supabase)
+            kommo_api = KommoAPI(supabase_client=local_supabase)
+            sync_manager = SyncManager(kommo_api, local_supabase)
 
             # Execute sync
             brokers = kommo_api.get_users()
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
 
-            sync_manager.sync_data(
-                brokers=brokers,
-                leads=leads,
-                activities=activities,
-                company_id=company_id
-            )
+            sync_manager.sync_data(brokers=brokers,
+                                   leads=leads,
+                                   activities=activities,
+                                   company_id=company_id)
+
+            local_supabase.update_broker_points(brokers=brokers,
+                                                leads=leads,
+                                                activities=activities)
 
             next_sync = datetime.now()
             threads_status[company_id].update({
@@ -55,13 +59,16 @@ def sync_data(company_id, sync_interval):
                 'next_sync': next_sync
             })
 
-            logger.info(f"Sync completed for company {company_id}. Next sync in {sync_interval} minutes")
+            logger.info(
+                f"Sync completed for company {company_id}. Next sync in {sync_interval} minutes"
+            )
             time.sleep(sync_interval * 60)
 
         except Exception as e:
             logger.error(f"Error in sync thread for company {company_id}: {e}")
             threads_status[company_id]['status'] = 'error'
             time.sleep(5)  # Wait before retry
+
 
 def load_companies():
     """Load all companies from kommo_config"""
@@ -72,6 +79,7 @@ def load_companies():
         logger.error(f"Error loading companies: {e}")
         return []
 
+
 def start_sync_thread(company):
     """Start a new sync thread for a company"""
     company_id = str(company['company_id'])
@@ -81,36 +89,36 @@ def start_sync_thread(company):
         logger.info(f"Thread already running for company {company_id}")
         return
 
-    thread = threading.Thread(
-        target=sync_data,
-        args=(company_id, sync_interval),
-        daemon=True,
-        name=f"sync_thread_{company_id}"
-    )
-    
+    thread = threading.Thread(target=sync_data,
+                              args=(company_id, sync_interval),
+                              daemon=True,
+                              name=f"sync_thread_{company_id}")
+
     sync_threads[company_id] = thread
     thread.start()
     logger.info(f"Started sync thread for company {company_id}")
+
 
 def monitor_threads():
     """Monitor and restart dead threads"""
     while True:
         try:
             companies = load_companies()
-            
+
             for company in companies:
                 company_id = str(company['company_id'])
-                
+
                 # Start thread if not exists or dead
-                if (company_id not in sync_threads or 
-                    not sync_threads[company_id].is_alive()):
+                if (company_id not in sync_threads
+                        or not sync_threads[company_id].is_alive()):
                     start_sync_thread(company)
-            
+
             time.sleep(30)  # Check every 30 seconds
-            
+
         except Exception as e:
             logger.error(f"Error in thread monitor: {e}")
             time.sleep(5)
+
 
 @app.route('/status')
 def get_status():
@@ -119,11 +127,13 @@ def get_status():
     for company_id, thread in sync_threads.items():
         status[company_id] = {
             'active': thread.is_alive(),
-            'status': threads_status.get(company_id, {}).get('status', 'unknown'),
+            'status': threads_status.get(company_id,
+                                         {}).get('status', 'unknown'),
             'last_sync': threads_status.get(company_id, {}).get('last_sync'),
             'next_sync': threads_status.get(company_id, {}).get('next_sync')
         }
     return jsonify(status)
+
 
 @app.route('/start', methods=['POST'])
 def start_sync():
@@ -132,9 +142,13 @@ def start_sync():
         companies = load_companies()
         for company in companies:
             start_sync_thread(company)
-        return jsonify({'status': 'success', 'message': 'Sync threads started'})
+        return jsonify({
+            'status': 'success',
+            'message': 'Sync threads started'
+        })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @app.route('/stop', methods=['POST'])
 def stop_sync():
@@ -143,16 +157,18 @@ def stop_sync():
     threads_status.clear()
     return jsonify({'status': 'success', 'message': 'All threads stopped'})
 
+
 def initialize_app():
     """Initialize the application"""
     # Start monitor thread
     monitor_thread = threading.Thread(target=monitor_threads, daemon=True)
     monitor_thread.start()
-    
+
     # Load initial companies and start their threads
     companies = load_companies()
     for company in companies:
         start_sync_thread(company)
+
 
 if __name__ == '__main__':
     initialize_app()
