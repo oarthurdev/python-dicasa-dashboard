@@ -243,10 +243,15 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to insert log: {str(e)}")
 
-    def load_kommo_config(self):
+    def load_kommo_config(self, company_id=None):
         """Load Kommo API configuration from Supabase"""
         try:
-            result = self.client.table("kommo_config").select("*").eq("active", True).execute()
+            query = self.client.table("kommo_config").select("*").eq("active", True)
+            
+            if company_id:
+                query = query.eq("company_id", company_id)
+                
+            result = query.execute()
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
 

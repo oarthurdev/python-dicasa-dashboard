@@ -35,7 +35,7 @@ def sync_data(company_id, sync_interval):
             }
 
             # Initialize APIs and sync manager
-            configs = local_supabase.load_kommo_config()
+            configs = local_supabase.load_kommo_config(company_id=company_id)
             company_config = configs[0] if isinstance(configs, list) else configs
             
             kommo_api = KommoAPI(api_config=company_config)
