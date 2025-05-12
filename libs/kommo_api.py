@@ -144,9 +144,15 @@ class KommoAPI:
     def _get_date_filters(self):
         """Obtém os filtros de data da configuração"""
         try:
-            # Por enquanto retornamos None para não filtrar por data
-            # Em uma implementação futura, podemos adicionar esses filtros
-            return None, None
+            # Load config from instance variables
+            start_date = self.api_config.get('sync_start_date')
+            end_date = self.api_config.get('sync_end_date')
+
+            # Convert to timestamps if dates are provided
+            start_ts = int(datetime.strptime(start_date, "%Y-%m-%d").timestamp()) if start_date else None
+            end_ts = int(datetime.strptime(end_date, "%Y-%m-%d").timestamp()) if end_date else None
+
+            return start_ts, end_ts
         except Exception as e:
             logger.error(f"Erro ao obter filtros de data: {str(e)}")
             return None, None
