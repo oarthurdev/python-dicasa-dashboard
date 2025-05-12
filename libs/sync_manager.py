@@ -165,41 +165,30 @@ class SyncManager:
                 brokers_result = self.supabase.client.table("brokers").select("id").eq("company_id", company_id).execute()
                 valid_broker_ids = {broker['id'] for broker in brokers_result.data} if brokers_result.data else set()
                 
-                # Add company_id and filter activities
+                # Get valid lead IDs from database for this company
+                leads_result = self.supabase.client.table("leads").select("id").eq("company_id", company_id).execute()
+                valid_lead_ids = {lead['id'] for lead in leads_result.data} if leads_result.data else set()
+                
+                # Add company_id to activities
                 activities['company_id'] = company_id
-                filtered_activities = activities[activities['user_id'].isin(valid_broker_ids)]
+                
+                # Filter activities keeping only those with valid lead_ids and user_ids
+                filtered_activities = activities[
+                    ((activities['lead_id'].isin(valid_lead_ids) | activities['lead_id'].isna()) &
+                     (activities['user_id'].isin(valid_broker_ids) | activities['user_id'].isna()))
+                ].copy()
                 
                 if filtered_activities.empty:
                     logger.warning("No valid activities found after filtering")
                     return
                 
-                # Get valid lead IDs
-                valid_leads = set(leads['id'].unique()) if isinstance(leads, pd.DataFrame) and not leads.empty else set()
-
-                # Filter activities but keep them if lead_id or user_id is null
-                filtered_activities = activities[
-                    (activities['lead_id'].isin(valid_leads) | activities['lead_id'].isna()) &
-                    (activities['user_id'].isin(valid_broker_ids) | activities['user_id'].isna())
-                ].copy()
+                existing_activities = self._get_existing_records('activities')
+                activities_records = filtered_activities.to_dict('records')
                 
-                if not filtered_activities.empty:
-                    existing_activities = self._get_existing_records('activities')
-                    activities_records = filtered_activities.to_dict('records')
-                    
-                    for i in range(0, len(activities_records), self.batch_size):
-                        batch = activities_records[i:i + self.batch_size]
-                        self._process_batch(batch, 'activities', existing_activities)
-                    logger.info(f"Processed {len(filtered_activities)} activities")
-
-                if not activities.empty:
-                    existing_activities = self._get_existing_records(
-                        'activities')
-                    activities_records = activities.to_dict('records')
-                    for i in range(0, len(activities_records),
-                                   self.batch_size):
-                        batch = activities_records[i:i + self.batch_size]
-                        self._process_batch(batch, 'activities',
-                                            existing_activities)
+                for i in range(0, len(activities_records), self.batch_size):
+                    batch = activities_records[i:i + self.batch_size]
+                    self._process_batch(batch, 'activities', existing_activities)
+                logger.info(f"Processed {len(filtered_activities)} activities")
 
             # Update sync timestamps
             next_sync = now + timedelta(minutes=sync_interval)
