@@ -15,18 +15,17 @@ logger = logging.getLogger(__name__)
 class KommoAPI:
 
     def __init__(self, api_url=None, access_token=None, supabase_client=None):
+        self.api_config = {}
         if supabase_client:
             self.api_config = supabase_client.load_kommo_config()
-
-            logger.info(f"Kommo API config loaded: {self.api_config}")
             if not self.api_config:
                 raise ValueError("No Kommo configuration found in Supabase")
+            logger.info(f"Kommo API config loaded: {self.api_config}")
             self.api_url = self.api_config.get('api_url')
             self.access_token = self.api_config.get('access_token')
         else:
             self.api_url = api_url or os.getenv("KOMMO_API_URL")
             self.access_token = access_token or os.getenv("ACCESS_TOKEN_KOMMO")
-            self.api_config = {}
 
         if not self.api_url or not self.access_token:
             raise ValueError("API URL and access token must be provided")
