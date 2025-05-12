@@ -183,9 +183,12 @@ class KommoAPI:
                 time.sleep(1)
                 start_ts, end_ts = self._get_date_filters()
                 params = {
-                    "page": page,
-                    "limit": 250,
-                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                    "page":
+                    page,
+                    "limit":
+                    250,
+                    "with":
+                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
 
                 if start_ts:
@@ -269,8 +272,8 @@ class KommoAPI:
             return pd.DataFrame()
 
     def get_activities(self,
-                       page_size=100,
-                       max_workers=3,
+                       page_size=250,
+                       max_workers=5,
                        max_pages=500,
                        chunk_size=10):
         """
