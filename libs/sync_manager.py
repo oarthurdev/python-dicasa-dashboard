@@ -147,9 +147,9 @@ class SyncManager:
                 # Initialize broker points with company_id
                 self.supabase.initialize_broker_points(company_id)
 
-            # Process leads
+            # Process leads for specific company
             if isinstance(leads, pd.DataFrame) and not leads.empty:
-                # Add company_id to leads without filtering
+                # Filter and add company_id
                 leads['company_id'] = company_id
                 existing_leads = self._get_existing_records('leads')
                 leads_records = leads.to_dict('records')
@@ -159,13 +159,22 @@ class SyncManager:
                     self._process_batch(batch, 'leads', existing_leads)
                 logger.info(f"Processed {len(leads)} leads")
 
-            # Process activities
+            # Process activities with proper validation
             if isinstance(activities, pd.DataFrame) and not activities.empty:
-                # Add company_id to activities
+                # Get valid broker IDs from database for this company
+                brokers_result = self.supabase.client.table("brokers").select("id").eq("company_id", company_id).execute()
+                valid_broker_ids = {broker['id'] for broker in brokers_result.data} if brokers_result.data else set()
+                
+                # Add company_id and filter activities
                 activities['company_id'] = company_id
-                # Get valid IDs
+                filtered_activities = activities[activities['user_id'].isin(valid_broker_ids)]
+                
+                if filtered_activities.empty:
+                    logger.warning("No valid activities found after filtering")
+                    return
+                
+                # Get valid lead IDs
                 valid_leads = set(leads['id'].unique()) if isinstance(leads, pd.DataFrame) and not leads.empty else set()
-                valid_brokers = set(brokers['id'].unique()) if isinstance(brokers, pd.DataFrame) and not brokers.empty else set()
 
                 # Filter activities but keep them if lead_id or user_id is null
                 filtered_activities = activities[
