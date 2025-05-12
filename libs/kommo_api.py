@@ -165,10 +165,11 @@ class KommoAPI:
             logger.error(f"Erro ao obter filtros de data: {str(e)}")
             return None, None
 
-    def get_leads(self):
+    def get_leads(self, company_id=None):
         """
-        Retrieve leads from Kommo CRM using pipeline_id from config
-        and map status_id to status name (etapa)
+        Retrieve leads from Kommo CRM for specific company
+        Args:
+            company_id (str): Optional company ID to filter leads
         """
         try:
             # Get pipeline_id and company_id from config for proper filtering
@@ -204,37 +205,38 @@ class KommoAPI:
             logger.info(
                 "Retrieving leads from Kommo CRM (pipeline_id = 8865067)")
 
-            filtered_leads = []
+            all_leads = []
             page = 1
-            empty_streak = 0
-            stop_after = 1  # Para após 1 página vazia
-
+            per_page = 250
+            
             while True:
-                time.sleep(1)
-                start_ts, end_ts = self._get_date_filters()
                 params = {
-                    "page":
-                    page,
-                    "limit":
-                    250,
-                    "with":
-                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                    "page": page,
+                    "limit": per_page,
+                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
-
-                # Add pipeline filter if configured
-                if pipeline_id:
-                    params["filter[pipeline_id]"] = pipeline_id
-
+                
+                # Add date filters if configured
+                start_ts, end_ts = self._get_date_filters()
                 if start_ts:
                     params["filter[created_at][from]"] = start_ts
                 if end_ts:
                     params["filter[created_at][to]"] = end_ts
-
+                    
                 response = self._make_request("leads", params=params)
-
                 leads = response.get("_embedded", {}).get("leads", [])
-                # Get all leads without pipeline filtering
-                filtered_leads = leads
+                
+                if not leads:
+                    break
+                    
+                all_leads.extend(leads)
+                
+                # Check if we received less than per_page items
+                if len(leads) < per_page:
+                    break
+                    
+                page += 1
+                time.sleep(0.5)  # Rate limiting
 
                 if not filtered_leads:
                     empty_streak += 1
@@ -306,12 +308,19 @@ class KommoAPI:
             return pd.DataFrame()
 
     def get_activities(self,
-                       page_size=250,
-                       max_workers=5,
-                       max_pages=500,
-                       chunk_size=10):
+                      company_id=None,
+                      page_size=250,
+                      max_workers=5,
+                      max_pages=500,
+                      chunk_size=10):
         """
-        Retrieve activities from Kommo CRM using optimized chunked parallel requests
+        Retrieve activities from Kommo CRM for specific company
+        Args:
+            company_id (str): Optional company ID to filter activities
+            page_size (int): Number of records per page
+            max_workers (int): Maximum number of parallel requests
+            max_pages (int): Maximum number of pages to fetch
+            chunk_size (int): Number of pages to process in each chunk
 
         Args:
             page_size (int): Number of records per page (reduced to avoid rate limits)

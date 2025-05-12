@@ -94,11 +94,28 @@ class SyncManager:
                   leads=None,
                   activities=None,
                   company_id=None):
-        """Synchronize data efficiently with batch processing"""
+        """
+        Synchronize data efficiently with batch processing
+        Args:
+            brokers (pd.DataFrame): Optional pre-loaded brokers data
+            leads (pd.DataFrame): Optional pre-loaded leads data
+            activities (pd.DataFrame): Optional pre-loaded activities data
+            company_id (str): Company ID to sync data for
+        """
         try:
+            if not company_id:
+                raise ValueError("company_id is required for sync_data")
+                
             now = datetime.now()
-            sync_interval = self.config.get('sync_interval',
-                                            60)  # default 60 minutes
+            sync_interval = self.config.get('sync_interval', 60)
+            
+            # Verificar último sync dessa company
+            last_sync_result = self.supabase.client.table("sync_control").select("*").eq("company_id", company_id).execute()
+            if last_sync_result.data:
+                last_sync = datetime.fromisoformat(str(last_sync_result.data[0].get('last_sync')))
+                if (now - last_sync).total_seconds() < (sync_interval * 60):
+                    logger.info(f"Sync not needed yet for company {company_id}")
+                    return
 
             # Get company_id from config if not provided
             if not company_id:
