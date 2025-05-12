@@ -34,27 +34,31 @@ def sync_company_data(company_id: str, config: dict):
                 if not brokers.empty:
                     brokers['company_id'] = company_id
                     brokers = brokers[brokers['cargo'] == 'Corretor']
-                    logger.info(f"Found {len(brokers)} brokers for company {company_id}")
+                    logger.info(
+                        f"Found {len(brokers)} brokers for company {company_id}"
+                    )
 
                 if not leads.empty:
                     leads['company_id'] = company_id
                     if not brokers.empty:
                         valid_broker_ids = set(brokers['id'].unique())
-                        leads = leads[leads['responsavel_id'].isin(valid_broker_ids)]
-                    logger.info(f"Found {len(leads)} leads for company {company_id}")
+                        leads = leads[leads['responsavel_id'].isin(
+                            valid_broker_ids)]
+                    logger.info(
+                        f"Found {len(leads)} leads for company {company_id}")
 
                 if not activities.empty:
                     activities['company_id'] = company_id
                     if not brokers.empty:
                         valid_broker_ids = set(brokers['id'].unique())
-                        activities = activities[activities['user_id'].isin(valid_broker_ids)]
-                    logger.info(f"Found {len(activities)} activities for company {company_id}")
+                        activities = activities[activities['user_id'].isin(
+                            valid_broker_ids)]
+                    logger.info(
+                        f"Found {len(activities)} activities for company {company_id}"
+                    )
 
                 # Sync filtered data
-                sync_manager.sync_data(brokers=brokers,
-                                     leads=leads,
-                                     activities=activities,
-                                     company_id=company_id)
+                sync_manager.sync_data(company_id=company_id)
 
                 # Update broker points
                 supabase_client.update_broker_points(brokers=brokers,
