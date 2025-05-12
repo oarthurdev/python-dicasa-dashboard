@@ -10,13 +10,12 @@ logger = logging.getLogger(__name__)
 
 class SyncManager:
 
-    def __init__(self, kommo_api, supabase_client, batch_size=250):
+    def __init__(self, kommo_api, supabase_client, company_config, batch_size=250):
         self.kommo_api = kommo_api
         self.supabase = supabase_client
         self.batch_size = batch_size
         self.cache = {'brokers': {}, 'leads': {}, 'activities': {}}
-        configs = self.supabase.load_kommo_config()
-        self.config = configs[0] if isinstance(configs, list) else configs
+        self.config = company_config
 
     def _generate_hash(self, data: Dict) -> str:
         """Generate a hash for data comparison"""
