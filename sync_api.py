@@ -36,13 +36,13 @@ def sync_data(company_id, sync_interval):
 
             # Initialize APIs and sync manager
             configs = local_supabase.load_kommo_config()
-            config = configs[0] if isinstance(configs, list) else configs
+            company_config = configs[0] if isinstance(configs, list) else configs
             
             kommo_api = KommoAPI(
-                api_url=config.get('api_url'),
-                access_token=config.get('access_token')
+                api_url=company_config.get('api_url'),
+                access_token=company_config.get('access_token')
             )
-            sync_manager = SyncManager(kommo_api, local_supabase, config)
+            sync_manager = SyncManager(kommo_api, local_supabase, company_config)
 
             # Execute sync
             brokers = kommo_api.get_users()
