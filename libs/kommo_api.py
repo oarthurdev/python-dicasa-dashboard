@@ -23,6 +23,8 @@ class KommoAPI:
             self.api_config = api_config
             self.api_url = api_url or (api_config.get('api_url') if api_config else None) or os.getenv("KOMMO_API_URL")
             self.access_token = access_token or (api_config.get('access_token') if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
+            self.start_date = None
+            self.end_date = None
 
             if not self.api_url or not self.access_token:
                 raise ValueError("API URL and access token must be provided")
@@ -40,6 +42,16 @@ class KommoAPI:
                       endpoint,
                       method="GET",
                       params=None,
+
+    def set_date_range(self, start_date, end_date):
+        """Set date range for API queries"""
+        self.start_date = start_date
+        self.end_date = end_date
+        if isinstance(start_date, datetime):
+            self.api_config['sync_start_date'] = int(start_date.timestamp())
+        if isinstance(end_date, datetime):
+            self.api_config['sync_end_date'] = int(end_date.timestamp())
+
                       data=None,
                       retry_count=3,
                       retry_delay=2):
