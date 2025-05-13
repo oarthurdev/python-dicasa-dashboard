@@ -160,6 +160,12 @@ class KommoAPI:
             start_date = self.api_config.get('sync_start_date')
             end_date = self.api_config.get('sync_end_date')
 
+            # If both dates are None, use 1 week retroactive
+            if start_date is None and end_date is None:
+                end_ts = int(datetime.now().timestamp())
+                start_ts = int((datetime.now() - timedelta(days=7)).timestamp())
+                return start_ts, end_ts
+
             # Handle numeric timestamps or string dates
             if isinstance(start_date, (int, float)):
                 start_ts = int(start_date)
