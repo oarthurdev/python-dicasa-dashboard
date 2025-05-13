@@ -41,19 +41,28 @@ def sync_data(company_id, sync_interval):
             kommo_api = KommoAPI(api_config=company_config)
             sync_manager = SyncManager(kommo_api, local_supabase, company_config)
 
-            # Execute sync
+            # Execute sync with proper order
             brokers = kommo_api.get_users()
+            
+            # First sync brokers
+            sync_manager.sync_data(brokers=brokers, company_id=company_id)
+            
+            # Then get and sync other data
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
-
+            
             sync_manager.sync_data(brokers=brokers,
                                    leads=leads,
                                    activities=activities,
                                    company_id=company_id)
 
-            local_supabase.update_broker_points(brokers=brokers,
-                                                leads=leads,
-                                                activities=activities)
+            # Only update points if we have broker data
+            if not brokers.empty:
+                local_supabase.update_broker_points(brokers=brokers,
+                                                    leads=leads,
+                                                    activities=activities)
+            else:
+                logger.warning("Skipping points update - no broker data available")
 
             next_sync = datetime.now()
             threads_status[company_id].update({

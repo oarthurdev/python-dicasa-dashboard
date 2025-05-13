@@ -191,8 +191,8 @@ class SyncManager:
             if activities is None:
                 activities = self.kommo_api.get_activities()
 
-            # Process in sequence to maintain referential integrity
-            if not brokers.empty:
+            # Always process brokers first
+            if isinstance(brokers, pd.DataFrame) and not brokers.empty:
                 # Add company_id to brokers
                 brokers['company_id'] = company_id
                 existing_brokers = self._get_existing_records('brokers')
@@ -202,8 +202,11 @@ class SyncManager:
                     self._process_batch(batch, 'brokers', existing_brokers)
                 logger.info(f"Processed {len(brokers)} brokers")
 
-                # Initialize broker points with company_id
+                # Initialize broker points after broker sync
                 self.supabase.initialize_broker_points(company_id)
+            else:
+                logger.warning("No brokers data available for sync")
+                return
 
             # Process leads for specific company
             if isinstance(leads, pd.DataFrame) and not leads.empty:
