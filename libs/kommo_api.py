@@ -19,7 +19,7 @@ class KommoAPI:
     def __init__(self, api_url=None, access_token=None, api_config=None):
         try:
             logger.info("Initializing KommoAPI")
-            
+
             self.api_config = api_config
             self.api_url = api_url or (api_config.get('api_url') if api_config else None) or os.getenv("KOMMO_API_URL")
             self.access_token = access_token or (api_config.get('access_token') if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
@@ -38,11 +38,6 @@ class KommoAPI:
             logger.error(f"Error initializing KommoAPI: {str(e)}")
             raise
 
-    def _make_request(self,
-                      endpoint,
-                      method="GET",
-                      params=None,
-
     def set_date_range(self, start_date, end_date):
         """Set date range for API queries"""
         self.start_date = start_date
@@ -52,9 +47,13 @@ class KommoAPI:
         if isinstance(end_date, datetime):
             self.api_config['sync_end_date'] = int(end_date.timestamp())
 
-                      data=None,
-                      retry_count=3,
-                      retry_delay=2):
+    def _make_request(self,
+                     endpoint,
+                     method="GET",
+                     params=None,
+                     data=None,
+                     retry_count=3,
+                     retry_delay=2):
         """
         Make a request to the Kommo API with retry logic
         """
@@ -68,10 +67,10 @@ class KommoAPI:
             try:
                 logger.info(f"Making API request to: {url}")
                 response = requests.request(method=method,
-                                            url=url,
-                                            headers=headers,
-                                            params=params,
-                                            json=data)
+                                         url=url,
+                                         headers=headers,
+                                         params=params,
+                                         json=data)
 
                 # Log response status and content for debugging
                 logger.info(f"Response status: {response.status_code}")
