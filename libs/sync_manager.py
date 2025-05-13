@@ -89,6 +89,45 @@ class SyncManager:
             logger.error(f"Error processing batch for {table}: {str(e)}")
             raise
 
+    def get_week_dates(self):
+        """Get start and end dates for current week"""
+        today = datetime.now()
+        week_start = today - timedelta(days=7)
+        return week_start, today
+
+    def reset_weekly_data(self, company_id):
+        """Reset weekly data and store in logs"""
+        try:
+            # Get current data before reset
+            points_result = self.supabase.client.table("broker_points").select("*").eq("company_id", company_id).execute()
+            leads_result = self.supabase.client.table("leads").select("*").eq("company_id", company_id).execute()
+            
+            total_points = sum(record.get('pontos', 0) for record in points_result.data)
+            total_leads = len(leads_result.data)
+            
+            week_start, week_end = self.get_week_dates()
+            
+            # Store in weekly_logs
+            self.supabase.client.table("weekly_logs").insert({
+                "week_start": week_start.isoformat(),
+                "week_end": week_end.isoformat(),
+                "company_id": company_id,
+                "total_leads": total_leads,
+                "total_points": total_points,
+                "created_at": datetime.now().isoformat()
+            }).execute()
+            
+            # Reset tables
+            tables = ["activities", "leads", "brokers", "broker_points"]
+            for table in tables:
+                self.supabase.client.table(table).delete().eq("company_id", company_id).execute()
+            
+            logger.info(f"Weekly data reset completed for company {company_id}")
+            
+        except Exception as e:
+            logger.error(f"Error resetting weekly data: {str(e)}")
+            raise
+
     def sync_data(self,
                   brokers=None,
                   leads=None,
@@ -105,8 +144,20 @@ class SyncManager:
         try:
             if not company_id:
                 raise ValueError("company_id is required for sync_data")
-                
+            
             now = datetime.now()
+            week_start, week_end = self.get_week_dates()
+            
+            # Check if it's time for weekly reset
+            last_reset_result = self.supabase.client.table("weekly_logs").select("*").eq("company_id", company_id).order("created_at", desc=True).limit(1).execute()
+            if last_reset_result.data:
+                last_reset = datetime.fromisoformat(str(last_reset_result.data[0].get('created_at')))
+                if (now - last_reset).days >= 7:
+                    self.reset_weekly_data(company_id)
+            
+            # Set date range for data fetch
+            if self.kommo_api:
+                self.kommo_api.set_date_range(week_start, week_end)
             sync_interval = self.config.get('sync_interval', 60)
             
             # Verificar último sync dessa company
