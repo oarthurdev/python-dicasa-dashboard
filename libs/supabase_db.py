@@ -1,4 +1,6 @@
 import os
+from libs.kommo_api import KommoAPI
+from libs.sync_manager import SyncManager
 from supabase import create_client
 import pandas as pd
 import numpy as np

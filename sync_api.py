@@ -36,7 +36,13 @@ def sync_data(company_id, sync_interval):
 
             # Initialize APIs and sync manager
             configs = local_supabase.load_kommo_config(company_id=company_id)
-            company_config = configs[0] if isinstance(configs, list) else configs
+
+            if isinstance(configs, list) and configs:
+                company_config = configs[0]
+            else:
+                logger.info(f"Nenhuma configuração encontrada para a empresa {company_id}")
+                return  # ou continue, dependendo do contexto
+
             
             kommo_api = KommoAPI(api_config=company_config)
             sync_manager = SyncManager(kommo_api, local_supabase, company_config)
