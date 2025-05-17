@@ -256,13 +256,13 @@ class SupabaseClient:
                 raise Exception(f"Supabase error: {result.error}")
 
             if not result.data:
-                raise ValueError("No active Kommo API configuration found")
+                # Apenas ignorar e retornar lista vazia para quem chamar essa função
+                return []
 
             configs = result.data
             for config in configs:
                 if config.get('company_id') is None:
-                    company_id = self._get_company_id(config['api_url'],
-                                                    config['access_token'])
+                    company_id = self._get_company_id(config['api_url'], config['access_token'])
                     self.client.table("kommo_config").update({
                         'company_id': company_id
                     }).eq('id', config['id']).execute()
@@ -273,6 +273,7 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to load Kommo config: {str(e)}")
             raise
+
 
     def _get_company_id(self, api_url, access_token):
         """Get company ID from Kommo API"""
