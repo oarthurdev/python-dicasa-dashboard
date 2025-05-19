@@ -47,71 +47,53 @@ class KommoAPI:
         if isinstance(end_date, datetime):
             self.api_config['sync_end_date'] = int(end_date.timestamp())
 
-    
     def _make_request(self,
-                    endpoint,
-                    method="GET",
-                    params=None,
-                    data=None,
-                    retry_count=3,
-                    retry_delay=2):
+                     endpoint,
+                     method="GET",
+                     params=None,
+                     data=None,
+                     retry_count=3,
+                     retry_delay=2):
         """
-        Make a request to the Kommo API with retry and diagnostics (no refresh token)
+        Make a request to the Kommo API with retry logic
         """
         url = f"{self.api_url}/{endpoint}"
         headers = {
             "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json",
-            "Accept": "application/hal+json",
-            "User-Agent": "kommo-sync-bot/1.0"
+            "Content-Type": "application/json"
         }
 
         for attempt in range(retry_count):
             try:
-                logger.info(f"Making API request to: {url} (attempt {attempt + 1})")
-                response = requests.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    params=params,
-                    json=data,
-                    timeout=15
-                )
+                logger.info(f"Making API request to: {url}")
+                response = requests.request(method=method,
+                                         url=url,
+                                         headers=headers,
+                                         params=params,
+                                         json=data)
 
+                # Log response status and content for debugging
                 logger.info(f"Response status: {response.status_code}")
                 logger.debug(f"Response content: {response.text[:500]}")
 
-                if response.status_code == 403:
-                    logger.error("403 Forbidden - Verifique se o token está correto e não expirado.")
-                    try:
-                        logger.error(f"Resposta da API: {response.json()}")
-                    except Exception:
-                        logger.error(f"Resposta bruta: {response.text}")
-                    # Não tenta novamente se for 403
-                    break
-
                 response.raise_for_status()
 
+                # Check if response content is empty
                 if not response.text.strip():
-                    logger.warning("Resposta vazia da API")
+                    logger.warning("Empty response received from API")
                     return {}
 
-                try:
-                    return response.json()
-                except ValueError:
-                    logger.error("Falha ao decodificar JSON da resposta")
-                    return {}
+                return response.json()
 
-            except requests.exceptions.Timeout:
-                logger.warning(f"Timeout na tentativa {attempt + 1}")
             except requests.exceptions.RequestException as e:
-                logger.warning(f"Erro na requisição (tentativa {attempt + 1}): {e}")
+                logger.warning(
+                    f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}"
+                )
 
-            if attempt < retry_count - 1:
-                time.sleep(retry_delay)
-
-        logger.error("Falha ao obter resposta válida após todas as tentativas")
-        return {}
+                if attempt < retry_count - 1:
+                    time.sleep(retry_delay)
+                else:
+                    raise
 
     def get_users(self, active_only=True):
         """
