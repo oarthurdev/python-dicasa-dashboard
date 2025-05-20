@@ -164,7 +164,8 @@ class SupabaseClient:
             # Update broker points after sync
             self.update_broker_points(brokers=brokers,
                                       leads=leads,
-                                      activities=activities)
+                                      activities=activities,
+                                      company_id=company_id)
 
             logger.info(
                 f"Initial sync completed successfully for company {company_id}"
@@ -248,11 +249,12 @@ class SupabaseClient:
     def load_kommo_config(self, company_id=None):
         """Load Kommo API configuration from Supabase"""
         try:
-            query = self.client.table("kommo_config").select("*").eq("active", True)
-            
+            query = self.client.table("kommo_config").select("*").eq(
+                "active", True)
+
             if company_id:
                 query = query.eq("company_id", company_id)
-                
+
             result = query.execute()
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
@@ -264,9 +266,11 @@ class SupabaseClient:
             configs = result.data
             for config in configs:
                 if config.get('company_id') is None:
-                    company_id = self._get_company_id(config['api_url'], config['access_token'])
+                    company_id = self._get_company_id(config['api_url'],
+                                                      config['access_token'])
                     self.client.table("kommo_config").update({
-                        'company_id': company_id
+                        'company_id':
+                        company_id
                     }).eq('id', config['id']).execute()
                     config['company_id'] = company_id
                     self._sync_all_data(config)
@@ -275,7 +279,6 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to load Kommo config: {str(e)}")
             raise
-
 
     def _get_company_id(self, api_url, access_token):
         """Get company ID from Kommo API"""
@@ -715,9 +718,9 @@ class SupabaseClient:
         """
         company_id = company_id or self.kommo_config.get('company_id')
         try:
-            # Buscar corretores com cargo "Corretor"
+            # Buscar corretores com cargo "Corretor" e company_id específico
             brokers_result = self.client.table("brokers").select(
-                "id, nome").eq("cargo", "Corretor").execute()
+                "id, nome").eq("cargo", "Corretor").eq("company_id", company_id).execute()
             if hasattr(brokers_result, "error") and brokers_result.error:
                 raise Exception(
                     f"Erro ao buscar corretores: {brokers_result.error}")
@@ -789,7 +792,11 @@ class SupabaseClient:
             logger.error(f"Erro ao inicializar broker_points: {str(e)}")
             raise
 
-    def update_broker_points(self, brokers=None, leads=None, activities=None):
+    def update_broker_points(self,
+                             brokers=None,
+                             leads=None,
+                             activities=None,
+                             company_id=None):
         """
         Atualiza a tabela broker_points no Supabase com base nas regras de gamificação.
         Aceita dados já obtidos para evitar chamadas API desnecessárias.
@@ -804,6 +811,22 @@ class SupabaseClient:
 
         try:
             logger.info("Iniciando atualização dos pontos dos corretores...")
+
+            # Garante que temos um company_id
+            company_id = company_id or self.kommo_config.get('company_id')
+            if not company_id:
+                logger.error(
+                    "company_id é necessário para atualizar broker_points")
+                return
+
+            # Primeiro, garantir que os brokers existam no banco e filtrar por company_id
+            if brokers is not None and not brokers.empty:
+                brokers = brokers[brokers['company_id'] == company_id].copy()
+                if brokers.empty:
+                    logger.warning(f"Nenhum corretor encontrado para company_id {company_id}")
+                    return
+                self.upsert_brokers(brokers)
+                time.sleep(1)  # Aguarda a conclusão do upsert de brokers
 
             # Se não recebeu dados em cache, busca da API
             if brokers is None or leads is None or activities is None:
@@ -834,8 +857,9 @@ class SupabaseClient:
                 )
                 return
 
-            # Filtra apenas corretores ativos
-            active_brokers = brokers[brokers['cargo'] == 'Corretor']
+            # Filtra apenas corretores ativos da empresa específica
+            active_brokers = brokers[(brokers['cargo'] == 'Corretor')
+                                     & (brokers['company_id'] == company_id)]
             if active_brokers.empty:
                 logger.warning("Nenhum corretor ativo encontrado.")
                 return

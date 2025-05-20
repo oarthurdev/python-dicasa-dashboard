@@ -47,13 +47,36 @@ class KommoAPI:
         if isinstance(end_date, datetime):
             self.api_config['sync_end_date'] = int(end_date.timestamp())
 
+    def __init__(self, api_url=None, access_token=None, api_config=None):
+        try:
+            logger.info("Initializing KommoAPI")
+            
+            from .rate_limit_monitor import RateLimitMonitor
+            self.rate_monitor = RateLimitMonitor()
+            
+            self.api_config = api_config
+            self.api_url = api_url or (api_config.get('api_url') if api_config else None) or os.getenv("KOMMO_API_URL")
+            self.access_token = access_token or (api_config.get('access_token') if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
+            self.start_date = None
+            self.end_date = None
+
+            if not self.api_url or not self.access_token:
+                raise ValueError("API URL and access token must be provided")
+
+            if self.api_url.endswith('/'):
+                self.api_url = self.api_url[:-1]
+
+            logger.info("KommoAPI initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing KommoAPI: {str(e)}")
+            raise
+
     def _make_request(self,
                      endpoint,
                      method="GET",
                      params=None,
                      data=None,
-                     retry_count=3,
-                     retry_delay=2):
+                     retry_count=3):
         """
         Make a request to the Kommo API with retry logic
         """
@@ -86,14 +109,17 @@ class KommoAPI:
                 return response.json()
 
             except requests.exceptions.RequestException as e:
-                logger.warning(
-                    f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}"
-                )
-
-                if attempt < retry_count - 1:
-                    time.sleep(retry_delay)
+                status_code = e.response.status_code if hasattr(e, 'response') else 0
+                
+                if status_code in (429, 403):
+                    if not self.rate_monitor.should_retry(endpoint, status_code):
+                        raise
+                    self.rate_monitor.wait_before_retry(endpoint, attempt)
                 else:
-                    raise
+                    logger.warning(f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}")
+                    if attempt >= retry_count - 1:
+                        raise
+                    time.sleep(2)  # Default delay for non-rate-limit errors
 
     def get_users(self, active_only=True):
         """

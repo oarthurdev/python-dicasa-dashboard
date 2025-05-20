@@ -40,23 +40,25 @@ def sync_data(company_id, sync_interval):
             if isinstance(configs, list) and configs:
                 company_config = configs[0]
             else:
-                logger.info(f"Nenhuma configuração encontrada para a empresa {company_id}")
+                logger.info(
+                    f"Nenhuma configuração encontrada para a empresa {company_id}"
+                )
                 return  # ou continue, dependendo do contexto
 
-            
             kommo_api = KommoAPI(api_config=company_config)
-            sync_manager = SyncManager(kommo_api, local_supabase, company_config)
+            sync_manager = SyncManager(kommo_api, local_supabase,
+                                       company_config)
 
             # Execute sync with proper order
             brokers = kommo_api.get_users()
-            
+
             # First sync brokers
             sync_manager.sync_data(brokers=brokers, company_id=company_id)
-            
+
             # Then get and sync other data
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
-            
+
             sync_manager.sync_data(brokers=brokers,
                                    leads=leads,
                                    activities=activities,
@@ -64,11 +66,29 @@ def sync_data(company_id, sync_interval):
 
             # Only update points if we have broker data
             if not brokers.empty:
-                local_supabase.update_broker_points(brokers=brokers,
-                                                    leads=leads,
-                                                    activities=activities)
+                broker_data = brokers[brokers['cargo'] == 'Corretor'].copy()
+                if not broker_data.empty:
+                    broker_data['company_id'] = company_id
+                    if not leads.empty:
+                        leads['company_id'] = company_id
+                    if not activities.empty:
+                        activities['company_id'] = company_id
+
+                    # Primeiro garantir que os brokers estão no banco
+                    local_supabase.upsert_brokers(broker_data)
+                    time.sleep(
+                        1)  # Pequena pausa para garantir conclusão do upsert
+
+                    # Depois atualizar os pontos
+                    local_supabase.update_broker_points(brokers=broker_data,
+                                                        leads=leads,
+                                                        activities=activities,
+                                                        company_id=company_id)
+                else:
+                    logger.warning("No brokers with 'Corretor' role found")
             else:
-                logger.warning("Skipping points update - no broker data available")
+                logger.warning(
+                    "Skipping points update - no broker data available")
 
             next_sync = datetime.now()
             threads_status[company_id].update({
