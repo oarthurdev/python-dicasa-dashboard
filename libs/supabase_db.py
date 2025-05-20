@@ -881,7 +881,7 @@ class SupabaseClient:
                 leads,
                 activities,
                 rules,
-                company_id=self.kommo_config.get('company_id'))
+                company_id=company_id)
             self.insert_log("INFO", "Cálculo de pontos concluído")
 
             # Garante que todos os campos necessários existam
