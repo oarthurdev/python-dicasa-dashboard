@@ -176,11 +176,17 @@ class SyncManager:
             # Set date range for data fetch
             if self.kommo_api:
                 self.kommo_api.set_date_range(week_start, week_end)
+
+            # Get company configuration if not already set
+            if not self.config:
+                config_result = self.supabase.client.table("kommo_config").select("*").eq("company_id", company_id).execute()
+                if config_result.data:
+                    self.config = config_result.data[0]
+                else:
+                    self.config = {"sync_interval": 60}  # Default configuration
             
-            # Safely get sync interval with default value if config is None
-            sync_interval = 60
-            if self.config is not None:
-                sync_interval = self.config.get('sync_interval', 60)
+            # Safely get sync interval
+            sync_interval = self.config.get('sync_interval', 60)
 
             # Verificar último sync dessa company
             last_sync_result = self.supabase.client.table(
