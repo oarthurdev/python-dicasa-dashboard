@@ -26,12 +26,21 @@ def sync_data(company_id, sync_interval):
     while True:
         try:
             local_supabase = SupabaseClient()
-
-            logger.info(f"Starting sync for company {company_id}")
+            
+            # Get company subdomain
+            company_result = local_supabase.client.table("companies").select("subdomain").eq("id", company_id).execute()
+            if not company_result.data:
+                logger.error(f"Company {company_id} not found")
+                return
+                
+            subdomain = company_result.data[0]['subdomain']
+            logger.info(f"Starting sync for company {company_id} (subdomain: {subdomain})")
+            
             threads_status[company_id] = {
                 'status': 'running',
                 'last_sync': datetime.now(),
-                'next_sync': None
+                'next_sync': None,
+                'subdomain': subdomain
             }
 
             # Initialize APIs and sync manager
