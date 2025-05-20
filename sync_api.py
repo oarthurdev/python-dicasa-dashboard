@@ -54,6 +54,9 @@ def sync_data(company_id, sync_interval):
                 )
                 return  # ou continue, dependendo do contexto
 
+            kommo_api = KommoAPI(company_config)
+            sync_manager = SyncManager(kommo_api, local_supabase, company_config)
+
             local_supabase._sync_company_data(company_config, company_id)
 
             next_sync = datetime.now()
