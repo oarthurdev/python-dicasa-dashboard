@@ -182,9 +182,9 @@ class KommoAPI:
     def _get_date_filters(self):
         """Obtém os filtros de data da configuração"""
         try:
-            # Load config from instance variables
-            start_date = self.api_config.get('sync_start_date')
-            end_date = self.api_config.get('sync_end_date')
+            # Load config from instance variables with fallback to None
+            start_date = self.api_config.get('sync_start_date') if self.api_config else None
+            end_date = self.api_config.get('sync_end_date') if self.api_config else None
 
             # If both dates are None, use 1 week retroactive
             if start_date is None and end_date is None:
