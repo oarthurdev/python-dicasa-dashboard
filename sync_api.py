@@ -26,12 +26,21 @@ def sync_data(company_id, sync_interval):
     while True:
         try:
             local_supabase = SupabaseClient()
-
-            logger.info(f"Starting sync for company {company_id}")
+            
+            # Get company subdomain
+            company_result = local_supabase.client.table("companies").select("subdomain").eq("id", company_id).execute()
+            if not company_result.data:
+                logger.error(f"Company {company_id} not found")
+                return
+                
+            subdomain = company_result.data[0]['subdomain']
+            logger.info(f"Starting sync for company {company_id} (subdomain: {subdomain})")
+            
             threads_status[company_id] = {
                 'status': 'running',
                 'last_sync': datetime.now(),
-                'next_sync': None
+                'next_sync': None,
+                'subdomain': subdomain
             }
 
             # Initialize APIs and sync manager
@@ -59,20 +68,23 @@ def sync_data(company_id, sync_interval):
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
 
-            sync_manager.sync_data(brokers=brokers,
-                                   leads=leads,
-                                   activities=activities,
-                                   company_id=company_id)
+            # First sync brokers to ensure they exist
+            sync_manager.sync_data(brokers=brokers, company_id=company_id)
 
-            # Only update points if we have broker data
+            # Add company_id to all DataFrames before sync
+            if not leads.empty:
+                leads['company_id'] = company_id
+            if not activities.empty:
+                activities['company_id'] = company_id
+
+            # Now sync leads and activities
+            sync_manager.sync_data(leads=leads, activities=activities, company_id=company_id)
+
+            # Handle broker points
             if not brokers.empty:
                 broker_data = brokers[brokers['cargo'] == 'Corretor'].copy()
                 if not broker_data.empty:
                     broker_data['company_id'] = company_id
-                    if not leads.empty:
-                        leads['company_id'] = company_id
-                    if not activities.empty:
-                        activities['company_id'] = company_id
 
                     # Primeiro garantir que os brokers estão no banco
                     local_supabase.upsert_brokers(broker_data)

@@ -144,6 +144,15 @@ class SyncManager:
         try:
             if not company_id:
                 raise ValueError("company_id is required for sync_data")
+
+            # Get company subdomain
+            company_result = self.supabase.client.table("companies").select("subdomain").eq("id", company_id).execute()
+            if not company_result.data:
+                raise ValueError(f"Company {company_id} not found")
+            
+            subdomain = company_result.data[0]['subdomain']
+            if not company_id:
+                raise ValueError("company_id is required for sync_data")
             
             now = datetime.now()
             week_start, week_end = self.get_week_dates()

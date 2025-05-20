@@ -718,9 +718,9 @@ class SupabaseClient:
         """
         company_id = company_id or self.kommo_config.get('company_id')
         try:
-            # Buscar corretores com cargo "Corretor"
+            # Buscar corretores com cargo "Corretor" e company_id específico
             brokers_result = self.client.table("brokers").select(
-                "id, nome").eq("cargo", "Corretor").execute()
+                "id, nome").eq("cargo", "Corretor").eq("company_id", company_id).execute()
             if hasattr(brokers_result, "error") and brokers_result.error:
                 raise Exception(
                     f"Erro ao buscar corretores: {brokers_result.error}")
@@ -812,17 +812,21 @@ class SupabaseClient:
         try:
             logger.info("Iniciando atualização dos pontos dos corretores...")
 
-            # Primeiro, garantir que os brokers existam no banco
-            if brokers is not None and not brokers.empty:
-                self.upsert_brokers(brokers)
-                time.sleep(1)  # Aguarda a conclusão do upsert de brokers
-
             # Garante que temos um company_id
             company_id = company_id or self.kommo_config.get('company_id')
             if not company_id:
                 logger.error(
                     "company_id é necessário para atualizar broker_points")
                 return
+
+            # Primeiro, garantir que os brokers existam no banco e filtrar por company_id
+            if brokers is not None and not brokers.empty:
+                brokers = brokers[brokers['company_id'] == company_id].copy()
+                if brokers.empty:
+                    logger.warning(f"Nenhum corretor encontrado para company_id {company_id}")
+                    return
+                self.upsert_brokers(brokers)
+                time.sleep(1)  # Aguarda a conclusão do upsert de brokers
 
             # Se não recebeu dados em cache, busca da API
             if brokers is None or leads is None or activities is None:
