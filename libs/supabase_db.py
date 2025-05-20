@@ -675,33 +675,43 @@ class SupabaseClient:
                 logger.warning("Nenhum dado de pontos para inserir.")
                 return
 
-            logger.info(
-                f"Upsert de {len(points_df)} registros na tabela broker_points."
-            )
+            # Garante que company_id está presente
+            if 'company_id' not in points_df.columns:
+                logger.error("DataFrame não contém a coluna company_id")
+                return
 
-            # Faz uma cópia limpa para evitar modificações indesejadas
-            df_clean = points_df.copy()
+            # Filtra registros por company_id
+            unique_companies = points_df['company_id'].unique()
+            all_responses = []
 
-            # Trata valores infinitos ou inválidos
-            numeric_cols = df_clean.select_dtypes(
-                include=['float', 'int']).columns
-            for col in numeric_cols:
-                mask = ~np.isfinite(df_clean[col])
-                if mask.any():
-                    df_clean.loc[mask, col] = None
+            for company_id in unique_companies:
+                company_df = points_df[points_df['company_id'] == company_id].copy()
+                
+                logger.info(
+                    f"Upsert de {len(company_df)} registros na tabela broker_points para company_id {company_id}."
+                )
 
-            # Realiza o upsert na tabela broker_points
-            records = df_clean.to_dict("records")
-            for record in records:
-                for key, value in record.items():
-                    if isinstance(value, pd.Timestamp):
-                        record[key] = value.isoformat()
+                # Trata valores infinitos ou inválidos
+                numeric_cols = company_df.select_dtypes(
+                    include=['float', 'int']).columns
+                for col in numeric_cols:
+                    mask = ~np.isfinite(company_df[col])
+                    if mask.any():
+                        company_df.loc[mask, col] = None
 
-            # Realiza o upsert com os dados tratados
-            response = self.client.table("broker_points").upsert(
-                records).execute()
+                # Realiza o upsert na tabela broker_points
+                records = company_df.to_dict("records")
+                for record in records:
+                    for key, value in record.items():
+                        if isinstance(value, pd.Timestamp):
+                            record[key] = value.isoformat()
 
-            return response
+                # Realiza o upsert com os dados tratados
+                response = self.client.table("broker_points").upsert(
+                    records).execute()
+                all_responses.append(response)
+
+            return all_responses
 
         except Exception as e:
             logger.error(f"Erro ao fazer upsert em broker_points: {e}")
