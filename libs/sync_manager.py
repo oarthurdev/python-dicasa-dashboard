@@ -151,7 +151,6 @@ class SyncManager:
                 raise ValueError(f"Company {company_id} not found")
             
             subdomain = company_result.data[0]['subdomain']
-        try:
             if not company_id:
                 raise ValueError("company_id is required for sync_data")
             
