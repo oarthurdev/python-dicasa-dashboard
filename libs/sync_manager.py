@@ -149,7 +149,7 @@ class SyncManager:
                   activities=None,
                   company_id=None):
         """
-        Synchronize data efficiently with batch processing
+        Synchronize data efficiently with batch processing.
         Args:
             brokers (pd.DataFrame): Optional pre-loaded brokers data
             leads (pd.DataFrame): Optional pre-loaded leads data
@@ -163,44 +163,51 @@ class SyncManager:
             now = datetime.now()
             week_start, week_end = self.get_week_dates()
 
-            # Check if it's time for weekly reset
-            last_reset_result = self.supabase.client.table(
-                "weekly_logs").select("*").eq("company_id", company_id).order(
-                    "created_at", desc=True).limit(1).execute()
-            if last_reset_result.data:
-                last_reset = datetime.fromisoformat(
-                    str(last_reset_result.data[0].get('created_at')))
-                if (now - last_reset).days >= 7:
-                    self.reset_weekly_data(company_id)
+            # Verifica se api_config está inicializada
+            if self.kommo_api and getattr(self.kommo_api, 'api_config',
+                                          None) is None:
+                self.kommo_api.api_config = {}
 
-            # Set date range for data fetch
             if self.kommo_api:
                 self.kommo_api.set_date_range(week_start, week_end)
 
-            # Get company configuration if not already set
+            # Obter configuração da empresa, se necessário
             if not self.config:
-                config_result = self.supabase.client.table("kommo_config").select("*").eq("company_id", company_id).execute()
-                if config_result.data:
-                    self.config = config_result.data[0]
-                else:
-                    self.config = {"sync_interval": 60}  # Default configuration
-            
-            # Safely get sync interval
+                config_result = self.supabase.client.table(
+                    "kommo_config").select("*").eq("company_id",
+                                                   company_id).execute()
+                self.config = config_result.data[0] if config_result.data else {
+                    "sync_interval": 60
+                }
+
             sync_interval = self.config.get('sync_interval', 60)
 
-            # Verificar último sync dessa company
-            last_sync_result = self.supabase.client.table(
-                "sync_control").select("*").eq("company_id",
-                                               company_id).execute()
-            if last_sync_result.data:
-                last_sync = datetime.fromisoformat(
-                    str(last_sync_result.data[0].get('last_sync')))
-                if (now - last_sync).total_seconds() < (sync_interval * 60):
-                    logger.info(
-                        f"Sync not needed yet for company {company_id}")
-                    return
+            # Reset semanal
+            weekly_logs = self.supabase.client.table("weekly_logs").select(
+                "*").eq("company_id",
+                        company_id).order("created_at",
+                                          desc=True).limit(1).execute()
+            if weekly_logs.data:
+                last_reset = datetime.fromisoformat(
+                    str(weekly_logs.data[0].get('created_at')))
+                if (now - last_reset).days >= 7:
+                    self.reset_weekly_data(company_id)
 
-            # Já validamos o company_id no início, não precisamos buscar novamente
+            # Controle de sincronização
+            last_sync_data = self.supabase.client.table("sync_control").select(
+                "*").eq("company_id", company_id).execute()
+            if last_sync_data.data:
+                try:
+                    last_sync = datetime.fromisoformat(
+                        str(last_sync_data.data[0].get('last_sync')))
+                    if (now - last_sync).total_seconds() < (sync_interval *
+                                                            60):
+                        logger.info(
+                            f"Sync not needed yet for company {company_id}")
+                        return
+                except (TypeError, ValueError):
+                    logger.warning("Invalid last_sync format. Continuing...")
+
             config_data = self.supabase.client.table("kommo_config").select(
                 "*").eq("company_id", company_id).execute().data
             if not config_data:
@@ -211,17 +218,17 @@ class SyncManager:
             if config_data[0].get('last_sync'):
                 try:
                     last_sync = datetime.fromisoformat(
-                        str(config_data[0].get('last_sync')))
+                        str(config_data[0]['last_sync']))
                     if (now - last_sync).total_seconds() < (sync_interval *
                                                             60):
                         logger.info(
                             f"Sync not needed yet for company {company_id}")
                         return
-                except (ValueError, TypeError):
+                except Exception:
                     logger.warning(
-                        "Invalid last_sync format, proceeding with sync")
+                        "Invalid last_sync in config. Proceeding with sync.")
 
-            # Get data if not provided
+            # Carregar dados, se não fornecidos
             if brokers is None:
                 brokers = self.kommo_api.get_users()
             if leads is None:
@@ -229,56 +236,47 @@ class SyncManager:
             if activities is None:
                 activities = self.kommo_api.get_activities()
 
-            # Always process brokers first
+            # Processar Brokers
             if isinstance(brokers, pd.DataFrame) and not brokers.empty:
-                # Add company_id to brokers
                 brokers['company_id'] = company_id
                 existing_brokers = self._get_existing_records('brokers')
-                brokers_records = brokers.to_dict('records')
-                for i in range(0, len(brokers_records), self.batch_size):
-                    batch = brokers_records[i:i + self.batch_size]
+                for i in range(0, len(brokers), self.batch_size):
+                    batch = brokers.iloc[i:i +
+                                         self.batch_size].to_dict('records')
                     self._process_batch(batch, 'brokers', existing_brokers)
                 logger.info(f"Processed {len(brokers)} brokers")
-
-                # Initialize broker points after broker sync
                 self.supabase.initialize_broker_points(company_id)
             else:
                 logger.warning("No brokers data available for sync")
                 return
 
-            # Process leads for specific company
+            # Processar Leads
             if isinstance(leads, pd.DataFrame) and not leads.empty:
-                # Filter and add company_id
                 leads['company_id'] = company_id
                 existing_leads = self._get_existing_records('leads')
-                leads_records = leads.to_dict('records')
-
-                for i in range(0, len(leads_records), self.batch_size):
-                    batch = leads_records[i:i + self.batch_size]
+                for i in range(0, len(leads), self.batch_size):
+                    batch = leads.iloc[i:i +
+                                       self.batch_size].to_dict('records')
                     self._process_batch(batch, 'leads', existing_leads)
                 logger.info(f"Processed {len(leads)} leads")
 
-            # Process activities with proper validation
+            # Processar Activities
             if isinstance(activities, pd.DataFrame) and not activities.empty:
-                # Get valid broker IDs from database for this company
-                brokers_result = self.supabase.client.table("brokers").select(
+                # Obter IDs válidos
+                broker_ids = self.supabase.client.table("brokers").select(
                     "id").eq("company_id", company_id).execute()
-                valid_broker_ids = {
-                    broker['id']
-                    for broker in brokers_result.data
-                } if brokers_result.data else set()
+                valid_broker_ids = {item['id']
+                                    for item in broker_ids.data
+                                    } if broker_ids.data else set()
 
-                # Get valid lead IDs from database for this company
-                leads_result = self.supabase.client.table("leads").select(
-                    "id").eq("company_id", company_id).execute()
-                valid_lead_ids = {lead['id']
-                                  for lead in leads_result.data
-                                  } if leads_result.data else set()
+                lead_ids = self.supabase.client.table("leads").select("id").eq(
+                    "company_id", company_id).execute()
+                valid_lead_ids = {item['id']
+                                  for item in lead_ids.data
+                                  } if lead_ids.data else set()
 
-                # Add company_id to activities
                 activities['company_id'] = company_id
 
-                # Filter activities keeping only those with valid lead_ids and user_ids
                 filtered_activities = activities[(
                     (activities['lead_id'].isin(valid_lead_ids)
                      | activities['lead_id'].isna()) &
@@ -290,15 +288,15 @@ class SyncManager:
                     return
 
                 existing_activities = self._get_existing_records('activities')
-                activities_records = filtered_activities.to_dict('records')
-
-                for i in range(0, len(activities_records), self.batch_size):
-                    batch = activities_records[i:i + self.batch_size]
+                for i in range(0, len(filtered_activities), self.batch_size):
+                    batch = filtered_activities.iloc[i:i +
+                                                     self.batch_size].to_dict(
+                                                         'records')
                     self._process_batch(batch, 'activities',
                                         existing_activities)
                 logger.info(f"Processed {len(filtered_activities)} activities")
 
-            # Update sync timestamps
+            # Atualizar timestamps de sincronização
             next_sync = now + timedelta(minutes=sync_interval)
             self.supabase.client.table("kommo_config").update({
                 "last_sync":
@@ -310,7 +308,7 @@ class SyncManager:
             logger.info("Data synchronization completed successfully")
 
         except Exception as e:
-            logger.error(f"Sync failed: {str(e)}")
+            logger.error(f"Sync failed: {e}", exc_info=True)
             raise
 
     def needs_sync(self, resource: str) -> bool:
