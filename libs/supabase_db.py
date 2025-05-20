@@ -166,10 +166,6 @@ class SupabaseClient:
                                       leads=leads,
                                       activities=activities,
                                       company_id=company_id)
-
-            logger.info(
-                f"Initial sync completed successfully for company {company_id}"
-            )
         except Exception as e:
             logger.error(
                 f"Error in sync thread for company {company_id}: {str(e)}")
@@ -720,7 +716,8 @@ class SupabaseClient:
         try:
             # Buscar corretores com cargo "Corretor" e company_id específico
             brokers_result = self.client.table("brokers").select(
-                "id, nome").eq("cargo", "Corretor").eq("company_id", company_id).execute()
+                "id, nome").eq("cargo", "Corretor").eq("company_id",
+                                                       company_id).execute()
             if hasattr(brokers_result, "error") and brokers_result.error:
                 raise Exception(
                     f"Erro ao buscar corretores: {brokers_result.error}")
@@ -823,7 +820,9 @@ class SupabaseClient:
             if brokers is not None and not brokers.empty:
                 brokers = brokers[brokers['company_id'] == company_id].copy()
                 if brokers.empty:
-                    logger.warning(f"Nenhum corretor encontrado para company_id {company_id}")
+                    logger.warning(
+                        f"Nenhum corretor encontrado para company_id {company_id}"
+                    )
                     return
                 self.upsert_brokers(brokers)
                 time.sleep(1)  # Aguarda a conclusão do upsert de brokers

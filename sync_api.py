@@ -26,16 +26,16 @@ def sync_data(company_id, sync_interval):
     while True:
         try:
             local_supabase = SupabaseClient()
-            
+
             # Get company subdomain
-            company_result = local_supabase.client.table("companies").select("subdomain").eq("id", company_id).execute()
+            company_result = local_supabase.client.table("companies").select(
+                "subdomain").eq("id", company_id).execute()
             if not company_result.data:
                 logger.error(f"Company {company_id} not found")
                 return
-                
+
             subdomain = company_result.data[0]['subdomain']
-            logger.info(f"Starting sync for company {company_id} (subdomain: {subdomain})")
-            
+
             threads_status[company_id] = {
                 'status': 'running',
                 'last_sync': datetime.now(),
@@ -54,53 +54,7 @@ def sync_data(company_id, sync_interval):
                 )
                 return  # ou continue, dependendo do contexto
 
-            kommo_api = KommoAPI(api_config=company_config)
-            sync_manager = SyncManager(kommo_api, local_supabase,
-                                       company_config)
-
-            # Execute sync with proper order
-            brokers = kommo_api.get_users()
-
-            # First sync brokers
-            sync_manager.sync_data(brokers=brokers, company_id=company_id)
-
-            # Then get and sync other data
-            leads = kommo_api.get_leads()
-            activities = kommo_api.get_activities()
-
-            # First sync brokers to ensure they exist
-            sync_manager.sync_data(brokers=brokers, company_id=company_id)
-
-            # Add company_id to all DataFrames before sync
-            if not leads.empty:
-                leads['company_id'] = company_id
-            if not activities.empty:
-                activities['company_id'] = company_id
-
-            # Now sync leads and activities
-            sync_manager.sync_data(leads=leads, activities=activities, company_id=company_id)
-
-            # Handle broker points
-            if not brokers.empty:
-                broker_data = brokers[brokers['cargo'] == 'Corretor'].copy()
-                if not broker_data.empty:
-                    broker_data['company_id'] = company_id
-
-                    # Primeiro garantir que os brokers estão no banco
-                    local_supabase.upsert_brokers(broker_data)
-                    time.sleep(
-                        1)  # Pequena pausa para garantir conclusão do upsert
-
-                    # Depois atualizar os pontos
-                    local_supabase.update_broker_points(brokers=broker_data,
-                                                        leads=leads,
-                                                        activities=activities,
-                                                        company_id=company_id)
-                else:
-                    logger.warning("No brokers with 'Corretor' role found")
-            else:
-                logger.warning(
-                    "Skipping points update - no broker data available")
+            local_supabase._sync_company_data(company_config, company_id)
 
             next_sync = datetime.now()
             threads_status[company_id].update({
