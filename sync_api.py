@@ -64,6 +64,9 @@ def sync_data(company_id, sync_interval):
             # Execute sync with proper order
             brokers = kommo_api.get_users()
 
+            if not brokers.empty:
+                brokers['company_id'] = company_id
+
             # First sync brokers
             sync_manager.sync_data(brokers=brokers, company_id=company_id)
 

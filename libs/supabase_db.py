@@ -685,8 +685,9 @@ class SupabaseClient:
             all_responses = []
 
             for company_id in unique_companies:
-                company_df = points_df[points_df['company_id'] == company_id].copy()
-                
+                company_df = points_df[points_df['company_id'] ==
+                                       company_id].copy()
+
                 logger.info(
                     f"Upsert de {len(company_df)} registros na tabela broker_points para company_id {company_id}."
                 )
@@ -800,9 +801,9 @@ class SupabaseClient:
             raise
 
     def update_broker_points(self,
-                             brokers=None,
-                             leads=None,
-                             activities=None,
+                             brokers=[],
+                             leads=[],
+                             activities=[],
                              company_id=None):
         """
         Atualiza a tabela broker_points no Supabase com base nas regras de gamificação.
@@ -876,12 +877,11 @@ class SupabaseClient:
             # Carrega as regras e calcula os pontos
             rules = self.load_rules()
             self.insert_log("INFO", "Iniciando cálculo de pontos")
-            points_df = calculate_broker_points(
-                active_brokers,
-                leads,
-                activities,
-                rules,
-                company_id=company_id)
+            points_df = calculate_broker_points(active_brokers,
+                                                leads,
+                                                activities,
+                                                rules,
+                                                company_id=company_id)
             self.insert_log("INFO", "Cálculo de pontos concluído")
 
             # Garante que todos os campos necessários existam
