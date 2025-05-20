@@ -138,7 +138,7 @@ class SupabaseClient:
             logger.info(f"Starting sync thread for company {company_id}")
             kommo_api = KommoAPI(api_url=config['api_url'],
                                  access_token=config['access_token'])
-            sync_manager = SyncManager(kommo_api, self)
+            sync_manager = SyncManager(kommo_api, self, config)
 
             brokers = kommo_api.get_users()
             leads = kommo_api.get_leads()
