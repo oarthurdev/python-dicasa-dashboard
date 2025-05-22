@@ -898,8 +898,8 @@ class SupabaseClient:
         Busca as notas de um lead na API do Kommo.
         """
         try:
-            api_url = self.kommo_config['api_url'],
-            access_token = self.kommo_config['access_token'],
+            api_url = self.kommo_config['api_url']
+            access_token = self.kommo_config['access_token']
 
             url = f"{api_url}/leads/{lead_id}/notes"
             headers = {"Authorization": f"Bearer {access_token}"}
