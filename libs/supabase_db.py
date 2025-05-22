@@ -870,7 +870,7 @@ class SupabaseClient:
 
             if notes:
                 logger.info(
-                    f"Encontradas {len(notes)} notas para o lead {lead_id}")Ex
+                    f"Encontradas {len(notes)} notas para o lead {lead_id}")
                 # Encontrar a primeira nota criada por um usuário do time (excluindo notas automáticas, se possível).
                 first_note = next(
                     (note for note in notes if note.get('created_by')), None)
@@ -901,7 +901,7 @@ class SupabaseClient:
             api_url = self.kommo_config['api_url'],
             access_token = self.kommo_config['access_token'],
 
-            url = f"{api_url}/api/v4/leads/{lead_id}/notes"
+            url = f"{api_url}/leads/{lead_id}/notes"
             headers = {"Authorization": f"Bearer {access_token}"}
 
             response = requests.get(url, headers=headers)
