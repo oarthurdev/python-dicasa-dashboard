@@ -21,8 +21,11 @@ class KommoAPI:
             logger.info("Initializing KommoAPI")
 
             self.api_config = api_config
-            self.api_url = api_url or (api_config.get('api_url') if api_config else None) or os.getenv("KOMMO_API_URL")
-            self.access_token = access_token or (api_config.get('access_token') if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
+            self.api_url = api_url or (api_config.get('api_url') if api_config
+                                       else None) or os.getenv("KOMMO_API_URL")
+            self.access_token = access_token or (
+                api_config.get('access_token')
+                if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
             self.start_date = None
             self.end_date = None
 
@@ -50,13 +53,16 @@ class KommoAPI:
     def __init__(self, api_url=None, access_token=None, api_config=None):
         try:
             logger.info("Initializing KommoAPI")
-            
+
             from .rate_limit_monitor import RateLimitMonitor
             self.rate_monitor = RateLimitMonitor()
-            
+
             self.api_config = api_config
-            self.api_url = api_url or (api_config.get('api_url') if api_config else None) or os.getenv("KOMMO_API_URL")
-            self.access_token = access_token or (api_config.get('access_token') if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
+            self.api_url = api_url or (api_config.get('api_url') if api_config
+                                       else None) or os.getenv("KOMMO_API_URL")
+            self.access_token = access_token or (
+                api_config.get('access_token')
+                if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
             self.start_date = None
             self.end_date = None
 
@@ -72,11 +78,11 @@ class KommoAPI:
             raise
 
     def _make_request(self,
-                     endpoint,
-                     method="GET",
-                     params=None,
-                     data=None,
-                     retry_count=3):
+                      endpoint,
+                      method="GET",
+                      params=None,
+                      data=None,
+                      retry_count=3):
         """
         Make a request to the Kommo API with retry logic
         """
@@ -90,10 +96,10 @@ class KommoAPI:
             try:
                 logger.info(f"Making API request to: {url}")
                 response = requests.request(method=method,
-                                         url=url,
-                                         headers=headers,
-                                         params=params,
-                                         json=data)
+                                            url=url,
+                                            headers=headers,
+                                            params=params,
+                                            json=data)
 
                 # Log response status and content for debugging
                 logger.info(f"Response status: {response.status_code}")
@@ -109,14 +115,18 @@ class KommoAPI:
                 return response.json()
 
             except requests.exceptions.RequestException as e:
-                status_code = e.response.status_code if hasattr(e, 'response') else 0
-                
+                status_code = e.response.status_code if hasattr(
+                    e, 'response') else 0
+
                 if status_code in (429, 403):
-                    if not self.rate_monitor.should_retry(endpoint, status_code):
+                    if not self.rate_monitor.should_retry(
+                            endpoint, status_code):
                         raise
                     self.rate_monitor.wait_before_retry(endpoint, attempt)
                 else:
-                    logger.warning(f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}")
+                    logger.warning(
+                        f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}"
+                    )
                     if attempt >= retry_count - 1:
                         raise
                     time.sleep(2)  # Default delay for non-rate-limit errors
@@ -183,25 +193,34 @@ class KommoAPI:
         """Obtém os filtros de data da configuração"""
         try:
             # Load config from instance variables with fallback to None
-            start_date = self.api_config.get('sync_start_date') if self.api_config else None
-            end_date = self.api_config.get('sync_end_date') if self.api_config else None
+            start_date = self.api_config.get(
+                'sync_start_date') if self.api_config else None
+            end_date = self.api_config.get(
+                'sync_end_date') if self.api_config else None
 
             # If both dates are None, use 1 week retroactive
             if start_date is None and end_date is None:
                 end_ts = int(datetime.now().timestamp())
-                start_ts = int((datetime.now() - timedelta(days=7)).timestamp())
+                start_ts = int(
+                    (datetime.now() - timedelta(days=7)).timestamp())
                 return start_ts, end_ts
 
             # Handle numeric timestamps or string dates
             if isinstance(start_date, (int, float)):
                 start_ts = int(start_date)
             else:
-                start_ts = int(datetime.strptime(str(start_date), "%Y-%m-%d").timestamp()) if start_date else None
+                start_ts = int(
+                    datetime.strptime(
+                        str(start_date),
+                        "%Y-%m-%d").timestamp()) if start_date else None
 
             if isinstance(end_date, (int, float)):
                 end_ts = int(end_date)
             else:
-                end_ts = int(datetime.strptime(str(end_date), "%Y-%m-%d").timestamp()) if end_date else None
+                end_ts = int(
+                    datetime.strptime(
+                        str(end_date),
+                        "%Y-%m-%d").timestamp()) if end_date else None
 
             return start_ts, end_ts
         except Exception as e:
@@ -528,6 +547,59 @@ class KommoAPI:
         except Exception as e:
             logger.error(f"Failed to retrieve activities: {str(e)}")
             raise
+
+    def get_lead_notes(self, lead_id):
+        """
+        Retrieve notes for a specific lead
+        Args:
+            lead_id (int): ID of the lead
+        """
+        try:
+            logger.info(f"Retrieving notes for lead {lead_id}")
+
+            notes_data = []
+            page = 1
+
+            while True:
+                response = self._make_request(f"leads/{lead_id}/notes",
+                                              params={
+                                                  "page": page,
+                                                  "limit": 250
+                                              })
+
+                if not response.get("_embedded", {}).get("notes", []):
+                    break
+
+                notes = response["_embedded"]["notes"]
+                notes_data.extend(notes)
+                page += 1
+
+            processed_notes = []
+            for note in notes_data:
+                # Skip system/automatic notes if possible
+                if note.get("created_by") == 0:  # Sistema
+                    continue
+
+                processed_notes.append({
+                    "id":
+                    note.get("id"),
+                    "lead_id":
+                    lead_id,
+                    "user_id":
+                    note.get("created_by"),
+                    "texto":
+                    note.get("text"),
+                    "criado_em":
+                    datetime.fromtimestamp(note.get("created_at", 0))
+                    if note.get("created_at") else None
+                })
+
+            return pd.DataFrame(processed_notes)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve notes for lead {lead_id}: {str(e)}")
+            return pd.DataFrame()
 
     def get_tasks(self):
         """

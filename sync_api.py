@@ -23,6 +23,15 @@ supabase = SupabaseClient()
 
 def sync_data(company_id, sync_interval):
     """Execute sync function for a specific company"""
+    # Initialize thread status if not exists
+    if company_id not in threads_status:
+        threads_status[company_id] = {
+            'status': 'initializing',
+            'last_sync': None,
+            'next_sync': None,
+            'subdomain': None
+        }
+        
     while True:
         try:
             local_supabase = SupabaseClient()
