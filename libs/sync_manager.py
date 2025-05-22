@@ -156,6 +156,17 @@ class SyncManager:
             activities (pd.DataFrame): Optional pre-loaded activities data
             company_id (str): Company ID to sync data for
         """
+        # Calculate tempo_medio for each lead
+        if leads is not None and not leads.empty:
+            for idx, lead in leads.iterrows():
+                tempo_medio = self.supabase.calculate_response_time(
+                    lead['id'], lead['criado_em'])
+                leads.at[idx, 'tempo_medio'] = tempo_medio
+
+            # Calculate ticket_medio
+            ticket_medio = self.supabase.calculate_ticket_medio(leads)
+            # Apply ticket_medio to all leads
+            leads['ticket_medio'] = ticket_medio
         try:
             if not company_id:
                 raise ValueError("company_id is required for sync_data")
