@@ -1,0 +1,37 @@
+Tenho um projeto que já sincroniza dados da API da Kommo (amoCRM) com meu banco de dados. Já sincronizo leads, events (que equivalem a "activities" no banco) e users (que são "brokers" no banco).
+
+Desejo que você modifique o projeto para incluir o cálculo e salvamento dos seguintes indicadores **por lead** no banco de dados:
+
+1. **tempo_medio_resposta** (campo: `tempo_medio`)
+2. **ticket_medio** (campo: `ticket_medio`)
+
+## 🕒 Tempo Médio de Resposta (por lead)
+- Para cada lead:
+  - Use o campo `created_at` da lead como início.
+  - Busque as interações (notes) com o endpoint:
+    - GET `/api/v4/leads/{lead_id}/notes`
+  - Encontre a **primeira nota** criada por um usuário do time (excluindo notas automáticas, se possível).
+  - Calcule o tempo entre `created_at` da lead e o `created_at` da primeira nota do usuário (em segundos ou minutos).
+  - Salve esse valor no campo `tempo_medio` da lead no banco.
+
+## 💰 Ticket Médio (por lead)
+- Pegue todos os leads com status "ganho" (status ID = 142):
+  - GET `/api/v4/leads?filter[statuses][]=142`
+- Para esses leads:
+  - Extraia o campo `price`.
+  - Calcule o ticket médio:
+    - ticket_medio = soma dos valores de `price` dos leads ganhos / quantidade desses leads
+  - Salve esse valor no campo `ticket_medio` de **todos os leads (ou em uma tabela de métricas agregadas, se for mais apropriado).**
+
+## Requisitos Técnicos
+- A função de sincronização deve ser atualizada para calcular e persistir esses dois valores no banco.
+- Pode usar ORM ou queries diretas, de acordo com o que já está implementado.
+- Garanta que o cálculo não quebre se um lead não tiver nota ou se o preço estiver nulo.
+- Os campos novos (`tempo_medio`, `ticket_medio`) devem estar disponíveis para leitura no banco.
+
+## Outras observações
+- Pode criar funções auxiliares para organizar os cálculos.
+- O cálculo do `ticket_medio` pode ser atualizado a cada sincronização completa, ou apenas uma vez ao dia.
+- O cálculo de `tempo_medio` é por lead, com base na **primeira interação** registrada (nota).
+
+Atualize o código de sincronização para incluir isso. Me mostre a função modificada.
