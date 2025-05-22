@@ -313,9 +313,6 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to sync data: {str(e)}")
             raise
-        except Exception as e:
-            logger.error(f"Failed to load Kommo config: {str(e)}")
-            raise
 
     def load_rules(self):
         """Load gamification rules from Supabase"""
@@ -377,98 +374,6 @@ class SupabaseClient:
 
         except Exception as e:
             logger.error(f"Failed to upsert brokers: {str(e)}")
-            raise
-
-    def upsert_leads(self, leads_df):
-        """
-        Insert or update lead data in the Supabase database
-
-        Args:
-            leads_df (pandas.DataFrame): DataFrame containing lead data
-        """
-        try:
-            if leads_df.empty:
-                logger.warning("No lead data to insert")
-                return
-
-            logger.info(f"Upserting {len(leads_df)} leads to Supabase")
-
-            leads_df_clean = leads_df.copy()
-
-            # Replace infinite values with None
-            numeric_cols = leads_df_clean.select_dtypes(
-                include=['float', 'int']).columns
-            for col in numeric_cols:
-                mask = ~np.isfinite(leads_df_clean[col])
-                if mask.any():
-                    leads_df_clean.loc[mask, col] = None
-
-            # Convert bigint-compatible columns
-            bigint_columns = [
-                'id', 'responsavel_id', 'status_id', 'pipeline_id'
-            ]
-            for col in bigint_columns:
-                if col in leads_df_clean.columns:
-                    mask = np.isfinite(leads_df_clean[col])
-                    if mask.any():
-                        leads_df_clean.loc[mask, col] = leads_df_clean.loc[
-                            mask, col].astype('Int64')
-
-            # Get valid broker IDs from database
-            brokers_result = self.client.table("brokers").select(
-                "id").execute()
-            if hasattr(brokers_result, "error") and brokers_result.error:
-                raise Exception(
-                    f"Supabase error querying brokers: {brokers_result.error}")
-
-            valid_broker_ids = {broker['id'] for broker in brokers_result.data}
-
-            # No pipeline filtering
-            if leads_df_clean.empty:
-                logger.warning("No leads found")
-                return
-
-            # Segundo filtro: responsavel_id válido
-            leads_df_clean = leads_df_clean[
-                leads_df_clean['responsavel_id'].isin(valid_broker_ids)
-                | leads_df_clean['responsavel_id'].isna()]
-
-            logger.info(
-                f"Total de leads após filtragem: {len(leads_df_clean)}")
-
-            # Convert to dict format
-            leads_data = leads_df_clean.to_dict(orient="records")
-
-            for lead in leads_data:
-                lead["updated_at"] = datetime.now().isoformat()
-
-                if "criado_em" in lead and lead["criado_em"] is not None:
-                    lead["criado_em"] = lead["criado_em"].isoformat()
-                if "atualizado_em" in lead and lead[
-                        "atualizado_em"] is not None:
-                    lead["atualizado_em"] = lead["atualizado_em"].isoformat()
-
-                for key, value in list(lead.items()):
-                    if isinstance(value, float) and (np.isnan(value)
-                                                     or np.isinf(value)):
-                        lead[key] = None
-                    elif key in bigint_columns and isinstance(
-                            value, float) and value.is_integer():
-                        lead[key] = int(value)
-
-            # No pipeline-based deletion
-
-            # Upsert to Supabase
-            result = self.client.table("leads").upsert(leads_data).execute()
-
-            if hasattr(result, "error") and result.error:
-                raise Exception(f"Supabase error: {result.error}")
-
-            logger.info("Leads upserted successfully")
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to upsert leads: {str(e)}")
             raise
 
     def upsert_activities(self, activities_df):
@@ -871,7 +776,6 @@ class SupabaseClient:
             active_brokers = brokers[(brokers['cargo'] == 'Corretor')
                                      & (brokers['company_id'] == company_id)]
             if active_brokers.empty:
-```python
                 logger.warning("Nenhum corretor ativo encontrado.")
                 return
 
@@ -943,7 +847,7 @@ class SupabaseClient:
             leads_ganhos = leads_df[leads_df['status_id'] == 142]
 
             # Extrair os valores de 'price'
-            prices = leads_ganhos['price'].dropna().astype(float)
+            prices = leads_ganhos['valor'].dropna().astype(float)
 
             # Calcular o ticket médio
             if not prices.empty:
@@ -965,11 +869,14 @@ class SupabaseClient:
             notes = self.get_lead_notes(lead_id)
 
             if notes:
+                logger.info(
+                    f"Encontradas {len(notes)} notas para o lead {lead_id}")Ex
                 # Encontrar a primeira nota criada por um usuário do time (excluindo notas automáticas, se possível).
                 first_note = next(
                     (note for note in notes if note.get('created_by')), None)
 
                 if first_note:
+                    logger.info(f"Primeira nota encontrada: {first_note}")
                     first_note_created_at = datetime.fromtimestamp(
                         first_note.get('created_at'))
 
@@ -991,9 +898,8 @@ class SupabaseClient:
         Busca as notas de um lead na API do Kommo.
         """
         try:
-            config = self.kommo_config
-            api_url = config['api_url']
-            access_token = config['access_token']
+            api_url = self.kommo_config['api_url'],
+            access_token = self.kommo_config['access_token'],
 
             url = f"{api_url}/api/v4/leads/{lead_id}/notes"
             headers = {"Authorization": f"Bearer {access_token}"}
@@ -1075,10 +981,12 @@ class SupabaseClient:
                 responsavel_id = lead.get("responsible_user_id")
 
                 # Calculate tempo médio for this lead
-                created_at = datetime.fromtimestamp(lead.get("created_at", 0)) if lead.get("created_at") else None
+                created_at = datetime.fromtimestamp(lead.get(
+                    "created_at", 0)) if lead.get("created_at") else None
                 tempo_medio = None
                 if created_at:
-                    tempo_medio = self.calculate_response_time(lead.get("id"), created_at)
+                    tempo_medio = self.calculate_response_time(
+                        lead.get("id"), created_at)
 
                 lead["updated_at"] = datetime.now().isoformat()
 
@@ -1096,10 +1004,9 @@ class SupabaseClient:
                             value, float) and value.is_integer():
                         lead[key] = int(value)
 
-                lead[
-                    "status"] = ("Ganho" if lead.get("status_id") == 142 else
-                                 "Perdido" if lead.get("status_id") == 143 else
-                                 "Em progresso")
+                lead["status"] = ("Ganho" if lead.get("status_id") == 142 else
+                                  "Perdido" if lead.get("status_id") == 143
+                                  else "Em progresso")
                 lead["tempo_medio"] = tempo_medio
                 lead["ticket_medio"] = ticket_medio
 
@@ -1108,7 +1015,8 @@ class SupabaseClient:
             # No pipeline-based deletion
 
             # Upsert to Supabase
-            result = self.client.table("leads").upsert(processed_leads).execute()
+            result = self.client.table("leads").upsert(
+                processed_leads).execute()
 
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
