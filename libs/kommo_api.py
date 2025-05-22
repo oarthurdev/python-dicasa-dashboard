@@ -529,6 +529,49 @@ class KommoAPI:
             logger.error(f"Failed to retrieve activities: {str(e)}")
             raise
 
+    def get_lead_notes(self, lead_id):
+        """
+        Retrieve notes for a specific lead
+        Args:
+            lead_id (int): ID of the lead
+        """
+        try:
+            logger.info(f"Retrieving notes for lead {lead_id}")
+            
+            notes_data = []
+            page = 1
+            
+            while True:
+                response = self._make_request(f"leads/{lead_id}/notes",
+                                           params={"page": page, "limit": 250})
+                
+                if not response.get("_embedded", {}).get("notes", []):
+                    break
+                    
+                notes = response["_embedded"]["notes"]
+                notes_data.extend(notes)
+                page += 1
+                
+            processed_notes = []
+            for note in notes_data:
+                # Skip system/automatic notes if possible
+                if note.get("created_by") == 0:  # Sistema
+                    continue
+                    
+                processed_notes.append({
+                    "id": note.get("id"),
+                    "lead_id": lead_id,
+                    "user_id": note.get("created_by"),
+                    "texto": note.get("text"),
+                    "criado_em": datetime.fromtimestamp(note.get("created_at", 0)) if note.get("created_at") else None
+                })
+                
+            return pd.DataFrame(processed_notes)
+            
+        except Exception as e:
+            logger.error(f"Failed to retrieve notes for lead {lead_id}: {str(e)}")
+            return pd.DataFrame()
+
     def get_tasks(self):
         """
         Retrieve all tasks from Kommo CRM
