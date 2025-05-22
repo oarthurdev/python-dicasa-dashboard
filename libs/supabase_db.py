@@ -907,7 +907,10 @@ class SupabaseClient:
             response = requests.get(url, headers=headers)
             response.raise_for_status()
 
-            return response.json().get('_embedded', {}).get('notes', [])
+            # Check if response has content before parsing JSON
+            if response.content:
+                return response.json().get('_embedded', {}).get('notes', [])
+            return []
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Erro ao buscar notas do lead {lead_id}: {str(e)}")
