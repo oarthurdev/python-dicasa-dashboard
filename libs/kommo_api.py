@@ -84,13 +84,16 @@ class KommoAPI:
                       data=None,
                       retry_count=3):
         """
-        Make a request to the Kommo API with retry logic
+        Make a request to the Kommo API with rate limiting and retry logic
         """
         url = f"{self.api_url}/{endpoint}"
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json"
         }
+        
+        # Add delay to ensure we don't exceed 7 requests per second
+        time.sleep(0.15)  # ~6.6 requests per second max
 
         for attempt in range(retry_count):
             try:
