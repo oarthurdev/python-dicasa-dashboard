@@ -188,38 +188,38 @@ class SupabaseClient:
 
                 # Trigger sync through FastAPI endpoint
                 try:
-                    import requests
-                    response = requests.post(
-                        f"http://0.0.0.0:5000/start_sync/{company_id}")
+                    response = requests.post("http://0.0.0.0:5002/start")
                     if response.status_code == 200:
-                        logger.info(f"Sync started for company {company_id}")
+                        logger.info("Sync started for all companies")
 
-                        # Monitor sync status
                         while True:
-                            status_response = requests.get(
-                                f"http://0.0.0.0:5000/sync_status/{company_id}"
-                            )
-                            if status_response.status_code == 200:
-                                status_data = status_response.json()
-                                if status_data['status'] == 'running':
-                                    time.sleep(30)  # Check every 30 seconds
-                                    continue
-                                elif status_data['status'] == 'not_found':
-                                    logger.error(
-                                        f"Sync thread not found for company {company_id}"
-                                    )
-                                    break
+                            try:
+                                status_response = requests.get("http://0.0.0.0:5002/status")
+                                if status_response.status_code == 200:
+                                    all_status = status_response.json()
+                                    company_status = all_status.get(str(company_id))
+
+                                    if not company_status:
+                                        logger.error(f"No status found for company {company_id}")
+                                        break
+
+                                    status = company_status.get('status')
+
+                                    if status in ('initializing', 'running'):
+                                        logger.info(f"Company {company_id} sync in progress: {status}")
+                                        time.sleep(30)  # Check every 30 seconds
+                                        continue
+                                    else:
+                                        logger.info(f"Sync completed for company {company_id} with status: {status}")
+                                        break
                                 else:
-                                    logger.info(
-                                        f"Sync completed for company {company_id}"
-                                    )
+                                    logger.error(f"Failed to get sync status. HTTP {status_response.status_code}")
                                     break
-                            else:
-                                logger.error("Failed to get sync status")
+                            except Exception as e:
+                                logger.error(f"Exception while checking sync status: {e}")
                                 break
                     else:
-                        logger.error(
-                            f"Failed to start sync for company {company_id}")
+                        logger.error(f"Failed to start sync for company {company_id}")
                 except Exception as e:
                     logger.error(f"Error in sync process: {str(e)}")
         except Exception as e:

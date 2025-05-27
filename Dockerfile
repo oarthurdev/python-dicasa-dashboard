@@ -19,8 +19,8 @@ RUN pip install --upgrade pip && \
 COPY . .
 
 # Expõe a porta padrão do Streamlit
-EXPOSE 5000
+EXPOSE 5002
 
 # Comando de entrada
 
-CMD python sync_api.py
+CMD ["python", "sync_api.py"]
