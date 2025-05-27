@@ -1,3 +1,4 @@
+
 from flask import Flask, jsonify
 import threading
 import logging
@@ -64,7 +65,7 @@ def sync_data(company_id, sync_interval):
                 logger.info(
                     f"Nenhuma configuração encontrada para a empresa {company_id}"
                 )
-                return  # ou continue, dependendo do contexto
+                return
 
             kommo_api = KommoAPI(api_config=company_config)
             sync_manager = SyncManager(kommo_api, local_supabase,
@@ -82,9 +83,6 @@ def sync_data(company_id, sync_interval):
             # Then get and sync other data
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
-
-            # First sync brokers to ensure they exist
-            sync_manager.sync_data(brokers=brokers, company_id=company_id)
 
             # Add company_id to all DataFrames before sync
             if not leads.empty:
@@ -239,14 +237,3 @@ def initialize_app():
 if __name__ == '__main__':
     initialize_app()
     app.run(host='0.0.0.0', port=5000)
-import uvicorn
-from api_server import app
-
-if __name__ == "__main__":
-    # Servidor principal com rate limiting implementado
-    uvicorn.run(
-        app, 
-        host="0.0.0.0", 
-        port=5000,
-        log_level="info"
-    )
