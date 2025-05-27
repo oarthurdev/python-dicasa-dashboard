@@ -63,7 +63,8 @@ def sync_company_data(company_id: UUID, config: dict):
                                                     leads=leads,
                                                     activities=activities)
 
-                threading.Event().wait(300)  # Espera 5 min
+                # Espera 5 min para respeitar rate limits da API Kommo
+                threading.Event().wait(300)
 
             except Exception as e:
                 logger.error(f"[{company_key}] Error in sync loop: {e}")

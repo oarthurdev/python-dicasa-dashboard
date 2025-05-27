@@ -84,7 +84,7 @@ class KommoAPI:
                       data=None,
                       retry_count=3):
         """
-        Make a request to the Kommo API with retry logic
+        Make a request to the Kommo API with retry logic and rate limiting
         """
         url = f"{self.api_url}/{endpoint}"
         headers = {
@@ -94,6 +94,9 @@ class KommoAPI:
 
         for attempt in range(retry_count):
             try:
+                # Aplica rate limiting de 7 req/s conforme documentação Kommo
+                self.rate_monitor.enforce_rate_limit()
+                
                 logger.info(f"Making API request to: {url}")
                 response = requests.request(method=method,
                                             url=url,
@@ -118,9 +121,10 @@ class KommoAPI:
                 status_code = e.response.status_code if hasattr(
                     e, 'response') else 0
 
-                if status_code in (429, 403):
-                    if not self.rate_monitor.should_retry(
-                            endpoint, status_code):
+                # Usa o novo handler de erros específicos da Kommo
+                if status_code in (429, 403, 504):
+                    if not self.rate_monitor.handle_kommo_error(status_code, endpoint, attempt):
+                        logger.error(f"Stopping retries for {endpoint} due to {status_code}")
                         raise
                     self.rate_monitor.wait_before_retry(endpoint, attempt)
                 else:
@@ -145,10 +149,11 @@ class KommoAPI:
             page = 1
 
             while True:
+                # Limite máximo de 250 entidades por página conforme documentação
                 response = self._make_request("users",
                                               params={
                                                   "page": page,
-                                                  "limit": 30
+                                                  "limit": min(30, 250)
                                               })
 
                 if not response.get("_embedded", {}).get("users", []):
@@ -270,7 +275,7 @@ class KommoAPI:
 
             filtered_leads = []
             page = 1
-            per_page = 250
+            per_page = min(250, 250)  # Respeitando limite máximo de 250 entidades
             empty_streak = 0
             stop_after = 1
 
@@ -378,10 +383,10 @@ class KommoAPI:
 
     def get_activities(self,
                        company_id=None,
-                       page_size=250,
-                       max_workers=5,
+                       page_size=50,  # Reduzido para evitar HTTP 504
+                       max_workers=2,  # Reduzido para respeitar 7 req/s
                        max_pages=500,
-                       chunk_size=10):
+                       chunk_size=5):  # Reduzido para melhor controle
         """
         Retrieve activities from Kommo CRM for specific company
         Args:
@@ -404,9 +409,11 @@ class KommoAPI:
             logger.info("Retrieving activities from Kommo CRM")
 
             start_ts, end_ts = self._get_date_filters()
+            # Limitando page_size conforme documentação Kommo (máximo 250)
+            safe_page_size = min(page_size, 250)
             base_params = {
                 "limit":
-                page_size,
+                safe_page_size,
                 "filter[type]": [
                     "lead_status_changed", "incoming_chat_message",
                     "outgoing_chat_message"
@@ -420,7 +427,7 @@ class KommoAPI:
 
             def fetch_page(page):
                 try:
-                    time.sleep(1)  # Rate limiting
+                    # Rate limiting já é aplicado em _make_request
                     params = {**base_params, "page": page}
                     response = self._make_request("events", params=params)
                     # Se o status for 204, continua a execução
@@ -564,7 +571,7 @@ class KommoAPI:
                 response = self._make_request(f"leads/{lead_id}/notes",
                                               params={
                                                   "page": page,
-                                                  "limit": 250
+                                                  "limit": min(250, 250)  # Respeitando limite
                                               })
 
                 if not response.get("_embedded", {}).get("notes", []):
@@ -610,14 +617,14 @@ class KommoAPI:
 
             tasks_data = []
             page = 1
-            max_pages = 3  # Limit to 3 pages (150 tasks)
+            max_pages = 3  # Limit to 3 pages (reduzido conforme limitações)
 
             while True:
                 logger.info(f"Fetching tasks page {page}")
                 response = self._make_request("tasks",
                                               params={
                                                   "page": page,
-                                                  "limit": 30
+                                                  "limit": min(30, 250)  # Respeitando limite
                                               })
 
                 if not response.get("_embedded", {}).get("tasks", []):
