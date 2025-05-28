@@ -34,7 +34,7 @@ def load_companies():
 
 
 def sync_data(company_id):
-    """Execute sync function once for a specific company"""
+    """Execute sync function once for a specific company with incremental updates"""
     try:
         local_supabase = SupabaseClient()
 
@@ -47,7 +47,7 @@ def sync_data(company_id):
             return
 
         subdomain = company_result.data[0]['subdomain']
-        logger.info(f"Starting sync for company {company_id} (subdomain: {subdomain})")
+        logger.info(f"Starting incremental sync for company {company_id} (subdomain: {subdomain})")
 
         threads_status[company_id] = {
             'status': 'running',
@@ -67,36 +67,44 @@ def sync_data(company_id):
         kommo_api = KommoAPI(api_config=company_config)
         sync_manager = SyncManager(kommo_api, local_supabase, company_config)
 
+        # Buscar dados da API
         brokers = kommo_api.get_users()
-        if not brokers.empty:
-            brokers['company_id'] = company_id
-
-        sync_manager.sync_data(brokers=brokers, company_id=company_id)
-
         leads = kommo_api.get_leads()
         activities = kommo_api.get_activities()
 
+        # Adicionar company_id aos DataFrames
+        if not brokers.empty:
+            brokers['company_id'] = company_id
         if not leads.empty:
             leads['company_id'] = company_id
         if not activities.empty:
             activities['company_id'] = company_id
 
-        sync_manager.sync_data(leads=leads, activities=activities, company_id=company_id)
+        # Sincronização incremental - apenas dados alterados
+        changes_detected = sync_manager.sync_data_incremental(
+            brokers=brokers, 
+            leads=leads, 
+            activities=activities, 
+            company_id=company_id
+        )
 
-        if not brokers.empty:
-            broker_data = brokers[(brokers['cargo'] == 'Corretor') & (brokers['company_id'] == company_id)].copy()
-            if not broker_data.empty:
-                broker_data['company_id'] = company_id
-                local_supabase.update_broker_points(
-                    brokers=broker_data,
-                    leads=leads,
-                    activities=activities,
-                    company_id=company_id
-                )
-            else:
-                logger.warning("No brokers with 'Corretor' role found for this company")
+        if changes_detected['brokers'] or changes_detected['leads'] or changes_detected['activities']:
+            logger.info(f"Changes detected: {changes_detected}")
+            
+            # Atualizar pontos apenas se houve mudanças relevantes
+            if not brokers.empty and (changes_detected['brokers'] or changes_detected['leads'] or changes_detected['activities']):
+                broker_data = brokers[(brokers['cargo'] == 'Corretor') & (brokers['company_id'] == company_id)].copy()
+                if not broker_data.empty:
+                    local_supabase.update_broker_points(
+                        brokers=broker_data,
+                        leads=leads,
+                        activities=activities,
+                        company_id=company_id
+                    )
+                else:
+                    logger.warning("No brokers with 'Corretor' role found for this company")
         else:
-            logger.warning("Skipping points update - no broker data available")
+            logger.info(f"No changes detected for company {company_id}")
 
         threads_status[company_id].update({
             'status': 'waiting',
@@ -104,7 +112,7 @@ def sync_data(company_id):
             'next_sync': datetime.now() + timedelta(minutes=SYNC_INTERVAL_MINUTES)
         })
 
-        logger.info(f"Sync completed for company {company_id}.")
+        logger.info(f"Incremental sync completed for company {company_id}.")
 
     except Exception as e:
         logger.error(f"Error in sync for company {company_id}: {e}")
