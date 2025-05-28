@@ -348,8 +348,7 @@ class SupabaseClient:
             logger.info(f"Upserting {len(brokers_df)} brokers to Supabase")
 
             # Filtrar apenas corretores
-            brokers_df_filtered = brokers_df[brokers_df['cargo'] ==
-                                             'Corretor'].copy()
+            brokers_df_filtered = brokers_df[brokers_df['cargo'] == 'Corretor'].copy()
 
             if brokers_df_filtered.empty:
                 logger.warning("No brokers with 'Corretor' role found")
@@ -363,8 +362,7 @@ class SupabaseClient:
                 broker["updated_at"] = datetime.now().isoformat()
 
             # Upsert data to Supabase
-            result = self.client.table("brokers").upsert(
-                brokers_data).execute()
+            result = self.client.table("brokers").upsert(brokers_data).execute()
 
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
@@ -375,6 +373,7 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to upsert brokers: {str(e)}")
             raise
+
 
     def upsert_activities(self, activities_df):
         """
@@ -840,24 +839,52 @@ class SupabaseClient:
 
     def calculate_ticket_medio(self, leads_df):
         """
-        Calcula o ticket médio dos leads ganhos.
+        Calcula o ticket médio dos leads ganhos e atualiza apenas a coluna ticket_medio
+        dos brokers com base no responsavel_id.
         """
         try:
-            # Filtrar leads com status "ganho" (status ID = 142)
-            leads_ganhos = leads_df[leads_df['status_id'] == 142]
+            config = self.kommo_config
+            if not config:
+                logger.error("Kommo configuration not found")
+                return None
 
-            # Extrair os valores de 'price'
-            prices = leads_ganhos['valor'].dropna().astype(float)
+            kommo_api = KommoAPI(api_url=config['api_url'],
+                                access_token=config['access_token'])
 
-            # Calcular o ticket médio
-            if not prices.empty:
-                ticket_medio = prices.sum() / len(prices)
-                return ticket_medio
-            else:
-                return 0
+            # Obter os brokers (usuários)
+            brokers_df = kommo_api.get_users()
+
+            brokers_df['cargo'] = 'Corretor'
+            
+            if brokers_df.empty:
+                logger.warning("Nenhum usuário retornado pela API Kommo.")
+                return None
+
+            # Filtrar leads ganhos (status_id = 142)
+            leads_ganhos = leads_df[leads_df['status_id'] == 142].copy()
+
+            # Limpar e converter 'valor'
+            leads_ganhos = leads_ganhos.dropna(subset=['valor'])
+            leads_ganhos['valor'] = leads_ganhos['valor'].astype(float)
+
+            # Calcular ticket médio por responsavel_id
+            ticket_medio_por_responsavel = (
+                leads_ganhos
+                .groupby('responsavel_id')['valor']
+                .mean()
+                .round(2)
+            )
+
+            brokers_df['ticket_medio'] = brokers_df['id'].map(ticket_medio_por_responsavel).fillna(0.0)
+
+            self.upsert_brokers(brokers_df)
+
+            logger.info(
+                f"Ticket médio atualizado para {len(brokers_df)} brokers."
+            )
 
         except Exception as e:
-            logger.error(f"Erro ao calcular ticket médio: {str(e)}")
+            logger.error(f"Erro ao calcular ticket médio e atualizar brokers: {str(e)}")
             return None
 
     def calculate_response_time(self, lead_id, created_at):
@@ -873,7 +900,9 @@ class SupabaseClient:
                     f"Encontradas {len(notes)} notas para o lead {lead_id}")
                 # Encontrar a primeira nota criada por um usuário do time (excluindo notas automáticas, se possível).
                 first_note = next(
-                    (note for note in notes if note.get('created_by')), None)
+                    (note for note in notes if note.get('created_by') and note.get('created_by') > 0),
+                    None
+                )
 
                 if first_note:
                     logger.info(f"Primeira nota encontrada: {first_note}")
@@ -977,7 +1006,7 @@ class SupabaseClient:
             leads_data = leads_df_clean.to_dict(orient="records")
 
             # Calculate ticket médio first
-            ticket_medio = self.calculate_ticket_medio(leads_df_clean)
+            self.calculate_ticket_medio(leads_df_clean)
 
             processed_leads = []
             for lead in leads_data:
@@ -1011,7 +1040,6 @@ class SupabaseClient:
                                   "Perdido" if lead.get("status_id") == 143
                                   else "Em progresso")
                 lead["tempo_medio"] = tempo_medio
-                lead["ticket_medio"] = ticket_medio
 
                 processed_leads.append(lead)
 

@@ -164,9 +164,7 @@ class SyncManager:
                 leads.at[idx, 'tempo_medio'] = tempo_medio
 
             # Calculate ticket_medio
-            ticket_medio = self.supabase.calculate_ticket_medio(leads)
-            # Apply ticket_medio to all leads
-            leads['ticket_medio'] = ticket_medio
+            self.supabase.calculate_ticket_medio(leads)
         try:
             if not company_id:
                 raise ValueError("company_id is required for sync_data")
@@ -204,41 +202,13 @@ class SyncManager:
                 if (now - last_reset).days >= 7:
                     self.reset_weekly_data(company_id)
 
-            # Controle de sincronização
-            last_sync_data = self.supabase.client.table("sync_control").select(
-                "*").eq("company_id", company_id).execute()
-            if last_sync_data.data:
-                try:
-                    last_sync = datetime.fromisoformat(
-                        str(last_sync_data.data[0].get('last_sync')))
-                    if (now - last_sync).total_seconds() < (sync_interval *
-                                                            60):
-                        logger.info(
-                            f"Sync not needed yet for company {company_id}")
-                        return
-                except (TypeError, ValueError):
-                    logger.warning("Invalid last_sync format. Continuing...")
-
             config_data = self.supabase.client.table("kommo_config").select(
                 "*").eq("company_id", company_id).execute().data
             if not config_data:
                 logger.error(
                     f"No configuration found for company {company_id}")
                 return
-
-            if config_data[0].get('last_sync'):
-                try:
-                    last_sync = datetime.fromisoformat(
-                        str(config_data[0]['last_sync']))
-                    if (now - last_sync).total_seconds() < (sync_interval *
-                                                            60):
-                        logger.info(
-                            f"Sync not needed yet for company {company_id}")
-                        return
-                except Exception:
-                    logger.warning(
-                        "Invalid last_sync in config. Proceeding with sync.")
-
+            
             # Carregar dados, se não fornecidos
             if brokers is None:
                 brokers = self.kommo_api.get_users()
