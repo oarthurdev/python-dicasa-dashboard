@@ -174,12 +174,36 @@ def stop_sync():
 def webhook():
     """Handle Kommo webhook requests"""
     try:
-        # Get JSON payload from request
-        payload = request.get_json()
+        # Handle different content types
+        payload = None
+        content_type = request.content_type
+        
+        logger.info(f"Received webhook with Content-Type: {content_type}")
+        
+        if content_type and 'application/json' in content_type:
+            payload = request.get_json()
+        elif content_type and 'application/x-www-form-urlencoded' in content_type:
+            # Try to get JSON from form data
+            form_data = request.form.to_dict()
+            if 'payload' in form_data:
+                import json
+                payload = json.loads(form_data['payload'])
+            else:
+                payload = form_data
+        else:
+            # Try to parse as JSON anyway (some webhooks don't set proper content-type)
+            try:
+                payload = request.get_json(force=True)
+            except Exception:
+                # If all else fails, try to get raw data and parse it
+                raw_data = request.get_data(as_text=True)
+                if raw_data:
+                    import json
+                    payload = json.loads(raw_data)
         
         if not payload:
-            logger.warning("Received empty webhook payload")
-            return jsonify({'status': 'error', 'message': 'Empty payload'}), 400
+            logger.warning(f"Could not parse webhook payload. Content-Type: {content_type}, Raw data: {request.get_data(as_text=True)[:200]}")
+            return jsonify({'status': 'error', 'message': 'Could not parse payload'}), 400
         
         # Identify webhook type (first key in payload)
         webhook_type = next(iter(payload.keys()))
