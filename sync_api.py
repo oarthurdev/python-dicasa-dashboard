@@ -182,86 +182,142 @@ def stop_sync():
 def webhook():
     """Handle Kommo webhook requests"""
     try:
+        # Get raw request data for detailed logging
+        raw_data = request.get_data(as_text=True)
+        content_type = request.content_type
+        headers = dict(request.headers)
+        
+        logger.info(f"=== WEBHOOK RECEIVED ===")
+        logger.info(f"Content-Type: {content_type}")
+        logger.info(f"Headers: {headers}")
+        logger.info(f"Raw data (first 500 chars): {raw_data[:500]}")
+        
         # Handle different content types
         payload = None
-        content_type = request.content_type
-        
-        logger.info(f"Received webhook with Content-Type: {content_type}")
         
         if content_type and 'application/json' in content_type:
             payload = request.get_json()
+            logger.info("Parsed as JSON from content-type")
         elif content_type and 'application/x-www-form-urlencoded' in content_type:
             # Try to get JSON from form data
             form_data = request.form.to_dict()
+            logger.info(f"Form data keys: {list(form_data.keys())}")
+            
             if 'payload' in form_data:
                 import json
                 payload = json.loads(form_data['payload'])
+                logger.info("Parsed JSON from 'payload' form field")
             else:
+                # Sometimes the entire payload is sent as form data
                 payload = form_data
+                logger.info("Using form data directly as payload")
         else:
             # Try to parse as JSON anyway (some webhooks don't set proper content-type)
             try:
-                payload = request.get_json(force=True)
-            except Exception:
-                # If all else fails, try to get raw data and parse it
-                raw_data = request.get_data(as_text=True)
-                if raw_data:
-                    import json
-                    payload = json.loads(raw_data)
+                import json
+                payload = json.loads(raw_data)
+                logger.info("Parsed as JSON from raw data")
+            except Exception as json_err:
+                logger.error(f"Failed to parse as JSON: {json_err}")
+                payload = None
         
         if not payload:
-            logger.warning(f"Could not parse webhook payload. Content-Type: {content_type}, Raw data: {request.get_data(as_text=True)[:200]}")
+            logger.error(f"Could not parse webhook payload from any method")
             return jsonify({'status': 'error', 'message': 'Could not parse payload'}), 400
         
-        # Identify webhook type (first key in payload)
-        webhook_type = next(iter(payload.keys()))
-        logger.info(f"Received webhook of type: {webhook_type}")
+        logger.info(f"Parsed payload structure: {type(payload)}")
+        logger.info(f"Payload keys: {list(payload.keys()) if isinstance(payload, dict) else 'Not a dict'}")
+        logger.info(f"Full payload: {payload}")
         
-        # Get the data from add, update, or delete
+        # Identify webhook type (first key in payload)
+        if not isinstance(payload, dict) or not payload:
+            logger.error("Payload is not a valid dictionary")
+            return jsonify({'status': 'error', 'message': 'Invalid payload format'}), 400
+            
+        webhook_type = next(iter(payload.keys()))
+        logger.info(f"Webhook type identified: {webhook_type}")
+        
+        # Handle different webhook formats
         webhook_data = payload[webhook_type]
+        logger.info(f"Webhook data type: {type(webhook_data)}")
+        logger.info(f"Webhook data content: {webhook_data}")
+        
         data_objects = []
         
-        if 'add' in webhook_data:
-            data_objects = webhook_data['add']
-        elif 'update' in webhook_data:
-            data_objects = webhook_data['update']
-        elif 'delete' in webhook_data:
-            data_objects = webhook_data['delete']
+        # Check for standard Kommo format (add/update/delete)
+        if isinstance(webhook_data, dict):
+            if 'add' in webhook_data:
+                data_objects = webhook_data['add']
+                logger.info(f"Found 'add' data with {len(data_objects) if isinstance(data_objects, list) else 'unknown'} objects")
+            elif 'update' in webhook_data:
+                data_objects = webhook_data['update']
+                logger.info(f"Found 'update' data with {len(data_objects) if isinstance(data_objects, list) else 'unknown'} objects")
+            elif 'delete' in webhook_data:
+                data_objects = webhook_data['delete']
+                logger.info(f"Found 'delete' data with {len(data_objects) if isinstance(data_objects, list) else 'unknown'} objects")
+            else:
+                # Some webhooks might send data directly
+                if isinstance(webhook_data, list):
+                    data_objects = webhook_data
+                    logger.info(f"Using webhook data directly as object list with {len(data_objects)} objects")
+                elif isinstance(webhook_data, dict):
+                    data_objects = [webhook_data]
+                    logger.info("Using webhook data directly as single object")
+        elif isinstance(webhook_data, list):
+            data_objects = webhook_data
+            logger.info(f"Webhook data is already a list with {len(data_objects)} objects")
         
         if not data_objects:
-            logger.warning("No data objects found in webhook payload")
-            return jsonify({'status': 'success', 'message': 'No data to process'})
+            logger.warning(f"No data objects found in webhook. Webhook type: {webhook_type}, Data: {webhook_data}")
+            # Still save the webhook for debugging purposes
+            webhook_record = {
+                'webhook_type': webhook_type,
+                'payload_id': None,
+                'raw_payload': payload
+            }
+            
+            try:
+                result = supabase.client.table("from_webhook").insert(webhook_record).execute()
+                logger.info("Empty webhook saved for debugging")
+            except Exception as db_err:
+                logger.error(f"Failed to save empty webhook: {db_err}")
+                
+            return jsonify({'status': 'success', 'message': 'No data to process, but webhook logged'})
         
         # Process the first object
-        first_object = data_objects[0]
+        first_object = data_objects[0] if isinstance(data_objects, list) else data_objects
+        logger.info(f"Processing first object: {first_object}")
         
         # Extract fields for from_webhook table
         webhook_record = {
             'webhook_type': webhook_type,
-            'payload_id': first_object.get('id'),
-            'chat_id': first_object.get('chat_id'),
-            'talk_id': first_object.get('talk_id'),
-            'contact_id': first_object.get('contact_id'),
-            'text': first_object.get('text'),
-            'created_at': first_object.get('created_at'),
-            'element_type': first_object.get('element_type'),
-            'entity_type': first_object.get('entity_type'),
-            'element_id': first_object.get('element_id'),
-            'entity_id': first_object.get('entity_id'),
-            'message_type': first_object.get('type'),
-            'origin': first_object.get('origin'),
+            'payload_id': first_object.get('id') if isinstance(first_object, dict) else None,
+            'chat_id': first_object.get('chat_id') if isinstance(first_object, dict) else None,
+            'talk_id': first_object.get('talk_id') if isinstance(first_object, dict) else None,
+            'contact_id': first_object.get('contact_id') if isinstance(first_object, dict) else None,
+            'text': first_object.get('text') if isinstance(first_object, dict) else None,
+            'created_at': first_object.get('created_at') if isinstance(first_object, dict) else None,
+            'element_type': first_object.get('element_type') if isinstance(first_object, dict) else None,
+            'entity_type': first_object.get('entity_type') if isinstance(first_object, dict) else None,
+            'element_id': first_object.get('element_id') if isinstance(first_object, dict) else None,
+            'entity_id': first_object.get('entity_id') if isinstance(first_object, dict) else None,
+            'message_type': first_object.get('type') if isinstance(first_object, dict) else None,
+            'origin': first_object.get('origin') if isinstance(first_object, dict) else None,
             'raw_payload': payload
         }
         
         # Extract author information if present
-        author = first_object.get('author', {})
-        if author:
-            webhook_record.update({
-                'author_id': author.get('id'),
-                'author_type': author.get('type'),
-                'author_name': author.get('name'),
-                'author_avatar_url': author.get('avatar_url')
-            })
+        if isinstance(first_object, dict):
+            author = first_object.get('author', {})
+            if author and isinstance(author, dict):
+                webhook_record.update({
+                    'author_id': author.get('id'),
+                    'author_type': author.get('type'),
+                    'author_name': author.get('name'),
+                    'author_avatar_url': author.get('avatar_url')
+                })
+        
+        logger.info(f"Prepared webhook record: {webhook_record}")
         
         # Save to database
         result = supabase.client.table("from_webhook").insert(webhook_record).execute()
@@ -270,11 +326,15 @@ def webhook():
             logger.error(f"Error saving webhook to database: {result.error}")
             return jsonify({'status': 'error', 'message': 'Database error'}), 500
         
-        logger.info(f"Webhook {webhook_type} saved successfully with ID: {webhook_record['payload_id']}")
+        logger.info(f"Webhook {webhook_type} saved successfully")
+        logger.info(f"=== WEBHOOK PROCESSING COMPLETE ===")
         return jsonify({'status': 'success'})
         
     except Exception as e:
         logger.error(f"Error processing webhook: {str(e)}")
+        logger.error(f"Exception type: {type(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
