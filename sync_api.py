@@ -199,16 +199,17 @@ def webhook():
             payload = request.get_json()
             logger.info("Parsed as JSON from content-type")
         elif content_type and 'application/x-www-form-urlencoded' in content_type:
-            # Try to get JSON from form data
+            # Get form data
             form_data = request.form.to_dict()
             logger.info(f"Form data keys: {list(form_data.keys())}")
+            logger.info(f"Form data sample: {dict(list(form_data.items())[:5])}")
             
             if 'payload' in form_data:
                 import json
                 payload = json.loads(form_data['payload'])
                 logger.info("Parsed JSON from 'payload' form field")
             else:
-                # Sometimes the entire payload is sent as form data
+                # Kommo sends data in flat format, convert to nested structure
                 payload = form_data
                 logger.info("Using form data directly as payload")
         else:
@@ -226,35 +227,89 @@ def webhook():
             return jsonify({'status': 'error', 'message': 'Could not parse payload'}), 400
         
         logger.info(f"Parsed payload structure: {type(payload)}")
-        logger.info(f"Payload keys: {list(payload.keys()) if isinstance(payload, dict) else 'Not a dict'}")
-        logger.info(f"Full payload: {payload}")
+        logger.info(f"Payload keys (first 10): {list(payload.keys())[:10] if isinstance(payload, dict) else 'Not a dict'}")
         
-        # Identify webhook type (first key in payload)
-        if not isinstance(payload, dict) or not payload:
-            logger.error("Payload is not a valid dictionary")
-            return jsonify({'status': 'error', 'message': 'Invalid payload format'}), 400
+        # Detect webhook type and format
+        webhook_type = None
+        webhook_data = {}
+        
+        # Check if this is Kommo flat format (form data with keys like "account[subdomain]", "message[add][0][id]")
+        if isinstance(payload, dict) and any('[' in key and ']' in key for key in payload.keys()):
+            logger.info("Detected Kommo flat format")
             
-        webhook_type = next(iter(payload.keys()))
-        logger.info(f"Webhook type identified: {webhook_type}")
+            # Parse flat format keys to extract webhook type and data
+            for key, value in payload.items():
+                if '[' not in key:
+                    continue
+                    
+                # Extract the main type (account, message, leads, etc.)
+                main_type = key.split('[')[0]
+                if not webhook_type:
+                    webhook_type = main_type
+                
+                # Skip account-level keys for now, focus on the actual data
+                if main_type == 'account':
+                    continue
+                
+                # Parse nested structure from flat keys
+                # Example: "message[add][0][id]" -> message.add[0].id
+                parts = key.replace(main_type, '').strip('[]').split('][')
+                if len(parts) >= 3:  # [add][0][field]
+                    action = parts[0]  # add, update, delete
+                    index = int(parts[1]) if parts[1].isdigit() else 0
+                    field = parts[2]
+                    
+                    # Handle nested fields like author[id]
+                    if len(parts) > 3:
+                        nested_field = parts[3]
+                        field = f"{field}.{nested_field}"
+                    
+                    # Initialize structure
+                    if action not in webhook_data:
+                        webhook_data[action] = []
+                    
+                    # Ensure we have enough objects in the array
+                    while len(webhook_data[action]) <= index:
+                        webhook_data[action].append({})
+                    
+                    # Set the field value, handling nested fields
+                    if '.' in field:
+                        main_field, sub_field = field.split('.', 1)
+                        if main_field not in webhook_data[action][index]:
+                            webhook_data[action][index][main_field] = {}
+                        webhook_data[action][index][main_field][sub_field] = value
+                    else:
+                        webhook_data[action][index][field] = value
+            
+            logger.info(f"Parsed webhook type: {webhook_type}")
+            logger.info(f"Parsed webhook data structure: {list(webhook_data.keys())}")
+            
+        else:
+            # Standard format
+            webhook_type = next(iter(payload.keys()))
+            webhook_data = payload[webhook_type]
+            logger.info(f"Standard format - Webhook type: {webhook_type}")
         
-        # Handle different webhook formats
-        webhook_data = payload[webhook_type]
-        logger.info(f"Webhook data type: {type(webhook_data)}")
-        logger.info(f"Webhook data content: {webhook_data}")
+        if not webhook_type:
+            logger.error("Could not determine webhook type")
+            return jsonify({'status': 'error', 'message': 'Could not determine webhook type'}), 400
         
+        logger.info(f"Final webhook type: {webhook_type}")
+        logger.info(f"Final webhook data: {webhook_data}")
+        
+        # Extract data objects
         data_objects = []
         
-        # Check for standard Kommo format (add/update/delete)
         if isinstance(webhook_data, dict):
             if 'add' in webhook_data:
                 data_objects = webhook_data['add']
-                logger.info(f"Found 'add' data with {len(data_objects) if isinstance(data_objects, list) else 'unknown'} objects")
+                logger.info(f"Found 'add' data with {len(data_objects)} objects")
             elif 'update' in webhook_data:
                 data_objects = webhook_data['update']
-                logger.info(f"Found 'update' data with {len(data_objects) if isinstance(data_objects, list) else 'unknown'} objects")
+                logger.info(f"Found 'update' data with {len(data_objects)} objects")
             elif 'delete' in webhook_data:
                 data_objects = webhook_data['delete']
-                logger.info(f"Found 'delete' data with {len(data_objects) if isinstance(data_objects, list) else 'unknown'} objects")
+                logger.info(f"Found 'delete' data with {len(data_objects)} objects")
             else:
                 # Some webhooks might send data directly
                 if isinstance(webhook_data, list):
@@ -268,7 +323,7 @@ def webhook():
             logger.info(f"Webhook data is already a list with {len(data_objects)} objects")
         
         if not data_objects:
-            logger.warning(f"No data objects found in webhook. Webhook type: {webhook_type}, Data: {webhook_data}")
+            logger.warning(f"No data objects found in webhook. Saving raw webhook for debugging.")
             # Still save the webhook for debugging purposes
             webhook_record = {
                 'webhook_type': webhook_type,
@@ -317,7 +372,10 @@ def webhook():
                     'author_avatar_url': author.get('avatar_url')
                 })
         
-        logger.info(f"Prepared webhook record: {webhook_record}")
+        logger.info(f"Prepared webhook record for database:")
+        for key, value in webhook_record.items():
+            if key != 'raw_payload':  # Don't log the full payload again
+                logger.info(f"  {key}: {value}")
         
         # Save to database
         result = supabase.client.table("from_webhook").insert(webhook_record).execute()
