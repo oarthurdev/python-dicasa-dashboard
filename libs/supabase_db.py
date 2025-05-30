@@ -655,9 +655,131 @@ class SupabaseClient:
                 author_avatar_url TEXT,
                 origin TEXT,
                 raw_payload JSONB,
+                broker_id TEXT,
+                lead_id TEXT,
                 inserted_at TIMESTAMP DEFAULT NOW()
             );
             """)
+
+    def link_webhook_message_to_broker(self, webhook_message):
+        """
+        Vincula uma mensagem de webhook ao broker responsável
+        
+        Args:
+            webhook_message (dict): Dados da mensagem do webhook
+            
+        Returns:
+            dict: Dados atualizados com broker_id e lead_id
+        """
+        try:
+            broker_id = None
+            lead_id = None
+            
+            # 1. Se a mensagem tem author_id e é do tipo "outgoing", é do broker
+            if (webhook_message.get('author_id') and 
+                webhook_message.get('message_type') == 'outgoing'):
+                
+                # Verificar se o author_id é um broker válido
+                broker_result = self.client.table("brokers").select("id, nome").eq(
+                    "id", webhook_message['author_id']
+                ).execute()
+                
+                if broker_result.data:
+                    broker_id = webhook_message['author_id']
+                    logger.info(f"Mensagem vinculada ao broker {broker_id} (mensagem enviada)")
+            
+            # 2. Para mensagens recebidas, buscar pelo lead responsável
+            elif webhook_message.get('entity_id') and webhook_message.get('entity_type') == 'lead':
+                lead_result = self.client.table("leads").select(
+                    "id, responsavel_id"
+                ).eq("id", webhook_message['entity_id']).execute()
+                
+                if lead_result.data:
+                    lead_data = lead_result.data[0]
+                    lead_id = lead_data['id']
+                    broker_id = lead_data['responsavel_id']
+                    logger.info(f"Mensagem vinculada ao broker {broker_id} via lead {lead_id}")
+            
+            # 3. Se ainda não encontrou, tentar pelo contact_id
+            elif webhook_message.get('contact_id'):
+                # Buscar leads que tenham esse contact como contato principal
+                contact_leads = self.client.table("leads").select(
+                    "id, responsavel_id, contato_nome"
+                ).ilike("contato_nome", f"%{webhook_message.get('author_name', '')}%").execute()
+                
+                if contact_leads.data:
+                    # Pegar o lead mais recente deste contato
+                    latest_lead = contact_leads.data[0]
+                    lead_id = latest_lead['id']
+                    broker_id = latest_lead['responsavel_id']
+                    logger.info(f"Mensagem vinculada ao broker {broker_id} via contact matching")
+            
+            # Atualizar o registro do webhook com os IDs encontrados
+            if broker_id or lead_id:
+                update_data = {}
+                if broker_id:
+                    update_data['broker_id'] = broker_id
+                if lead_id:
+                    update_data['lead_id'] = lead_id
+                
+                # Atualizar na base de dados se temos o ID do webhook
+                if webhook_message.get('id'):
+                    self.client.table("from_webhook").update(update_data).eq(
+                        "payload_id", webhook_message.get('payload_id')
+                    ).execute()
+                
+                webhook_message.update(update_data)
+                logger.info(f"Webhook atualizado com broker_id: {broker_id}, lead_id: {lead_id}")
+            
+            return webhook_message
+            
+        except Exception as e:
+            logger.error(f"Erro ao vincular mensagem ao broker: {str(e)}")
+            return webhook_message
+
+    def get_broker_messages(self, broker_id, limit=50):
+        """
+        Busca mensagens de um broker específico
+        
+        Args:
+            broker_id (str): ID do broker
+            limit (int): Limite de mensagens
+            
+        Returns:
+            list: Lista de mensagens do broker
+        """
+        try:
+            result = self.client.table("from_webhook").select("*").eq(
+                "broker_id", broker_id
+            ).order("inserted_at", desc=True).limit(limit).execute()
+            
+            return result.data if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Erro ao buscar mensagens do broker {broker_id}: {str(e)}")
+            return []
+
+    def get_lead_messages(self, lead_id, limit=50):
+        """
+        Busca mensagens de um lead específico
+        
+        Args:
+            lead_id (str): ID do lead
+            limit (int): Limite de mensagens
+            
+        Returns:
+            list: Lista de mensagens do lead
+        """
+        try:
+            result = self.client.table("from_webhook").select("*").eq(
+                "lead_id", lead_id
+            ).order("inserted_at", desc=True).limit(limit).execute()
+            
+            return result.data if result.data else []
+            
+        except Exception as e:
+            logger.error(f"Erro ao buscar mensagens do lead {lead_id}: {str(e)}")
+            return []
 
     def initialize_broker_points(self, company_id=None):
         """

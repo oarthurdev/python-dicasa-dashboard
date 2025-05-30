@@ -377,14 +377,21 @@ def webhook():
             if key != 'raw_payload':  # Don't log the full payload again
                 logger.info(f"  {key}: {value}")
         
+        # Link message to broker before saving
+        linked_record = supabase.link_webhook_message_to_broker(webhook_record)
+        
         # Save to database
-        result = supabase.client.table("from_webhook").insert(webhook_record).execute()
+        result = supabase.client.table("from_webhook").insert(linked_record).execute()
         
         if hasattr(result, "error") and result.error:
             logger.error(f"Error saving webhook to database: {result.error}")
             return jsonify({'status': 'error', 'message': 'Database error'}), 500
         
         logger.info(f"Webhook {webhook_type} saved successfully")
+        if linked_record.get('broker_id'):
+            logger.info(f"Message linked to broker: {linked_record['broker_id']}")
+        if linked_record.get('lead_id'):
+            logger.info(f"Message linked to lead: {linked_record['lead_id']}")
         logger.info(f"=== WEBHOOK PROCESSING COMPLETE ===")
         return jsonify({'status': 'success'})
         
