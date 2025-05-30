@@ -143,6 +143,139 @@ class SyncManager:
             logger.error(f"Error resetting weekly data: {str(e)}")
             raise
 
+    def sync_data_incremental(self,
+                              brokers=None,
+                              leads=None,
+                              activities=None,
+                              company_id=None):
+        """
+        Synchronize only changed data with hash comparison.
+        Returns dict indicating which data types had changes.
+        """
+        try:
+            if not company_id:
+                raise ValueError("company_id is required for incremental sync")
+
+            changes_detected = {
+                'brokers': False,
+                'leads': False,
+                'activities': False
+            }
+
+            # Processar Brokers
+            if isinstance(brokers, pd.DataFrame) and not brokers.empty:
+                existing_brokers = self._get_existing_records('brokers')
+                changes_found = False
+                
+                for i in range(0, len(brokers), self.batch_size):
+                    batch = brokers.iloc[i:i + self.batch_size].to_dict('records')
+                    batch_changes = self._process_batch_incremental(batch, 'brokers', existing_brokers)
+                    if batch_changes:
+                        changes_found = True
+                
+                changes_detected['brokers'] = changes_found
+                if changes_found:
+                    logger.info(f"Changes detected in brokers data")
+                    self.supabase.initialize_broker_points(company_id)
+
+            # Processar Leads
+            if isinstance(leads, pd.DataFrame) and not leads.empty:
+                existing_leads = self._get_existing_records('leads')
+                changes_found = False
+                
+                for i in range(0, len(leads), self.batch_size):
+                    batch = leads.iloc[i:i + self.batch_size].to_dict('records')
+                    batch_changes = self._process_batch_incremental(batch, 'leads', existing_leads)
+                    if batch_changes:
+                        changes_found = True
+                
+                changes_detected['leads'] = changes_found
+                if changes_found:
+                    logger.info(f"Changes detected in leads data")
+
+            # Processar Activities
+            if isinstance(activities, pd.DataFrame) and not activities.empty:
+                # Filtrar por IDs válidos
+                broker_ids = self.supabase.client.table("brokers").select("id").eq("company_id", company_id).execute()
+                valid_broker_ids = {item['id'] for item in broker_ids.data} if broker_ids.data else set()
+
+                lead_ids = self.supabase.client.table("leads").select("id").eq("company_id", company_id).execute()
+                valid_lead_ids = {item['id'] for item in lead_ids.data} if lead_ids.data else set()
+
+                filtered_activities = activities[(
+                    (activities['lead_id'].isin(valid_lead_ids) | activities['lead_id'].isna()) &
+                    (activities['user_id'].isin(valid_broker_ids) | activities['user_id'].isna())
+                )].copy()
+
+                if not filtered_activities.empty:
+                    existing_activities = self._get_existing_records('activities')
+                    changes_found = False
+                    
+                    for i in range(0, len(filtered_activities), self.batch_size):
+                        batch = filtered_activities.iloc[i:i + self.batch_size].to_dict('records')
+                        batch_changes = self._process_batch_incremental(batch, 'activities', existing_activities)
+                        if batch_changes:
+                            changes_found = True
+                    
+                    changes_detected['activities'] = changes_found
+                    if changes_found:
+                        logger.info(f"Changes detected in activities data")
+
+            # Atualizar timestamps apenas se houve mudanças
+            if any(changes_detected.values()):
+                now = datetime.now()
+                sync_interval = self.config.get('sync_interval', 60) if self.config else 60
+                next_sync = now + timedelta(minutes=sync_interval)
+                
+                self.supabase.client.table("kommo_config").update({
+                    "last_sync": now.isoformat(),
+                    "next_sync": next_sync.isoformat()
+                }).eq("company_id", company_id).execute()
+
+            return changes_detected
+
+        except Exception as e:
+            logger.error(f"Incremental sync failed: {e}", exc_info=True)
+            raise
+
+    def _process_batch_incremental(self, records: List[Dict], table: str, existing_records: Dict) -> bool:
+        """Process batch with change detection. Returns True if changes were found."""
+        try:
+            to_upsert = []
+            changes_found = False
+
+            for record in records:
+                processed = self._prepare_record(record)
+                record_id = processed.get('id')
+                new_hash = self._generate_hash(processed)
+
+                # Verificar se o registro mudou
+                if record_id in existing_records:
+                    if existing_records[record_id]['hash'] != new_hash:
+                        processed['updated_at'] = datetime.now().isoformat()
+                        to_upsert.append(processed)
+                        changes_found = True
+                        logger.debug(f"Change detected in {table} record ID: {record_id}")
+                else:
+                    # Novo registro
+                    processed['updated_at'] = datetime.now().isoformat()
+                    to_upsert.append(processed)
+                    changes_found = True
+                    logger.debug(f"New record in {table} ID: {record_id}")
+
+            if to_upsert:
+                result = self.supabase.client.table(table).upsert(to_upsert).execute()
+                if hasattr(result, "error") and result.error:
+                    raise Exception(f"Supabase error: {result.error}")
+
+                logger.info(f"Updated {len(to_upsert)} changed records in {table}")
+
+            return changes_found
+
+        except Exception as e:
+            logger.error(f"Error processing incremental batch for {table}: {str(e)}")
+            raise
+
     def sync_data(self,
                   brokers=None,
                   leads=None,
@@ -293,21 +426,31 @@ class SyncManager:
             raise
 
     def needs_sync(self, resource: str) -> bool:
-        # Verifica se já existem dados no banco
-        result = self.supabase.client.table(resource).select("id").limit(
-            1).execute()
-        has_data = bool(result.data)
-
-        #There is no last_sync attribute in edited code, so this check is removed.
-        # last = self.last_sync.get(resource)
-        # if not last:
-        #     return True
-
-        # Só aplica delay se já existirem dados
-        # if has_data:
-        #     return (datetime.now() -
-        #             last) > timedelta(seconds=self.sync_interval)
-        return True  #Always sync if there's data.
+        """Verifica se sincronização é necessária baseada em timestamp"""
+        try:
+            # Verifica último sync na configuração
+            config_result = self.supabase.client.table("kommo_config").select(
+                "last_sync, sync_interval"
+            ).eq("active", True).execute()
+            
+            if not config_result.data:
+                return True  # Sem configuração, force sync
+                
+            config = config_result.data[0]
+            last_sync_str = config.get('last_sync')
+            sync_interval = config.get('sync_interval', 30)  # Default 30 min
+            
+            if not last_sync_str:
+                return True  # Nunca sincronizou
+                
+            last_sync = datetime.fromisoformat(last_sync_str)
+            time_since_sync = (datetime.now() - last_sync).total_seconds() / 60  # em minutos
+            
+            return time_since_sync >= sync_interval
+            
+        except Exception as e:
+            logger.error(f"Error checking sync necessity: {e}")
+            return True  # Em caso de erro, force sync
 
     def update_sync_time(self, resource: str):
         #This method is not needed anymore because the sync time is updated directly in sync_data method.
