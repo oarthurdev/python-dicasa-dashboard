@@ -622,6 +622,43 @@ class SupabaseClient:
             logger.error(f"Erro ao fazer upsert em broker_points: {e}")
             raise
 
+    def ensure_webhook_table(self):
+        """
+        Ensure the from_webhook table exists with proper structure
+        This is a safety check - the table should be created in Supabase dashboard
+        """
+        try:
+            # Test if table exists by trying to select from it
+            result = self.client.table("from_webhook").select("*").limit(1).execute()
+            logger.info("from_webhook table exists and is accessible")
+        except Exception as e:
+            logger.warning(f"from_webhook table may not exist or is not accessible: {str(e)}")
+            logger.info("Please ensure the from_webhook table is created in Supabase with the following structure:")
+            logger.info("""
+            CREATE TABLE from_webhook (
+                id SERIAL PRIMARY KEY,
+                webhook_type TEXT,
+                payload_id TEXT,
+                chat_id TEXT,
+                talk_id TEXT,
+                contact_id TEXT,
+                text TEXT,
+                created_at TEXT,
+                element_type TEXT,
+                entity_type TEXT,
+                element_id TEXT,
+                entity_id TEXT,
+                message_type TEXT,
+                author_id TEXT,
+                author_type TEXT,
+                author_name TEXT,
+                author_avatar_url TEXT,
+                origin TEXT,
+                raw_payload JSONB,
+                inserted_at TIMESTAMP DEFAULT NOW()
+            );
+            """)
+
     def initialize_broker_points(self, company_id=None):
         """
         Cria registros na tabela broker_points para todos os corretores cadastrados,

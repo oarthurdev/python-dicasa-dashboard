@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 import threading
 import logging
 import time
@@ -178,7 +178,86 @@ def stop_sync():
     return jsonify({'status': 'not_implemented', 'message': 'Stop via system process control'})
 
 
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Handle Kommo webhook requests"""
+    try:
+        # Get JSON payload from request
+        payload = request.get_json()
+        
+        if not payload:
+            logger.warning("Received empty webhook payload")
+            return jsonify({'status': 'error', 'message': 'Empty payload'}), 400
+        
+        # Identify webhook type (first key in payload)
+        webhook_type = next(iter(payload.keys()))
+        logger.info(f"Received webhook of type: {webhook_type}")
+        
+        # Get the data from add, update, or delete
+        webhook_data = payload[webhook_type]
+        data_objects = []
+        
+        if 'add' in webhook_data:
+            data_objects = webhook_data['add']
+        elif 'update' in webhook_data:
+            data_objects = webhook_data['update']
+        elif 'delete' in webhook_data:
+            data_objects = webhook_data['delete']
+        
+        if not data_objects:
+            logger.warning("No data objects found in webhook payload")
+            return jsonify({'status': 'success', 'message': 'No data to process'})
+        
+        # Process the first object
+        first_object = data_objects[0]
+        
+        # Extract fields for from_webhook table
+        webhook_record = {
+            'webhook_type': webhook_type,
+            'payload_id': first_object.get('id'),
+            'chat_id': first_object.get('chat_id'),
+            'talk_id': first_object.get('talk_id'),
+            'contact_id': first_object.get('contact_id'),
+            'text': first_object.get('text'),
+            'created_at': first_object.get('created_at'),
+            'element_type': first_object.get('element_type'),
+            'entity_type': first_object.get('entity_type'),
+            'element_id': first_object.get('element_id'),
+            'entity_id': first_object.get('entity_id'),
+            'message_type': first_object.get('type'),
+            'origin': first_object.get('origin'),
+            'raw_payload': payload
+        }
+        
+        # Extract author information if present
+        author = first_object.get('author', {})
+        if author:
+            webhook_record.update({
+                'author_id': author.get('id'),
+                'author_type': author.get('type'),
+                'author_name': author.get('name'),
+                'author_avatar_url': author.get('avatar_url')
+            })
+        
+        # Save to database
+        result = supabase.client.table("from_webhook").insert(webhook_record).execute()
+        
+        if hasattr(result, "error") and result.error:
+            logger.error(f"Error saving webhook to database: {result.error}")
+            return jsonify({'status': 'error', 'message': 'Database error'}), 500
+        
+        logger.info(f"Webhook {webhook_type} saved successfully with ID: {webhook_record['payload_id']}")
+        return jsonify({'status': 'success'})
+        
+    except Exception as e:
+        logger.error(f"Error processing webhook: {str(e)}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 if __name__ == '__main__':
+    # Ensure webhook table exists
+    supabase.ensure_webhook_table()
+    
     sync_thread = threading.Thread(target=sync_cycle, daemon=True)
     sync_thread.start()
     app.run(host='0.0.0.0', port=5002)
