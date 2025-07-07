@@ -93,14 +93,23 @@ class SyncManager:
             logger.error(f"Error processing batch for {table}: {str(e)}")
             raise
 
-    def get_week_dates(self):
-        """Get start and end dates for current week"""
+    def get_month_dates(self):
+        """Get start and end dates for previous month"""
         today = datetime.now()
-        week_start = today - timedelta(days=7)
-        return week_start, today
+        
+        # Primeiro dia do mês atual
+        first_day_current_month = today.replace(day=1)
+        
+        # Último dia do mês passado
+        last_day_previous_month = first_day_current_month - timedelta(days=1)
+        
+        # Primeiro dia do mês passado
+        first_day_previous_month = last_day_previous_month.replace(day=1)
+        
+        return first_day_previous_month, last_day_previous_month
 
-    def reset_weekly_data(self, company_id):
-        """Reset weekly data and store in logs"""
+    def reset_monthly_data(self, company_id):
+        """Reset monthly data and store in logs"""
         try:
             # Get current data before reset
             points_result = self.supabase.client.table("broker_points").select(
@@ -112,14 +121,14 @@ class SyncManager:
                 record.get('pontos', 0) for record in points_result.data)
             total_leads = len(leads_result.data)
 
-            week_start, week_end = self.get_week_dates()
+            month_start, month_end = self.get_month_dates()
 
-            # Store in weekly_logs
-            self.supabase.client.table("weekly_logs").insert({
-                "week_start":
-                week_start.isoformat(),
-                "week_end":
-                week_end.isoformat(),
+            # Store in monthly_logs
+            self.supabase.client.table("monthly_logs").insert({
+                "month_start":
+                month_start.isoformat(),
+                "month_end":
+                month_end.isoformat(),
                 "company_id":
                 company_id,
                 "total_leads":
@@ -137,10 +146,10 @@ class SyncManager:
                     "company_id", company_id).execute()
 
             logger.info(
-                f"Weekly data reset completed for company {company_id}")
+                f"Monthly data reset completed for company {company_id}")
 
         except Exception as e:
-            logger.error(f"Error resetting weekly data: {str(e)}")
+            logger.error(f"Error resetting monthly data: {str(e)}")
             raise
 
     def sync_data_incremental(self,
@@ -303,7 +312,7 @@ class SyncManager:
                 raise ValueError("company_id is required for sync_data")
 
             now = datetime.now()
-            week_start, week_end = self.get_week_dates()
+            month_start, month_end = self.get_month_dates()
 
             # Verifica se api_config está inicializada
             if self.kommo_api and getattr(self.kommo_api, 'api_config',
@@ -311,7 +320,7 @@ class SyncManager:
                 self.kommo_api.api_config = {}
 
             if self.kommo_api:
-                self.kommo_api.set_date_range(week_start, week_end)
+                self.kommo_api.set_date_range(month_start, month_end)
 
             # Obter configuração da empresa, se necessário
             if not self.config:
@@ -324,16 +333,16 @@ class SyncManager:
 
             sync_interval = self.config.get('sync_interval', 60)
 
-            # Reset semanal
-            weekly_logs = self.supabase.client.table("weekly_logs").select(
+            # Reset mensal
+            monthly_logs = self.supabase.client.table("monthly_logs").select(
                 "*").eq("company_id",
                         company_id).order("created_at",
                                           desc=True).limit(1).execute()
-            if weekly_logs.data:
+            if monthly_logs.data:
                 last_reset = datetime.fromisoformat(
-                    str(weekly_logs.data[0].get('created_at')))
-                if (now - last_reset).days >= 7:
-                    self.reset_weekly_data(company_id)
+                    str(monthly_logs.data[0].get('created_at')))
+                if (now - last_reset).days >= 30:
+                    self.reset_monthly_data(company_id)
 
             config_data = self.supabase.client.table("kommo_config").select(
                 "*").eq("company_id", company_id).execute().data

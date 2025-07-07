@@ -166,7 +166,7 @@ class KommoAPI:
             active_only (bool): If True, only return active users
         """
         try:
-            logger.info("Retrieving users from Kommo CRM")
+            logger.info("Retrieving users from Kommo CRM (previous month data)")
 
             users_data = []
             page = 1
@@ -221,38 +221,26 @@ class KommoAPI:
             raise
 
     def _get_date_filters(self):
-        """Obtém os filtros de data da configuração"""
+        """Obtém os filtros de data da configuração - sempre usa mês passado"""
         try:
-            # Load config from instance variables with fallback to None
-            start_date = self.api_config.get(
-                'sync_start_date') if self.api_config else None
-            end_date = self.api_config.get(
-                'sync_end_date') if self.api_config else None
-
-            # If both dates are None, use 1 week retroactive
-            if start_date is None and end_date is None:
-                end_ts = int(datetime.now().timestamp())
-                start_ts = int(
-                    (datetime.now() - timedelta(days=7)).timestamp())
-                return start_ts, end_ts
-
-            # Handle numeric timestamps or string dates
-            if isinstance(start_date, (int, float)):
-                start_ts = int(start_date)
-            else:
-                start_ts = int(
-                    datetime.strptime(
-                        str(start_date),
-                        "%Y-%m-%d").timestamp()) if start_date else None
-
-            if isinstance(end_date, (int, float)):
-                end_ts = int(end_date)
-            else:
-                end_ts = int(
-                    datetime.strptime(
-                        str(end_date),
-                        "%Y-%m-%d").timestamp()) if end_date else None
-
+            # Calcular primeiro e último dia do mês passado
+            today = datetime.now()
+            
+            # Primeiro dia do mês atual
+            first_day_current_month = today.replace(day=1)
+            
+            # Último dia do mês passado
+            last_day_previous_month = first_day_current_month - timedelta(days=1)
+            
+            # Primeiro dia do mês passado
+            first_day_previous_month = last_day_previous_month.replace(day=1)
+            
+            # Converter para timestamps
+            start_ts = int(first_day_previous_month.timestamp())
+            end_ts = int(last_day_previous_month.replace(hour=23, minute=59, second=59).timestamp())
+            
+            logger.info(f"Filtrando dados do mês passado: {first_day_previous_month.strftime('%Y-%m-%d')} até {last_day_previous_month.strftime('%Y-%m-%d')}")
+            
             return start_ts, end_ts
         except Exception as e:
             logger.error(f"Erro ao obter filtros de data: {str(e)}")
@@ -297,7 +285,7 @@ class KommoAPI:
             logger.info("Etapas carregadas com sucesso")
 
             logger.info(
-                "Retrieving leads from Kommo CRM (pipeline_id = 8865067)")
+                "Retrieving leads from Kommo CRM (previous month data)")
 
             filtered_leads = []
             page = 1
@@ -437,7 +425,7 @@ class KommoAPI:
             pd.DataFrame: Processed activities data
         """
         try:
-            logger.info("Retrieving activities from Kommo CRM")
+            logger.info("Retrieving activities from Kommo CRM (previous month data)")
 
             start_ts, end_ts = self._get_date_filters()
             # Limitando page_size conforme documentação Kommo (máximo 250)

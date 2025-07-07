@@ -20,7 +20,7 @@ threads_status = {}
 supabase = SupabaseClient()
 COMPANY_LIST = []  # Atualizada no início e em cada ciclo
 
-SYNC_INTERVAL_MINUTES = 30
+SYNC_INTERVAL_MINUTES = 60  # Aumentado para 60 minutos devido ao filtro mensal
 
 
 def load_companies():
@@ -47,7 +47,7 @@ def sync_data(company_id):
             return
 
         subdomain = company_result.data[0]['subdomain']
-        logger.info(f"Starting incremental sync for company {company_id} (subdomain: {subdomain})")
+        logger.info(f"Starting incremental sync for company {company_id} (subdomain: {subdomain}) - filtering previous month data")
 
         threads_status[company_id] = {
             'status': 'running',
@@ -130,7 +130,7 @@ def sync_cycle():
             time.sleep(60)
             continue
 
-        logger.info("Starting sync cycle for all companies")
+        logger.info("Starting sync cycle for all companies - filtering previous month data")
         threads = []
 
         for company in COMPANY_LIST:
@@ -142,7 +142,7 @@ def sync_cycle():
         for t in threads:
             t.join()
 
-        logger.info(f"All companies have completed sync. Sleeping {SYNC_INTERVAL_MINUTES} minutes...")
+        logger.info(f"All companies have completed sync (previous month data). Sleeping {SYNC_INTERVAL_MINUTES} minutes...")
         time.sleep(SYNC_INTERVAL_MINUTES * 60)
 
 
