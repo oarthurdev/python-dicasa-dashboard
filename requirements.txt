@@ -11,3 +11,5 @@ flask>=2.3.3
 gotrue
 fastapi
 uvicorn
+pytz
+python-dateutil

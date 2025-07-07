@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import logging
+import pytz
+from dateutil import parser
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,6 +15,27 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
+
+def parse_datetime_sp(value):
+    if not value:
+        return None
+
+    if isinstance(value, (int, float)):
+        dt = datetime.fromtimestamp(value, tz=sao_paulo_tz)
+    elif isinstance(value, str):
+        dt = parser.parse(value)
+        if dt.tzinfo is None:
+            dt = sao_paulo_tz.localize(dt)
+        else:
+            dt = dt.astimezone(sao_paulo_tz)
+    elif isinstance(value, datetime):
+        dt = value if value.tzinfo else sao_paulo_tz.localize(value)
+        dt = dt.astimezone(sao_paulo_tz)
+    else:
+        return None
+
+    return dt
 
 class KommoAPI:
 
@@ -181,12 +204,15 @@ class KommoAPI:
                     user.get("email"),
                     "foto_url":
                     user.get("_links", {}).get("avatar", {}).get("href"),
-                    "criado_em":
-                    user.get("created_at"),
+                    "criado_em": (
+                        parse_datetime_sp(user.get("created_at"))
+                        if user.get("created_at") else None
+                    ),
                     "cargo":
                     user.get("rights", {}).get("is_admin") and "Administrador"
                     or "Corretor"
                 })
+
 
             return pd.DataFrame(processed_users)
 
@@ -364,10 +390,15 @@ class KommoAPI:
                     lead.get("pipeline_id"),
                     "etapa":
                     etapa,
-                    "criado_em":
-                    created_at,
-                    "atualizado_em":
-                    updated_at,
+                    "criado_em": (
+                        # tenta converter string para datetime
+                        parse_datetime_sp(lead.get("created_at"))
+                        if lead.get("created_at") else None
+                    ),
+                    "atualizado_em": (
+                        parse_datetime_sp(lead.get("updated_at"))
+                        if lead.get("updated_at") else None
+                    ),
                     "fechado":
                     lead.get("closed_at") is not None,
                     "status":
@@ -537,9 +568,10 @@ class KommoAPI:
                 activity.get("value_before"),
                 "valor_novo":
                 activity.get("value_after"),
-                "criado_em":
-                datetime.fromtimestamp(activity.get("created_at", 0))
-                if activity.get("created_at") else None
+                "criado_em": (
+                    parse_datetime_sp(activity.get("created_at"))
+                    if activity.get("created_at") else None
+                ),
             } for activity in activities_data]
 
             # Criar DataFrame e processar datas de uma vez
