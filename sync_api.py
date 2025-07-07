@@ -178,9 +178,61 @@ def stop_sync():
     return jsonify({'status': 'not_implemented', 'message': 'Stop via system process control'})
 
 
+def get_last_month_dates():
+    """Get start and end dates for previous month"""
+    from datetime import datetime, timedelta
+    
+    today = datetime.now()
+    
+    # Primeiro dia do mês atual
+    first_day_current_month = today.replace(day=1)
+    
+    # Último dia do mês passado
+    last_day_previous_month = first_day_current_month - timedelta(days=1)
+    
+    # Primeiro dia do mês passado
+    first_day_previous_month = last_day_previous_month.replace(day=1)
+    
+    return first_day_previous_month, last_day_previous_month
+
+
+def is_message_from_last_month(webhook_data):
+    """Check if message is from previous month based on created_at timestamp"""
+    try:
+        created_at = webhook_data.get('created_at')
+        if not created_at:
+            return False
+        
+        # Convert timestamp to datetime
+        if isinstance(created_at, (int, float)):
+            message_date = datetime.fromtimestamp(created_at)
+        elif isinstance(created_at, str) and created_at.isdigit():
+            message_date = datetime.fromtimestamp(int(created_at))
+        else:
+            logger.warning(f"Could not parse created_at timestamp: {created_at}")
+            return False
+        
+        # Get last month date range
+        start_last_month, end_last_month = get_last_month_dates()
+        
+        # Check if message is within last month
+        is_from_last_month = start_last_month <= message_date <= end_last_month
+        
+        if is_from_last_month:
+            logger.info(f"Message from {message_date} is within last month range ({start_last_month} - {end_last_month})")
+        else:
+            logger.info(f"Message from {message_date} is outside last month range ({start_last_month} - {end_last_month})")
+            
+        return is_from_last_month
+        
+    except Exception as e:
+        logger.error(f"Error checking message date: {str(e)}")
+        return False
+
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle Kommo webhook requests"""
+    """Handle Kommo webhook requests - filter for messages from previous month"""
     try:
         # Get raw request data for detailed logging
         raw_data = request.get_data(as_text=True)
@@ -342,6 +394,14 @@ def webhook():
         # Process the first object
         first_object = data_objects[0] if isinstance(data_objects, list) else data_objects
         logger.info(f"Processing first object: {first_object}")
+        
+        # Filter messages by date - only process messages from last month
+        if webhook_type == 'message' and first_object:
+            if not is_message_from_last_month(first_object):
+                logger.info(f"Message not from last month, skipping webhook processing")
+                return jsonify({'status': 'success', 'message': 'Message not from target month, ignored'})
+            else:
+                logger.info(f"Message is from last month, continuing processing")
         
         # Extract fields for from_webhook table
         webhook_record = {
