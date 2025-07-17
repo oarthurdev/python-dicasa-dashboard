@@ -160,31 +160,49 @@ class KommoAPI:
 
     def get_users(self, active_only=True):
         """
-        Retrieve users (brokers) from Kommo CRM
+        Retrieve all users (brokers) from Kommo CRM
 
         Args:
             active_only (bool): If True, only return active users
         """
         try:
-            logger.info("Retrieving users from Kommo CRM (previous month data)")
+            logger.info("Retrieving ALL users from Kommo CRM")
 
+            # Get safe pagination limits
+            limits = self._get_safe_pagination_limits()
+            
             users_data = []
             page = 1
+            max_user_pages = 20  # Users são geralmente poucos, limite menor
 
-            while True:
-                # Limite máximo de 250 entidades por página conforme documentação
-                response = self._make_request("users",
-                                              params={
-                                                  "page": page,
-                                                  "limit": min(30, 250)
-                                              })
+            while page <= max_user_pages:
+                try:
+                    response = self._make_request("users", params={
+                        "page": page,
+                        "limit": limits['page_size']
+                    })
 
-                if not response.get("_embedded", {}).get("users", []):
+                    if not response.get("_embedded", {}).get("users", []):
+                        logger.info(f"Nenhum usuário encontrado na página {page}")
+                        break
+
+                    users = response["_embedded"]["users"]
+                    users_data.extend(users)
+                    logger.info(f"Página {page}: {len(users)} usuários encontrados (total: {len(users_data)})")
+                    
+                    # Users API typically has fewer pages, break if less than limit
+                    if len(users) < limits['page_size']:
+                        logger.info("Última página de usuários atingida")
+                        break
+                        
+                    page += 1
+                    time.sleep(limits['delay_between_pages'])
+                    
+                except Exception as e:
+                    logger.error(f"Erro ao buscar usuários página {page}: {str(e)}")
                     break
 
-                users = response["_embedded"]["users"]
-                users_data.extend(users)
-                page += 1
+            logger.info(f"Total de usuários encontrados: {len(users_data)}")
 
             # Process users data into a more usable format
             processed_users = []
@@ -195,60 +213,36 @@ class KommoAPI:
                     continue
 
                 processed_users.append({
-                    "id":
-                    user.get("id"),
-                    "nome":
-                    f"{user.get('name', '')} {user.get('lastname', '')}".strip(
-                    ),
-                    "email":
-                    user.get("email"),
-                    "foto_url":
-                    user.get("_links", {}).get("avatar", {}).get("href"),
+                    "id": user.get("id"),
+                    "nome": f"{user.get('name', '')} {user.get('lastname', '')}".strip(),
+                    "email": user.get("email"),
+                    "foto_url": user.get("_links", {}).get("avatar", {}).get("href"),
                     "criado_em": (
                         parse_datetime_sp(user.get("created_at"))
                         if user.get("created_at") else None
                     ),
-                    "cargo":
-                    user.get("rights", {}).get("is_admin") and "Administrador"
-                    or "Corretor"
+                    "cargo": user.get("rights", {}).get("is_admin") and "Administrador" or "Corretor"
                 })
 
-
+            logger.info(f"Usuários processados (ativos): {len(processed_users)}")
             return pd.DataFrame(processed_users)
 
         except Exception as e:
             logger.error(f"Failed to retrieve users: {str(e)}")
             raise
 
-    def _get_date_filters(self):
-        """Obtém os filtros de data da configuração - sempre usa mês passado"""
-        try:
-            # Calcular primeiro e último dia do mês passado
-            today = datetime.now()
-            
-            # Primeiro dia do mês atual
-            first_day_current_month = today.replace(day=1)
-            
-            # Último dia do mês passado
-            last_day_previous_month = first_day_current_month - timedelta(days=1)
-            
-            # Primeiro dia do mês passado
-            first_day_previous_month = last_day_previous_month.replace(day=1)
-            
-            # Converter para timestamps
-            start_ts = int(first_day_previous_month.timestamp())
-            end_ts = int(last_day_previous_month.replace(hour=23, minute=59, second=59).timestamp())
-            
-            logger.info(f"Filtrando dados do mês passado: {first_day_previous_month.strftime('%Y-%m-%d')} até {last_day_previous_month.strftime('%Y-%m-%d')}")
-            
-            return start_ts, end_ts
-        except Exception as e:
-            logger.error(f"Erro ao obter filtros de data: {str(e)}")
-            return None, None
+    def _get_safe_pagination_limits(self):
+        """Define limites seguros para paginação e evita processamento infinito"""
+        return {
+            'max_pages_per_request': 100,  # Máximo 100 páginas por chamada
+            'max_total_records': 10000,    # Máximo 10k registros por empresa
+            'page_size': 50,               # Tamanho da página reduzido para evitar timeouts
+            'delay_between_pages': 0.2     # 200ms entre páginas
+        }
 
     def get_leads(self, company_id=None):
         """
-        Retrieve leads from Kommo CRM for specific company
+        Retrieve all leads from Kommo CRM for specific company with safe pagination
         Args:
             company_id (str): Optional company ID to filter leads
         """
@@ -256,26 +250,19 @@ class KommoAPI:
             # Get pipeline_id and company_id from config for proper filtering
             pipeline_id = self.api_config.get('pipeline_id')
             company_id = self.api_config.get('company_id')
+            
+            # Get safe pagination limits
+            limits = self._get_safe_pagination_limits()
 
-            if not pipeline_id or not company_id:
-                logger.warning(
-                    "No pipeline_id or company_id found in config, fetching all leads"
-                )
-
-            logger.info(
-                f"Buscando etapas do pipeline {pipeline_id if pipeline_id else 'all'}"
-            )
+            logger.info(f"Buscando etapas do pipeline {pipeline_id if pipeline_id else 'all'}")
             pipeline_response = self._make_request("leads/pipelines")
-            pipelines = pipeline_response.get("_embedded",
-                                              {}).get("pipelines", [])
+            pipelines = pipeline_response.get("_embedded", {}).get("pipelines", [])
 
             status_map = {}
             for pipeline in pipelines:
                 # Only get statuses for configured pipeline if pipeline_id exists
-                if not pipeline_id or str(
-                        pipeline.get('id')) == str(pipeline_id):
-                    for status in pipeline.get("_embedded",
-                                               {}).get("statuses", []):
+                if not pipeline_id or str(pipeline.get('id')) == str(pipeline_id):
+                    for status in pipeline.get("_embedded", {}).get("statuses", []):
                         status_id = status.get("id")
                         status_name = status.get("name")
                         status_map[status_id] = status_name
@@ -283,103 +270,83 @@ class KommoAPI:
                         break
 
             logger.info("Etapas carregadas com sucesso")
-
-            logger.info(
-                "Retrieving leads from Kommo CRM (previous month data)")
+            logger.info("Retrieving ALL leads from Kommo CRM (no date filters)")
 
             filtered_leads = []
             page = 1
-            per_page = min(250, 250)  # Respeitando limite máximo de 250 entidades
+            per_page = limits['page_size']
             empty_streak = 0
-            stop_after = 1
+            max_empty_streak = 3
 
-            while True:
+            while page <= limits['max_pages_per_request'] and len(filtered_leads) < limits['max_total_records']:
                 params = {
-                    "page":
-                    page,
-                    "limit":
-                    per_page,
-                    "with":
-                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
+                    "page": page,
+                    "limit": per_page,
+                    "with": "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
 
-                # Add date filters if configured
-                start_ts, end_ts = self._get_date_filters()
-                if start_ts:
-                    params["filter[created_at][from]"] = start_ts
-                if end_ts:
-                    params["filter[created_at][to]"] = end_ts
+                # Add pipeline filter if configured
+                if pipeline_id:
+                    params["filter[pipeline_id]"] = pipeline_id
 
-                response = self._make_request("leads", params=params)
-                leads = response.get("_embedded", {}).get("leads", [])
+                try:
+                    response = self._make_request("leads", params=params)
+                    leads = response.get("_embedded", {}).get("leads", [])
 
-                if leads:
-                    filtered_leads.extend(leads)
-                    empty_streak = 0
-                else:
-                    empty_streak += 1
-                    if empty_streak >= stop_after:
-                        logger.info(f"Stopping: {stop_after} empty pages")
+                    if leads:
+                        filtered_leads.extend(leads)
+                        empty_streak = 0
+                        logger.info(f"Página {page}: {len(leads)} leads encontrados (total: {len(filtered_leads)})")
+                    else:
+                        empty_streak += 1
+                        logger.info(f"Página {page}: nenhum lead encontrado (streak: {empty_streak})")
+                        
+                        if empty_streak >= max_empty_streak:
+                            logger.info(f"Parando: {max_empty_streak} páginas vazias consecutivas")
+                            break
+
+                    # Check if we received less than per_page items (end of data)
+                    if len(leads) < per_page:
+                        logger.info("Última página atingida (menos registros que o limite)")
                         break
 
-                # Check if we received less than per_page items
-                if len(leads) < per_page:
+                    page += 1
+                    
+                    # Rate limiting delay between pages
+                    time.sleep(limits['delay_between_pages'])
+                    
+                except Exception as e:
+                    logger.error(f"Erro na página {page}: {str(e)}")
                     break
 
-                page += 1
-                time.sleep(0.5)  # Rate limiting
-                if empty_streak >= stop_after:
-                    logger.info(
-                        f"Parando busca: {stop_after} páginas vazias consecutivas"
-                    )
-                    break
-                else:
-                    empty_streak = 0
-
-                logger.info(
-                    f"Processada página {page}, encontrados {len(filtered_leads)} leads"
-                )
-                page += 1
+            # Check if we hit limits
+            if len(filtered_leads) >= limits['max_total_records']:
+                logger.warning(f"Limite de registros atingido: {limits['max_total_records']}")
+            if page >= limits['max_pages_per_request']:
+                logger.warning(f"Limite de páginas atingido: {limits['max_pages_per_request']}")
 
             logger.info(f"Total de leads encontrados: {len(filtered_leads)}")
-            if filtered_leads:
-                logger.info(f"Exemplo do primeiro lead: {filtered_leads[0]}")
 
             processed_leads = []
             for lead in filtered_leads:
                 responsavel_id = lead.get("responsible_user_id")
                 contato_nome = ""
                 if lead.get("_embedded", {}).get("contacts"):
-                    contato_nome = lead["_embedded"]["contacts"][0].get(
-                        "name", "")
-
-                created_at = datetime.fromtimestamp(lead.get(
-                    "created_at", 0)) if lead.get("created_at") else None
-                updated_at = datetime.fromtimestamp(lead.get(
-                    "updated_at", 0)) if lead.get("updated_at") else None
+                    contato_nome = lead["_embedded"]["contacts"][0].get("name", "")
 
                 status_id = lead.get("status_id")
                 etapa = status_map.get(status_id, "Desconhecido")
 
                 processed_leads.append({
-                    "id":
-                    lead.get("id"),
-                    "nome":
-                    lead.get("name"),
-                    "responsavel_id":
-                    responsavel_id,
-                    "contato_nome":
-                    contato_nome,
-                    "valor":
-                    lead.get("price"),
-                    "status_id":
-                    status_id,
-                    "pipeline_id":
-                    lead.get("pipeline_id"),
-                    "etapa":
-                    etapa,
+                    "id": lead.get("id"),
+                    "nome": lead.get("name"),
+                    "responsavel_id": responsavel_id,
+                    "contato_nome": contato_nome,
+                    "valor": lead.get("price"),
+                    "status_id": status_id,
+                    "pipeline_id": lead.get("pipeline_id"),
+                    "etapa": etapa,
                     "criado_em": (
-                        # tenta converter string para datetime
                         parse_datetime_sp(lead.get("created_at"))
                         if lead.get("created_at") else None
                     ),
@@ -387,11 +354,9 @@ class KommoAPI:
                         parse_datetime_sp(lead.get("updated_at"))
                         if lead.get("updated_at") else None
                     ),
-                    "fechado":
-                    lead.get("closed_at") is not None,
-                    "status":
-                    ("Ganho" if status_id == 142 else
-                     "Perdido" if status_id == 143 else "Em progresso")
+                    "fechado": lead.get("closed_at") is not None,
+                    "status": ("Ganho" if status_id == 142 else
+                             "Perdido" if status_id == 143 else "Em progresso")
                 })
 
             return pd.DataFrame(processed_leads)
@@ -400,131 +365,77 @@ class KommoAPI:
             logger.error(f"Erro ao buscar leads: {str(e)}")
             return pd.DataFrame()
 
-    def get_activities(self,
-                       company_id=None,
-                       page_size=50,  # Reduzido para evitar HTTP 504
-                       max_workers=2,  # Reduzido para respeitar 7 req/s
-                       max_pages=500,
-                       chunk_size=5):  # Reduzido para melhor controle
+    def get_activities(self, company_id=None):
         """
-        Retrieve activities from Kommo CRM for specific company
+        Retrieve all activities from Kommo CRM for specific company with safe pagination
         Args:
             company_id (str): Optional company ID to filter activities
-            page_size (int): Number of records per page
-            max_workers (int): Maximum number of parallel requests
-            max_pages (int): Maximum number of pages to fetch
-            chunk_size (int): Number of pages to process in each chunk
-
-        Args:
-            page_size (int): Number of records per page (reduced to avoid rate limits)
-            max_workers (int): Maximum number of parallel requests
-            max_pages (int): Maximum number of pages to fetch
-            chunk_size (int): Number of pages to process in each chunk
-
         Returns:
             pd.DataFrame: Processed activities data
         """
         try:
-            logger.info("Retrieving activities from Kommo CRM (previous month data)")
+            logger.info("Retrieving ALL activities from Kommo CRM (no date filters)")
 
-            start_ts, end_ts = self._get_date_filters()
-            # Limitando page_size conforme documentação Kommo (máximo 250)
-            safe_page_size = min(page_size, 250)
+            # Get safe pagination limits
+            limits = self._get_safe_pagination_limits()
+            
             base_params = {
-                "limit":
-                safe_page_size,
+                "limit": limits['page_size'],
                 "filter[type]": [
                     "lead_status_changed", "incoming_chat_message",
-                    "outgoing_chat_message"
+                    "outgoing_chat_message", "task_completed"
                 ]
             }
-
-            if start_ts:
-                base_params["filter[created_at][from]"] = start_ts
-            if end_ts:
-                base_params["filter[created_at][to]"] = end_ts
-
-            def fetch_page(page):
-                try:
-                    # Rate limiting já é aplicado em _make_request
-                    params = {**base_params, "page": page}
-                    response = self._make_request("events", params=params)
-                    # Se o status for 204, continua a execução
-                    if isinstance(response, dict):
-                        return response.get("_embedded", {}).get("events", [])
-                    return []
-                except Exception as e:
-                    logger.error(f"Error fetching page {page}: {e}")
-                    return []
 
             activities_data = []
             page = 1
             empty_streak = 0
-            stop_after = 1
+            max_empty_streak = 3
 
-            def process_chunk(start_page, end_page):
-                chunk_data = []
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    futures = {
-                        executor.submit(fetch_page, p): p
-                        for p in range(start_page, end_page)
-                    }
-                    for future in as_completed(futures):
-                        try:
-                            events = future.result()
-                            if events:
-                                chunk_data.extend(events)
-                                logger.info(
-                                    f"Page {futures[future]} fetched: {len(events)} events"
-                                )
-                        except Exception as e:
-                            if "429" in str(e):
-                                wait_time = min(2**(futures[future] % 5),
-                                                32)  # Exponential backoff
-                                logger.warning(
-                                    f"Rate limit hit, waiting {wait_time}s before retry"
-                                )
-                                time.sleep(wait_time)
-                                # Retry once after backoff
-                                try:
-                                    events = fetch_page(futures[future])
-                                    if events:
-                                        chunk_data.extend(events)
-                                except Exception as retry_e:
-                                    logger.error(
-                                        f"Retry failed for page {futures[future]}: {retry_e}"
-                                    )
-                            else:
-                                logger.error(
-                                    f"Error fetching page {futures[future]}: {e}"
-                                )
-                return chunk_data
+            while page <= limits['max_pages_per_request'] and len(activities_data) < limits['max_total_records']:
+                try:
+                    params = {**base_params, "page": page}
+                    response = self._make_request("events", params=params)
+                    
+                    events = []
+                    if isinstance(response, dict):
+                        events = response.get("_embedded", {}).get("events", [])
 
-            while page <= max_pages:
-                chunk_end = min(page + chunk_size, max_pages + 1)
-                chunk_data = process_chunk(page, chunk_end)
-
-                if not chunk_data:
-                    logger.info(f"No more data found after page {page}")
-                    break
-
-                activities_data.extend(chunk_data)
-                page = chunk_end
-
-                # Add delay between chunks to avoid rate limits
-                if page <= max_pages:
-                    time.sleep(2)
-
-                    if not chunk_data:
-                        empty_streak += 1
-                        if empty_streak >= stop_after:
-                            logger.info(f"Stopping: {stop_after} empty chunks")
-                            break
-                    else:
+                    if events:
+                        activities_data.extend(events)
                         empty_streak = 0
+                        logger.info(f"Página {page}: {len(events)} atividades encontradas (total: {len(activities_data)})")
+                    else:
+                        empty_streak += 1
+                        logger.info(f"Página {page}: nenhuma atividade encontrada (streak: {empty_streak})")
+                        
+                        if empty_streak >= max_empty_streak:
+                            logger.info(f"Parando: {max_empty_streak} páginas vazias consecutivas")
+                            break
 
-            total_activities = len(activities_data)
-            logger.info(f"Total de atividades recuperadas: {total_activities}")
+                    # Check if we received less than page_size items (end of data)
+                    if len(events) < limits['page_size']:
+                        logger.info("Última página atingida (menos registros que o limite)")
+                        break
+
+                    page += 1
+                    
+                    # Rate limiting delay between pages
+                    time.sleep(limits['delay_between_pages'])
+                    
+                except Exception as e:
+                    logger.error(f"Erro na página {page}: {str(e)}")
+                    # Continue to next page on error
+                    page += 1
+                    time.sleep(1)  # Extra delay on error
+
+            # Check if we hit limits
+            if len(activities_data) >= limits['max_total_records']:
+                logger.warning(f"Limite de registros atingido: {limits['max_total_records']}")
+            if page >= limits['max_pages_per_request']:
+                logger.warning(f"Limite de páginas atingido: {limits['max_pages_per_request']}")
+
+            logger.info(f"Total de atividades recuperadas: {len(activities_data)}")
 
             if not activities_data:
                 logger.warning("Nenhuma atividade encontrada")
@@ -543,19 +454,12 @@ class KommoAPI:
             }
 
             processed_activities = [{
-                "id":
-                activity.get("id"),
-                "lead_id":
-                activity.get("entity_id")
-                if activity.get("entity_type") == "lead" else None,
-                "user_id":
-                activity.get("created_by"),
-                "tipo":
-                type_mapping.get(activity.get("type"), "outro"),
-                "valor_anterior":
-                activity.get("value_before"),
-                "valor_novo":
-                activity.get("value_after"),
+                "id": activity.get("id"),
+                "lead_id": activity.get("entity_id") if activity.get("entity_type") == "lead" else None,
+                "user_id": activity.get("created_by"),
+                "tipo": type_mapping.get(activity.get("type"), "outro"),
+                "valor_anterior": activity.get("value_before"),
+                "valor_novo": activity.get("value_after"),
                 "criado_em": (
                     parse_datetime_sp(activity.get("created_at"))
                     if activity.get("created_at") else None

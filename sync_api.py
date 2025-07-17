@@ -20,7 +20,7 @@ threads_status = {}
 supabase = SupabaseClient()
 COMPANY_LIST = []  # Atualizada no início e em cada ciclo
 
-SYNC_INTERVAL_MINUTES = 60  # Aumentado para 60 minutos devido ao filtro mensal
+SYNC_INTERVAL_MINUTES = 90  # Aumentado para 90 minutos devido ao volume total de dados
 
 
 def load_companies():
@@ -47,7 +47,7 @@ def sync_data(company_id):
             return
 
         subdomain = company_result.data[0]['subdomain']
-        logger.info(f"Starting incremental sync for company {company_id} (subdomain: {subdomain}) - filtering previous month data")
+        logger.info(f"Starting incremental sync for company {company_id} (subdomain: {subdomain}) - syncing ALL data")
 
         threads_status[company_id] = {
             'status': 'running',
@@ -130,7 +130,7 @@ def sync_cycle():
             time.sleep(60)
             continue
 
-        logger.info("Starting sync cycle for all companies - filtering previous month data")
+        logger.info("Starting sync cycle for all companies - syncing ALL data with safe pagination")
         threads = []
 
         for company in COMPANY_LIST:
@@ -142,7 +142,7 @@ def sync_cycle():
         for t in threads:
             t.join()
 
-        logger.info(f"All companies have completed sync (previous month data). Sleeping {SYNC_INTERVAL_MINUTES} minutes...")
+        logger.info(f"All companies have completed sync (ALL data). Sleeping {SYNC_INTERVAL_MINUTES} minutes...")
         time.sleep(SYNC_INTERVAL_MINUTES * 60)
 
 
@@ -178,61 +178,28 @@ def stop_sync():
     return jsonify({'status': 'not_implemented', 'message': 'Stop via system process control'})
 
 
-def get_last_month_dates():
-    """Get start and end dates for previous month"""
-    from datetime import datetime, timedelta
-    
-    today = datetime.now()
-    
-    # Primeiro dia do mês atual
-    first_day_current_month = today.replace(day=1)
-    
-    # Último dia do mês passado
-    last_day_previous_month = first_day_current_month - timedelta(days=1)
-    
-    # Primeiro dia do mês passado
-    first_day_previous_month = last_day_previous_month.replace(day=1)
-    
-    return first_day_previous_month, last_day_previous_month
-
-
-def is_message_from_last_month(webhook_data):
-    """Check if message is from previous month based on created_at timestamp"""
+def validate_webhook_data(webhook_data):
+    """Validate webhook data structure and content"""
     try:
-        created_at = webhook_data.get('created_at')
-        if not created_at:
+        if not isinstance(webhook_data, dict):
             return False
-        
-        # Convert timestamp to datetime
-        if isinstance(created_at, (int, float)):
-            message_date = datetime.fromtimestamp(created_at)
-        elif isinstance(created_at, str) and created_at.isdigit():
-            message_date = datetime.fromtimestamp(int(created_at))
-        else:
-            logger.warning(f"Could not parse created_at timestamp: {created_at}")
-            return False
-        
-        # Get last month date range
-        start_last_month, end_last_month = get_last_month_dates()
-        
-        # Check if message is within last month
-        is_from_last_month = start_last_month <= message_date <= end_last_month
-        
-        if is_from_last_month:
-            logger.info(f"Message from {message_date} is within last month range ({start_last_month} - {end_last_month})")
-        else:
-            logger.info(f"Message from {message_date} is outside last month range ({start_last_month} - {end_last_month})")
             
-        return is_from_last_month
+        # Basic validation - check if required fields exist
+        required_fields = ['id']
+        if not any(field in webhook_data for field in required_fields):
+            logger.warning("Webhook data missing required fields")
+            return False
+            
+        return True
         
     except Exception as e:
-        logger.error(f"Error checking message date: {str(e)}")
+        logger.error(f"Error validating webhook data: {str(e)}")
         return False
 
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle Kommo webhook requests - filter for messages from previous month"""
+    """Handle Kommo webhook requests - process all incoming messages"""
     try:
         # Get raw request data for detailed logging
         raw_data = request.get_data(as_text=True)
@@ -395,13 +362,12 @@ def webhook():
         first_object = data_objects[0] if isinstance(data_objects, list) else data_objects
         logger.info(f"Processing first object: {first_object}")
         
-        # Filter messages by date - only process messages from last month
-        if webhook_type == 'message' and first_object:
-            if not is_message_from_last_month(first_object):
-                logger.info(f"Message not from last month, skipping webhook processing")
-                return jsonify({'status': 'success', 'message': 'Message not from target month, ignored'})
-            else:
-                logger.info(f"Message is from last month, continuing processing")
+        # Validate webhook data structure
+        if first_object and not validate_webhook_data(first_object):
+            logger.warning(f"Invalid webhook data structure, skipping processing")
+            return jsonify({'status': 'success', 'message': 'Invalid data structure, ignored'})
+        else:
+            logger.info(f"Webhook data validated successfully, continuing processing")
         
         # Extract fields for from_webhook table
         webhook_record = {

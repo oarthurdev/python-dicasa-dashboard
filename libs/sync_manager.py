@@ -93,25 +93,19 @@ class SyncManager:
             logger.error(f"Error processing batch for {table}: {str(e)}")
             raise
 
-    def get_month_dates(self):
-        """Get start and end dates for previous month"""
-        today = datetime.now()
-        
-        # Primeiro dia do mês atual
-        first_day_current_month = today.replace(day=1)
-        
-        # Último dia do mês passado
-        last_day_previous_month = first_day_current_month - timedelta(days=1)
-        
-        # Primeiro dia do mês passado
-        first_day_previous_month = last_day_previous_month.replace(day=1)
-        
-        return first_day_previous_month, last_day_previous_month
+    def get_safe_batch_size(self, data_type):
+        """Get safe batch size based on data type to prevent overload"""
+        batch_sizes = {
+            'brokers': 100,    # Brokers são poucos, batch maior
+            'leads': 250,      # Leads podem ser muitos, batch médio
+            'activities': 200  # Activities são muitas, batch controlado
+        }
+        return batch_sizes.get(data_type, 200)
 
-    def reset_monthly_data(self, company_id):
-        """Reset monthly data and store in logs"""
+    def create_data_snapshot(self, company_id, snapshot_type="manual"):
+        """Create a snapshot of current data for archival purposes"""
         try:
-            # Get current data before reset
+            # Get current data for snapshot
             points_result = self.supabase.client.table("broker_points").select(
                 "*").eq("company_id", company_id).execute()
             leads_result = self.supabase.client.table("leads").select("*").eq(
@@ -121,36 +115,22 @@ class SyncManager:
                 record.get('pontos', 0) for record in points_result.data)
             total_leads = len(leads_result.data)
 
-            month_start, month_end = self.get_month_dates()
-
-            # Store in monthly_logs
-            self.supabase.client.table("monthly_logs").insert({
-                "month_start":
-                month_start.isoformat(),
-                "month_end":
-                month_end.isoformat(),
-                "company_id":
-                company_id,
-                "total_leads":
-                total_leads,
-                "total_points":
-                total_points,
-                "created_at":
-                datetime.now().isoformat()
+            # Store in data_snapshots table
+            self.supabase.client.table("data_snapshots").insert({
+                "snapshot_date": datetime.now().isoformat(),
+                "company_id": company_id,
+                "total_leads": total_leads,
+                "total_points": total_points,
+                "snapshot_type": snapshot_type,
+                "created_at": datetime.now().isoformat()
             }).execute()
 
-            # Reset tables
-            tables = ["activities", "leads", "brokers", "broker_points"]
-            for table in tables:
-                self.supabase.client.table(table).delete().eq(
-                    "company_id", company_id).execute()
-
             logger.info(
-                f"Monthly data reset completed for company {company_id}")
+                f"Data snapshot created for company {company_id}: {total_leads} leads, {total_points} points")
 
         except Exception as e:
-            logger.error(f"Error resetting monthly data: {str(e)}")
-            raise
+            logger.error(f"Error creating data snapshot: {str(e)}")
+            # Don't raise - snapshots are optional
 
     def sync_data_incremental(self,
                               brokers=None,
@@ -312,37 +292,30 @@ class SyncManager:
                 raise ValueError("company_id is required for sync_data")
 
             now = datetime.now()
-            month_start, month_end = self.get_month_dates()
 
             # Verifica se api_config está inicializada
-            if self.kommo_api and getattr(self.kommo_api, 'api_config',
-                                          None) is None:
+            if self.kommo_api and getattr(self.kommo_api, 'api_config', None) is None:
                 self.kommo_api.api_config = {}
-
-            if self.kommo_api:
-                self.kommo_api.set_date_range(month_start, month_end)
 
             # Obter configuração da empresa, se necessário
             if not self.config:
                 config_result = self.supabase.client.table(
-                    "kommo_config").select("*").eq("company_id",
-                                                   company_id).execute()
+                    "kommo_config").select("*").eq("company_id", company_id).execute()
                 self.config = config_result.data[0] if config_result.data else {
                     "sync_interval": 60
                 }
 
             sync_interval = self.config.get('sync_interval', 60)
 
-            # Reset mensal
-            monthly_logs = self.supabase.client.table("monthly_logs").select(
-                "*").eq("company_id",
-                        company_id).order("created_at",
-                                          desc=True).limit(1).execute()
-            if monthly_logs.data:
-                last_reset = datetime.fromisoformat(
-                    str(monthly_logs.data[0].get('created_at')))
-                if (now - last_reset).days >= 30:
-                    self.reset_monthly_data(company_id)
+            # Create periodic snapshots instead of monthly resets
+            snapshots = self.supabase.client.table("data_snapshots").select(
+                "*").eq("company_id", company_id).order("created_at", desc=True).limit(1).execute()
+            if snapshots.data:
+                last_snapshot = datetime.fromisoformat(
+                    str(snapshots.data[0].get('created_at')))
+                # Create weekly snapshots instead of monthly resets
+                if (now - last_snapshot).days >= 7:
+                    self.create_data_snapshot(company_id, "weekly_auto")
 
             config_data = self.supabase.client.table("kommo_config").select(
                 "*").eq("company_id", company_id).execute().data
@@ -362,11 +335,16 @@ class SyncManager:
             # Processar Brokers
             if isinstance(brokers, pd.DataFrame) and not brokers.empty:
                 brokers['company_id'] = company_id
+                broker_batch_size = self.get_safe_batch_size('brokers')
                 existing_brokers = self._get_existing_records('brokers')
-                for i in range(0, len(brokers), self.batch_size):
-                    batch = brokers.iloc[i:i +
-                                         self.batch_size].to_dict('records')
+                
+                logger.info(f"Processing {len(brokers)} brokers in batches of {broker_batch_size}")
+                for i in range(0, len(brokers), broker_batch_size):
+                    batch = brokers.iloc[i:i + broker_batch_size].to_dict('records')
                     self._process_batch(batch, 'brokers', existing_brokers)
+                    # Small delay between batches
+                    time.sleep(0.1)
+                    
                 logger.info(f"Processed {len(brokers)} brokers")
                 self.supabase.initialize_broker_points(company_id)
             else:
@@ -376,11 +354,16 @@ class SyncManager:
             # Processar Leads
             if isinstance(leads, pd.DataFrame) and not leads.empty:
                 leads['company_id'] = company_id
+                leads_batch_size = self.get_safe_batch_size('leads')
                 existing_leads = self._get_existing_records('leads')
-                for i in range(0, len(leads), self.batch_size):
-                    batch = leads.iloc[i:i +
-                                       self.batch_size].to_dict('records')
+                
+                logger.info(f"Processing {len(leads)} leads in batches of {leads_batch_size}")
+                for i in range(0, len(leads), leads_batch_size):
+                    batch = leads.iloc[i:i + leads_batch_size].to_dict('records')
                     self._process_batch(batch, 'leads', existing_leads)
+                    # Small delay between batches
+                    time.sleep(0.1)
+                    
                 logger.info(f"Processed {len(leads)} leads")
 
             # Processar Activities
@@ -388,36 +371,34 @@ class SyncManager:
                 # Obter IDs válidos
                 broker_ids = self.supabase.client.table("brokers").select(
                     "id").eq("company_id", company_id).execute()
-                valid_broker_ids = {item['id']
-                                    for item in broker_ids.data
-                                    } if broker_ids.data else set()
+                valid_broker_ids = {item['id'] for item in broker_ids.data} if broker_ids.data else set()
 
                 lead_ids = self.supabase.client.table("leads").select("id").eq(
                     "company_id", company_id).execute()
-                valid_lead_ids = {item['id']
-                                  for item in lead_ids.data
-                                  } if lead_ids.data else set()
+                valid_lead_ids = {item['id'] for item in lead_ids.data} if lead_ids.data else set()
 
                 activities['company_id'] = company_id
 
+                # Filter activities to only those with valid references
                 filtered_activities = activities[(
-                    (activities['lead_id'].isin(valid_lead_ids)
-                     | activities['lead_id'].isna()) &
-                    (activities['user_id'].isin(valid_broker_ids)
-                     | activities['user_id'].isna()))].copy()
+                    (activities['lead_id'].isin(valid_lead_ids) | activities['lead_id'].isna()) &
+                    (activities['user_id'].isin(valid_broker_ids) | activities['user_id'].isna())
+                )].copy()
 
                 if filtered_activities.empty:
                     logger.warning("No valid activities found after filtering")
-                    return
-
-                existing_activities = self._get_existing_records('activities')
-                for i in range(0, len(filtered_activities), self.batch_size):
-                    batch = filtered_activities.iloc[i:i +
-                                                     self.batch_size].to_dict(
-                                                         'records')
-                    self._process_batch(batch, 'activities',
-                                        existing_activities)
-                logger.info(f"Processed {len(filtered_activities)} activities")
+                else:
+                    activities_batch_size = self.get_safe_batch_size('activities')
+                    existing_activities = self._get_existing_records('activities')
+                    
+                    logger.info(f"Processing {len(filtered_activities)} activities in batches of {activities_batch_size}")
+                    for i in range(0, len(filtered_activities), activities_batch_size):
+                        batch = filtered_activities.iloc[i:i + activities_batch_size].to_dict('records')
+                        self._process_batch(batch, 'activities', existing_activities)
+                        # Small delay between batches
+                        time.sleep(0.1)
+                        
+                    logger.info(f"Processed {len(filtered_activities)} activities")
 
             # Atualizar timestamps de sincronização
             next_sync = now + timedelta(minutes=sync_interval)
