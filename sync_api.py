@@ -67,9 +67,14 @@ def sync_data(company_id):
         kommo_api = KommoAPI(api_config=company_config)
         sync_manager = SyncManager(kommo_api, local_supabase, company_config)
 
-        # Buscar dados da API
+        # Buscar dados da API na ordem correta (brokers primeiro)
+        logger.info("Fetching brokers data first...")
         brokers = kommo_api.get_users()
+        
+        logger.info("Fetching leads data...")
         leads = kommo_api.get_leads()
+        
+        logger.info("Fetching activities data...")
         activities = kommo_api.get_activities()
 
         # Adicionar company_id aos DataFrames
@@ -81,6 +86,7 @@ def sync_data(company_id):
             activities['company_id'] = company_id
 
         # Sincronização incremental - apenas dados alterados
+        # A ordem é importante: brokers primeiro, depois leads, depois activities
         changes_detected = sync_manager.sync_data_incremental(
             brokers=brokers, 
             leads=leads, 

@@ -1,6 +1,7 @@
 import logging
 import hashlib
 import json
+import time
 from datetime import datetime, timedelta
 from typing import Dict, List
 import pandas as pd
@@ -151,7 +152,7 @@ class SyncManager:
                 'activities': False
             }
 
-            # Processar Brokers
+            # Processar Brokers PRIMEIRO (para garantir foreign keys)
             if isinstance(brokers, pd.DataFrame) and not brokers.empty:
                 existing_brokers = self._get_existing_records('brokers')
                 changes_found = False
@@ -167,20 +168,47 @@ class SyncManager:
                     logger.info(f"Changes detected in brokers data")
                     self.supabase.initialize_broker_points(company_id)
 
-            # Processar Leads
+            # Obter IDs válidos de brokers ANTES de processar leads
+            try:
+                broker_ids = self.supabase.client.table("brokers").select("id").eq("company_id", company_id).execute()
+                valid_broker_ids = {item['id'] for item in broker_ids.data} if broker_ids.data else set()
+                logger.info(f"Found {len(valid_broker_ids)} valid broker IDs for company {company_id}")
+            except Exception as e:
+                logger.error(f"Error getting valid broker IDs: {e}")
+                valid_broker_ids = set()
+
+            # Processar Leads com validação de foreign key
             if isinstance(leads, pd.DataFrame) and not leads.empty:
-                existing_leads = self._get_existing_records('leads')
-                changes_found = False
+                # Filtrar leads apenas com responsavel_id válido
+                original_count = len(leads)
+                if valid_broker_ids:
+                    leads_filtered = leads[
+                        leads['responsavel_id'].isin(valid_broker_ids) | 
+                        leads['responsavel_id'].isna()
+                    ].copy()
+                else:
+                    # Se não há brokers, só manter leads sem responsavel_id
+                    leads_filtered = leads[leads['responsavel_id'].isna()].copy()
                 
-                for i in range(0, len(leads), self.batch_size):
-                    batch = leads.iloc[i:i + self.batch_size].to_dict('records')
-                    batch_changes = self._process_batch_incremental(batch, 'leads', existing_leads)
-                    if batch_changes:
-                        changes_found = True
+                filtered_count = len(leads_filtered)
+                if filtered_count < original_count:
+                    logger.warning(f"Filtered out {original_count - filtered_count} leads with invalid responsavel_id")
                 
-                changes_detected['leads'] = changes_found
-                if changes_found:
-                    logger.info(f"Changes detected in leads data")
+                if not leads_filtered.empty:
+                    existing_leads = self._get_existing_records('leads')
+                    changes_found = False
+                    
+                    for i in range(0, len(leads_filtered), self.batch_size):
+                        batch = leads_filtered.iloc[i:i + self.batch_size].to_dict('records')
+                        batch_changes = self._process_batch_incremental(batch, 'leads', existing_leads)
+                        if batch_changes:
+                            changes_found = True
+                    
+                    changes_detected['leads'] = changes_found
+                    if changes_found:
+                        logger.info(f"Changes detected in leads data")
+                else:
+                    logger.warning("No valid leads found after filtering by responsavel_id")
 
             # Processar Activities
             if isinstance(activities, pd.DataFrame) and not activities.empty:
@@ -351,20 +379,48 @@ class SyncManager:
                 logger.warning("No brokers data available for sync")
                 return
 
-            # Processar Leads
+            # Obter IDs válidos de brokers ANTES de processar leads
+            try:
+                broker_ids = self.supabase.client.table("brokers").select("id").eq("company_id", company_id).execute()
+                valid_broker_ids = {item['id'] for item in broker_ids.data} if broker_ids.data else set()
+                logger.info(f"Found {len(valid_broker_ids)} valid broker IDs for company {company_id}")
+            except Exception as e:
+                logger.error(f"Error getting valid broker IDs: {e}")
+                valid_broker_ids = set()
+
+            # Processar Leads com validação de foreign key
             if isinstance(leads, pd.DataFrame) and not leads.empty:
                 leads['company_id'] = company_id
-                leads_batch_size = self.get_safe_batch_size('leads')
-                existing_leads = self._get_existing_records('leads')
                 
-                logger.info(f"Processing {len(leads)} leads in batches of {leads_batch_size}")
-                for i in range(0, len(leads), leads_batch_size):
-                    batch = leads.iloc[i:i + leads_batch_size].to_dict('records')
-                    self._process_batch(batch, 'leads', existing_leads)
-                    # Small delay between batches
-                    time.sleep(0.1)
+                # Filtrar leads apenas com responsavel_id válido
+                original_count = len(leads)
+                if valid_broker_ids:
+                    leads_filtered = leads[
+                        leads['responsavel_id'].isin(valid_broker_ids) | 
+                        leads['responsavel_id'].isna()
+                    ].copy()
+                else:
+                    # Se não há brokers, só manter leads sem responsavel_id
+                    leads_filtered = leads[leads['responsavel_id'].isna()].copy()
+                
+                filtered_count = len(leads_filtered)
+                if filtered_count < original_count:
+                    logger.warning(f"Filtered out {original_count - filtered_count} leads with invalid responsavel_id")
+                
+                if not leads_filtered.empty:
+                    leads_batch_size = self.get_safe_batch_size('leads')
+                    existing_leads = self._get_existing_records('leads')
                     
-                logger.info(f"Processed {len(leads)} leads")
+                    logger.info(f"Processing {len(leads_filtered)} leads in batches of {leads_batch_size}")
+                    for i in range(0, len(leads_filtered), leads_batch_size):
+                        batch = leads_filtered.iloc[i:i + leads_batch_size].to_dict('records')
+                        self._process_batch(batch, 'leads', existing_leads)
+                        # Small delay between batches
+                        time.sleep(0.1)
+                        
+                    logger.info(f"Processed {len(leads_filtered)} leads")
+                else:
+                    logger.warning("No valid leads found after filtering by responsavel_id")
 
             # Processar Activities
             if isinstance(activities, pd.DataFrame) and not activities.empty:
