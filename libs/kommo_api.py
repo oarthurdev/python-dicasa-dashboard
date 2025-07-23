@@ -444,9 +444,11 @@ class KommoAPI:
             while page <= limits['max_pages_per_request'] and len(
                     activities_data) < limits['max_total_records']:
                 try:
-                    params = {**base_params, "page": page}
+                    # Create params with page number for this iteration
+                    current_params = base_params.copy()
+                    current_params["page"] = page
                     response = self._make_request_with_params(
-                        "events", base_params)
+                        "events", current_params)
 
                     events = []
                     if isinstance(response, dict):
@@ -522,6 +524,11 @@ class KommoAPI:
 
             processed_activities = []
             for activity in activities_data:
+                # Verificar se activity é um dicionário válido
+                if not isinstance(activity, dict):
+                    logger.warning(f"Skipping invalid activity (not a dict): {type(activity)}")
+                    continue
+
                 # Extrair informações específicas baseado no tipo de evento
                 activity_type = activity.get("type", "")
                 entity_type = activity.get("entity_type", "")
@@ -531,21 +538,19 @@ class KommoAPI:
                 lead_id = None
                 if entity_type == "lead":
                     lead_id = entity_id
-                elif entity_type == "contact" and activity.get(
-                        "value_after", {}).get("leads"):
+                elif entity_type == "contact":
                     # Para eventos de contato, tentar extrair lead_id
-                    leads_data = activity.get("value_after",
-                                              {}).get("leads", [])
-                    if leads_data and isinstance(leads_data,
-                                                 list) and len(leads_data) > 0:
-                        lead_id = leads_data[0].get("id")
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_after, dict) and "leads" in value_after:
+                        leads_data = value_after.get("leads", [])
+                        if isinstance(leads_data, list) and len(leads_data) > 0:
+                            if isinstance(leads_data[0], dict):
+                                lead_id = leads_data[0].get("id")
 
                 # Extrair informações específicas para mensagens
                 message_text = None
                 message_source = None
-                if activity_type in [
-                        "incoming_chat_message", "outgoing_chat_message"
-                ]:
+                if activity_type in ["incoming_chat_message", "outgoing_chat_message"]:
                     value_after = activity.get("value_after", {})
                     if isinstance(value_after, dict):
                         message_text = value_after.get("text", "")
@@ -565,41 +570,35 @@ class KommoAPI:
                 # Extrair informações de tarefas
                 task_text = None
                 task_type = None
-                if activity_type in ["task_completed", "task_created"]:
+                if activity_type in ["task_completed", "task_added"]:
                     value_after = activity.get("value_after", {})
                     if isinstance(value_after, dict):
                         task_text = value_after.get("text", "")
                         task_type = value_after.get("task_type_id")
 
+                # Extrair informações de notas
+                note_text = None
+                if activity_type == "common_note_added":
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_after, dict):
+                        note_text = value_after.get("text", "")
+
                 processed_activity = {
-                    "id":
-                    activity.get("id"),
-                    "lead_id":
-                    lead_id,
-                    "user_id":
-                    activity.get("created_by"),
-                    "tipo":
-                    type_mapping.get(activity_type, "outro"),
-                    "valor_anterior":
-                    activity.get("value_before"),
-                    "valor_novo":
-                    activity.get("value_after"),
-                    "status_anterior":
-                    status_before,
-                    "status_novo":
-                    status_after,
-                    "texto_mensagem":
-                    message_text,
-                    "fonte_mensagem":
-                    message_source,
-                    "texto_tarefa":
-                    task_text,
-                    "tipo_tarefa":
-                    task_type,
-                    "entity_type":
-                    entity_type,
-                    "entity_id":
-                    entity_id,
+                    "id": activity.get("id"),
+                    "lead_id": lead_id,
+                    "user_id": activity.get("created_by"),
+                    "tipo": type_mapping.get(activity_type, "outro"),
+                    "valor_anterior": activity.get("value_before"),
+                    "valor_novo": activity.get("value_after"),
+                    "status_anterior": status_before,
+                    "status_novo": status_after,
+                    "texto_mensagem": message_text,
+                    "fonte_mensagem": message_source,
+                    "texto_tarefa": task_text,
+                    "tipo_tarefa": task_type,
+                    "texto_nota": note_text,
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
                     "criado_em": (parse_datetime_sp(activity.get("created_at"))
                                   if activity.get("created_at") else None),
                 }
