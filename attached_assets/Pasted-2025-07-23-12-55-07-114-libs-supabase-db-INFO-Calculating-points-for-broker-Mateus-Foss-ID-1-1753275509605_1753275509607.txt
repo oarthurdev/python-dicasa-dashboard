@@ -1,0 +1,18 @@
+2025-07-23 12:55:07,114 - libs.supabase_db - INFO - Calculating points for broker Mateus Foss (ID: 11371851)
+2025-07-23 12:55:07,114 - libs.supabase_db - INFO -   - 71 leads
+2025-07-23 12:55:07,114 - libs.supabase_db - INFO -   - 0 activities
+2025-07-23 12:55:07,114 - libs.supabase_db - ERROR - Error calculating rule leads_respondidos_1h: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,114 - libs.supabase_db - ERROR - Error calculating rule leads_sem_interacao_24h: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,114 - libs.supabase_db - ERROR - Error calculating rule propostas_enviadas: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,114 - libs.supabase_db - ERROR - Error calculating rule vendas_realizadas: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,114 - libs.supabase_db - ERROR - Error calculating rule leads_atualizados_mesmo_dia: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,114 - libs.supabase_db - ERROR - Error calculating rule resposta_rapida_3h: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,115 - libs.supabase_db - ERROR - Error calculating rule todos_leads_respondidos: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,115 - libs.supabase_db - ERROR - Error calculating rule cadastro_completo: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,115 - libs.supabase_db - ERROR - Error calculating rule acompanhamento_pos_venda: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,115 - libs.supabase_db - ERROR - Error calculating rule leads_ignorados_48h: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,115 - libs.supabase_db - ERROR - Error calculating rule leads_perdidos: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,115 - libs.supabase_db - ERROR - Error calculating rule leads_visitados: 'int' object has no attribute 'get'
+2025-07-23 12:55:07,177 - httpx - INFO - HTTP Request: POST https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points "HTTP/2 400 Bad Request"
+2025-07-23 12:55:07,178 - libs.supabase_db - ERROR - Error updating broker points: {'message': "Could not find the 'broker_id' column of 'broker_points' in the schema cache", 'code': 'PGRST204', 'hint': None, 'details': None}
+2025-07-23 12:55:07,178 - __main__ - ERROR - Error in sync for company 5d437554-d34d-48b3-85f8-d8d69acfef21: {'message': "Could not find the 'broker_id' column of 'broker_points' in the schema cache", 'code': 'PGRST204', 'hint': None, 'details': None}
