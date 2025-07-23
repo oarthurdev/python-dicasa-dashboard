@@ -426,14 +426,22 @@ class KommoAPI:
             # Get safe pagination limits
             limits = self._get_safe_pagination_limits()
 
+            # Eventos disponíveis na API da Kommo (validação prévia)
+            available_event_types = [
+                "lead_status_changed", 
+                "incoming_chat_message",
+                "outgoing_chat_message", 
+                "task_completed", 
+                "task_added",
+                "common_note_added",
+                "outgoing_call",
+                "lead_created",
+                "lead_updated"
+            ]
+            
             base_params = {
-                "limit":
-                limits['page_size'],
-                "filter[type]": [
-                    "lead_status_changed", "incoming_chat_message",
-                    "outgoing_chat_message", "task_completed", "task_added",
-                    "common_note_added"
-                ]
+                "limit": limits['page_size'],
+                "filter[type]": available_event_types
             }
 
             activities_data = []
@@ -447,49 +455,81 @@ class KommoAPI:
                     # Create params with page number for this iteration
                     current_params = base_params.copy()
                     current_params["page"] = page
-                    response = self._make_request_with_params(
-                        "events", current_params)
+                    
+                    # Fazer requisição com tratamento de erro robusto
+                    response = self._make_request_with_params("events", current_params)
 
+                    # Validação robusta da resposta
                     events = []
-                    if isinstance(response, dict):
-                        events = response.get("_embedded",
-                                              {}).get("events", [])
+                    if response is None:
+                        logger.warning(f"Página {page}: resposta nula da API")
+                    elif not isinstance(response, dict):
+                        logger.warning(f"Página {page}: resposta inválida (tipo: {type(response)})")
+                    else:
+                        embedded = response.get("_embedded")
+                        if embedded is None:
+                            logger.info(f"Página {page}: nenhum dado embedded encontrado")
+                        elif not isinstance(embedded, dict):
+                            logger.warning(f"Página {page}: embedded inválido (tipo: {type(embedded)})")
+                        else:
+                            events = embedded.get("events", [])
+                            if not isinstance(events, list):
+                                logger.warning(f"Página {page}: events não é uma lista (tipo: {type(events)})")
+                                events = []
 
-                    if events:
-                        activities_data.extend(events)
-                        empty_streak = 0
-                        logger.info(
-                            f"Página {page}: {len(events)} atividades encontradas (total: {len(activities_data)})"
-                        )
+                    # Processar eventos encontrados
+                    if events and len(events) > 0:
+                        # Filtrar apenas eventos válidos (dicionários)
+                        valid_events = [event for event in events if isinstance(event, dict)]
+                        if len(valid_events) != len(events):
+                            logger.warning(f"Página {page}: {len(events) - len(valid_events)} eventos inválidos filtrados")
+                        
+                        if valid_events:
+                            activities_data.extend(valid_events)
+                            empty_streak = 0
+                            logger.info(
+                                f"Página {page}: {len(valid_events)} atividades válidas encontradas (total: {len(activities_data)})"
+                            )
+                        else:
+                            empty_streak += 1
+                            logger.info(f"Página {page}: nenhuma atividade válida encontrada")
                     else:
                         empty_streak += 1
                         logger.info(
                             f"Página {page}: nenhuma atividade encontrada (streak: {empty_streak})"
                         )
 
-                        if empty_streak >= max_empty_streak:
-                            logger.info(
-                                f"Parando: {max_empty_streak} páginas vazias consecutivas"
-                            )
-                            break
+                    # Verificar se deve parar por páginas vazias consecutivas
+                    if empty_streak >= max_empty_streak:
+                        logger.info(
+                            f"Parando: {max_empty_streak} páginas vazias consecutivas"
+                        )
+                        break
 
-                    # Check if we received less than page_size items (end of data)
-                    if len(events) < limits['page_size']:
+                    # Verificar se chegou ao fim dos dados
+                    valid_events_count = len([e for e in events if isinstance(e, dict)]) if events else 0
+                    if valid_events_count < limits['page_size']:
                         logger.info(
                             "Última página atingida (menos registros que o limite)"
                         )
                         break
 
                     page += 1
-
-                    # Rate limiting delay between pages
                     time.sleep(limits['delay_between_pages'])
 
                 except Exception as e:
                     logger.error(f"Erro na página {page}: {str(e)}")
-                    # Continue to next page on error
+                    logger.exception("Detalhes completos do erro:")
+                    
+                    # Verificar se o erro é relacionado a filtros inválidos
+                    if "400" in str(e) or "Bad Request" in str(e):
+                        logger.error("Erro 400 - possível filtro de evento inválido")
+                        # Tentar com menos filtros na próxima iteração seria uma opção
+                        break
+                    
+                    # Continue to next page on other errors
                     page += 1
-                    time.sleep(1)  # Extra delay on error
+                    time.sleep(2)  # Extra delay on error
 
             # Check if we hit limits
             if len(activities_data) >= limits['max_total_records']:
@@ -504,35 +544,81 @@ class KommoAPI:
             logger.info(
                 f"Total de atividades recuperadas: {len(activities_data)}")
 
+            # Validação final dos dados antes do processamento
             if not activities_data:
-                logger.warning("Nenhuma atividade encontrada")
+                logger.warning("Nenhuma atividade encontrada - retornando DataFrame vazio")
                 return pd.DataFrame()
 
-            # Log event types for debugging
-            event_types = set(event.get('type') for event in activities_data)
-            logger.info(f"Event types found: {event_types}")
+            if not isinstance(activities_data, list):
+                logger.error(f"activities_data não é uma lista: {type(activities_data)}")
+                return pd.DataFrame()
 
-            # Mapeamento correto dos eventos da Kommo API
+            # Filtrar e validar atividades antes do processamento
+            valid_activities = []
+            for i, activity in enumerate(activities_data):
+                if not isinstance(activity, dict):
+                    logger.warning(f"Atividade {i} não é um dicionário válido: {type(activity)}")
+                    continue
+                if not activity.get('type'):
+                    logger.warning(f"Atividade {i} não possui tipo definido")
+                    continue
+                valid_activities.append(activity)
+
+            if not valid_activities:
+                logger.warning("Nenhuma atividade válida encontrada após filtragem")
+                return pd.DataFrame()
+
+            logger.info(f"Atividades válidas para processamento: {len(valid_activities)}")
+
+            # Log event types for debugging - usando apenas atividades válidas
+            event_types = set()
+            for activity in valid_activities:
+                activity_type = activity.get('type')
+                if activity_type:
+                    event_types.add(activity_type)
+            
+            logger.info(f"Event types found: {event_types}")
+            
+            # Usar valid_activities em vez de activities_data
+            activities_data = valid_activities
+
+            # Mapeamento completo dos eventos da Kommo API
             type_mapping = {
                 "lead_status_changed": "mudança_status",
                 "incoming_chat_message": "mensagem_recebida",
-                "outgoing_chat_message": "mensagem_enviada",
+                "outgoing_chat_message": "mensagem_enviada", 
                 "task_completed": "tarefa_concluida",
                 "task_added": "tarefa_criada",
-                "common_note_added": "nota_adicionada"
+                "common_note_added": "nota_adicionada",
+                "outgoing_call": "chamada_realizada",
+                "lead_created": "lead_criado",
+                "lead_updated": "lead_atualizado"
             }
 
             processed_activities = []
-            for activity in activities_data:
+            for i, activity in enumerate(activities_data):
                 # Verificar se activity é um dicionário válido
                 if not isinstance(activity, dict):
-                    logger.warning(f"Skipping invalid activity (not a dict): {type(activity)}")
+                    logger.warning(f"Atividade {i}: não é um dicionário válido (tipo: {type(activity)})")
+                    continue
+
+                # Verificar se possui campos essenciais
+                if not activity.get("id"):
+                    logger.warning(f"Atividade {i}: não possui ID válido")
                     continue
 
                 # Extrair informações específicas baseado no tipo de evento
                 activity_type = activity.get("type", "")
+                if not activity_type:
+                    logger.warning(f"Atividade {i} (ID: {activity.get('id')}): tipo não definido")
+                    activity_type = "unknown"
+
                 entity_type = activity.get("entity_type", "")
                 entity_id = activity.get("entity_id")
+
+                # Log para eventos não mapeados
+                if activity_type not in type_mapping:
+                    logger.info(f"Tipo de evento não mapeado encontrado: {activity_type}")
 
                 # Determinar lead_id baseado no tipo de entidade
                 lead_id = None
