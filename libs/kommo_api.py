@@ -432,7 +432,7 @@ class KommoAPI:
                 "filter[type]": [
                     "lead_status_changed", "incoming_chat_message",
                     "outgoing_chat_message", "task_completed", "task_added",
-                    "common_note_added", "outgoing_call"
+                    "common_note_added"
                 ]
             }
 
@@ -445,7 +445,8 @@ class KommoAPI:
                     activities_data) < limits['max_total_records']:
                 try:
                     params = {**base_params, "page": page}
-                    response = self._make_request_with_params("events", base_params)
+                    response = self._make_request_with_params(
+                        "events", base_params)
 
                     events = []
                     if isinstance(response, dict):
@@ -516,8 +517,7 @@ class KommoAPI:
                 "outgoing_chat_message": "mensagem_enviada",
                 "task_completed": "tarefa_concluida",
                 "task_added": "tarefa_criada",
-                "common_note_added": "nota_adicionada",
-                "outgoing_call": "ligacao_realizada"
+                "common_note_added": "nota_adicionada"
             }
 
             processed_activities = []
@@ -766,9 +766,13 @@ class KommoAPI:
         for key, value in base_params.items():
             if isinstance(value, list):
                 for item in value:
-                    query_parts.append(f"{urllib.parse.quote(key)}={urllib.parse.quote(str(item))}")
+                    query_parts.append(
+                        f"{urllib.parse.quote(key)}={urllib.parse.quote(str(item))}"
+                    )
             else:
-                query_parts.append(f"{urllib.parse.quote(key)}={urllib.parse.quote(str(value))}")
+                query_parts.append(
+                    f"{urllib.parse.quote(key)}={urllib.parse.quote(str(value))}"
+                )
 
         query_string = "&".join(query_parts)
         full_url = f"{url}?{query_string}"
@@ -792,15 +796,21 @@ class KommoAPI:
                 return response.json()
 
             except requests.exceptions.RequestException as e:
-                status_code = e.response.status_code if hasattr(e, 'response') else 0
+                status_code = e.response.status_code if hasattr(
+                    e, 'response') else 0
 
                 if status_code in (429, 403, 504):
-                    if not self.rate_monitor.handle_kommo_error(status_code, endpoint, attempt):
-                        logger.error(f"Stopping retries for {endpoint} due to {status_code}")
+                    if not self.rate_monitor.handle_kommo_error(
+                            status_code, endpoint, attempt):
+                        logger.error(
+                            f"Stopping retries for {endpoint} due to {status_code}"
+                        )
                         raise
                     self.rate_monitor.wait_before_retry(endpoint, attempt)
                 else:
-                    logger.warning(f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}")
+                    logger.warning(
+                        f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}"
+                    )
                     if attempt >= retry_count - 1:
                         raise
                     time.sleep(2)
