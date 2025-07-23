@@ -615,23 +615,28 @@ class SupabaseClient:
                 for record in records:
                     broker_id = record.get('id')
                     if broker_id:
-                        # Verifica se o registro já existe
-                        existing = self.client.table("broker_points").select("id").eq(
-                            "id", broker_id).eq("company_id", company_id).execute()
-                        
-                        if existing.data:
-                            # Update se existe
-                            response = self.client.table("broker_points").update(record).eq(
+                        try:
+                            # Verifica se o registro já existe
+                            existing = self.client.table("broker_points").select("id").eq(
                                 "id", broker_id).eq("company_id", company_id).execute()
-                        else:
-                            # Insert se não existe
-                            response = self.client.table("broker_points").insert(record).execute()
-                        
-                        if hasattr(response, "error") and response.error:
-                            logger.error(f"Error updating broker points: {response.error}")
-                            raise Exception(f"Error updating broker points: {response.error}")
-                        
-                        all_responses.append(response)
+                            
+                            if existing.data:
+                                # Update se existe - remove campos que não devem ser atualizados na condição
+                                update_record = {k: v for k, v in record.items() if k not in ['id', 'company_id']}
+                                response = self.client.table("broker_points").update(update_record).eq(
+                                    "id", broker_id).eq("company_id", company_id).execute()
+                            else:
+                                # Insert se não existe
+                                response = self.client.table("broker_points").insert(record).execute()
+                            
+                            if hasattr(response, "error") and response.error:
+                                logger.error(f"Error updating broker points: {response.error}")
+                                raise Exception(f"Error updating broker points: {response.error}")
+                            
+                            all_responses.append(response)
+                        except Exception as individual_error:
+                            logger.warning(f"Error processing record for broker {broker_id}: {individual_error}")
+                            continue
 
             return all_responses
 
@@ -801,7 +806,7 @@ class SupabaseClient:
     def initialize_broker_points(self, company_id=None):
         """
         Cria registros na tabela broker_points para todos os corretores cadastrados,
-        com os campos de pontuação zerados. Evita duplicações usando ON CONFLICT.
+        com os campos de pontuação zerados. Evita duplicações verificando existência.
         """
         company_id = company_id or self.kommo_config.get('company_id')
         try:
@@ -819,6 +824,21 @@ class SupabaseClient:
                     "Nenhum corretor encontrado para inicializar broker_points."
                 )
                 return
+
+            # Buscar registros existentes para evitar duplicatas
+            existing_result = self.client.table("broker_points").select(
+                "id").eq("company_id", company_id).execute()
+            
+            existing_ids = set()
+            if existing_result.data:
+                existing_ids = {record['id'] for record in existing_result.data}
+
+            # Filtrar apenas corretores que não têm registros
+            brokers_to_insert = [b for b in brokers if b['id'] not in existing_ids]
+            
+            if not brokers_to_insert:
+                logger.info(f"Todos os corretores já têm registros em broker_points para company_id {company_id}")
+                return True
 
             # Criar registros com pontuação zero e company_id
             now = datetime.now().isoformat()
@@ -844,28 +864,15 @@ class SupabaseClient:
                 'leads_5_dias_sem_mudanca': 0,
                 "pontos": 0,
                 "updated_at": now
-            } for b in brokers]
+            } for b in brokers_to_insert]
 
-            # Usar upsert que funciona como ON CONFLICT DO UPDATE
+            # Inserir registros novos
             if new_records:
-                result = self.client.table("broker_points").upsert(
-                    new_records, 
-                    on_conflict="id,company_id",
-                    ignore_duplicates=True
-                ).execute()
+                result = self.client.table("broker_points").insert(new_records).execute()
 
                 if hasattr(result, "error") and result.error:
-                    logger.warning(f"Aviso ao fazer upsert em broker_points: {result.error}")
-                    # Se upsert falhar, tentar com verificação manual
-                    for record in new_records:
-                        try:
-                            existing = self.client.table("broker_points").select("id").eq(
-                                "id", record["id"]).eq("company_id", company_id).execute()
-                            
-                            if not existing.data:
-                                self.client.table("broker_points").insert(record).execute()
-                        except Exception as individual_error:
-                            logger.debug(f"Record {record['id']} already exists or insert failed: {individual_error}")
+                    logger.error(f"Erro ao inserir broker_points: {result.error}")
+                    return False
 
                 logger.info(
                     f"Broker points inicializados para {len(new_records)} corretores."
