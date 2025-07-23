@@ -973,15 +973,28 @@ class SupabaseClient:
                     broker_points_data[rule_name] = points
 
                 try:
-                    if broker_id in points_dict:
+                    # Sempre verificar se o registro existe antes de inserir/atualizar
+                    existing_check = self.client.table("broker_points").select("id").eq(
+                        "id", broker_id
+                    ).eq("company_id", company_id).execute()
+                    
+                    if existing_check.data:
                         # Update existing record
                         update_data = {k: v for k, v in broker_points_data.items() if k not in ['id', 'company_id']}
-                        self.client.table("broker_points").update(update_data).eq(
+                        result = self.client.table("broker_points").update(update_data).eq(
                             "id", broker_id
                         ).eq("company_id", company_id).execute()
+                        
+                        if hasattr(result, "error") and result.error:
+                            logger.error(f"Update error for broker {broker_id}: {result.error}")
+                            continue
                     else:
                         # Insert new record
-                        self.client.table("broker_points").insert(broker_points_data).execute()
+                        result = self.client.table("broker_points").insert(broker_points_data).execute()
+                        
+                        if hasattr(result, "error") and result.error:
+                            logger.error(f"Insert error for broker {broker_id}: {result.error}")
+                            continue
 
                     logger.info(f"Updated points for {broker_name}: {total_points} total points")
                 except Exception as db_error:
@@ -1004,13 +1017,19 @@ class SupabaseClient:
             else:
                 points = rule_config  # rule_config is already the points value
 
-            # Ensure datetime columns are properly converted
-            if not broker_activities.empty and 'criado_em' in broker_activities.columns:
-                broker_activities['criado_em'] = pd.to_datetime(broker_activities['criado_em'], errors='coerce', utc=True)
-            
-            if not broker_leads.empty and 'criado_em' in broker_leads.columns:
-                broker_leads['criado_em'] = pd.to_datetime(broker_leads['criado_em'], errors='coerce', utc=True)
-                broker_leads['atualizado_em'] = pd.to_datetime(broker_leads['atualizado_em'], errors='coerce', utc=True)
+            # Ensure datetime columns are properly converted with better error handling
+            try:
+                if not broker_activities.empty and 'criado_em' in broker_activities.columns:
+                    broker_activities['criado_em'] = pd.to_datetime(broker_activities['criado_em'], errors='coerce', utc=True)
+                
+                if not broker_leads.empty:
+                    if 'criado_em' in broker_leads.columns:
+                        broker_leads['criado_em'] = pd.to_datetime(broker_leads['criado_em'], errors='coerce', utc=True)
+                    if 'atualizado_em' in broker_leads.columns:
+                        broker_leads['atualizado_em'] = pd.to_datetime(broker_leads['atualizado_em'], errors='coerce', utc=True)
+            except Exception as date_error:
+                logger.warning(f"Error converting datetime columns in rule {rule_name}: {date_error}")
+                # Continue with original data if conversion fails
 
             if rule_name == "leads_respondidos_1h":
                 # Leads respondidos em 1 hora - usando mensagens enviadas
