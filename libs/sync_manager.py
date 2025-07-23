@@ -91,10 +91,18 @@ class SyncManager:
         """Process a batch of records"""
         try:
             to_upsert = []
+            processed_ids = set()  # Track processed IDs to avoid duplicates
 
             for record in records:
                 processed = self._prepare_record(record)
                 record_id = processed.get('id')
+                
+                # Skip if we already processed this ID in this batch
+                if record_id in processed_ids:
+                    logger.debug(f"Skipping duplicate record ID {record_id} in {table}")
+                    continue
+                
+                processed_ids.add(record_id)
                 new_hash = self._generate_hash(processed)
 
                 # Skip if record hasn't changed
@@ -106,12 +114,24 @@ class SyncManager:
                 to_upsert.append(processed)
 
             if to_upsert:
-                result = self.supabase.client.table(table).upsert(
-                    to_upsert).execute()
-                if hasattr(result, "error") and result.error:
-                    raise Exception(f"Supabase error: {result.error}")
+                # Additional safety check: remove any remaining duplicates by ID
+                unique_records = {}
+                for record in to_upsert:
+                    record_id = record.get('id')
+                    if record_id not in unique_records:
+                        unique_records[record_id] = record
+                    else:
+                        logger.warning(f"Removing duplicate record with ID {record_id} from {table} batch")
+                
+                final_records = list(unique_records.values())
+                
+                if final_records:
+                    result = self.supabase.client.table(table).upsert(
+                        final_records).execute()
+                    if hasattr(result, "error") and result.error:
+                        raise Exception(f"Supabase error: {result.error}")
 
-                logger.info(f"Processed {len(to_upsert)} records for {table}")
+                    logger.info(f"Processed {len(final_records)} records for {table}")
 
         except Exception as e:
             logger.error(f"Error processing batch for {table}: {str(e)}")
@@ -283,10 +303,18 @@ class SyncManager:
         try:
             to_upsert = []
             changes_found = False
+            processed_ids = set()  # Track processed IDs to avoid duplicates
 
             for record in records:
                 processed = self._prepare_record(record)
                 record_id = processed.get('id')
+                
+                # Skip if we already processed this ID in this batch
+                if record_id in processed_ids:
+                    logger.debug(f"Skipping duplicate record ID {record_id} in {table}")
+                    continue
+                
+                processed_ids.add(record_id)
                 new_hash = self._generate_hash(processed)
 
                 # Verificar se o registro mudou
@@ -304,11 +332,23 @@ class SyncManager:
                     logger.debug(f"New record in {table} ID: {record_id}")
 
             if to_upsert:
-                result = self.supabase.client.table(table).upsert(to_upsert).execute()
-                if hasattr(result, "error") and result.error:
-                    raise Exception(f"Supabase error: {result.error}")
+                # Additional safety check: remove any remaining duplicates by ID
+                unique_records = {}
+                for record in to_upsert:
+                    record_id = record.get('id')
+                    if record_id not in unique_records:
+                        unique_records[record_id] = record
+                    else:
+                        logger.warning(f"Removing duplicate record with ID {record_id} from {table} batch")
+                
+                final_records = list(unique_records.values())
+                
+                if final_records:
+                    result = self.supabase.client.table(table).upsert(final_records).execute()
+                    if hasattr(result, "error") and result.error:
+                        raise Exception(f"Supabase error: {result.error}")
 
-                logger.info(f"Updated {len(to_upsert)} changed records in {table}")
+                    logger.info(f"Updated {len(final_records)} changed records in {table}")
 
             return changes_found
 
