@@ -445,7 +445,7 @@ class KommoAPI:
                     activities_data) < limits['max_total_records']:
                 try:
                     params = {**base_params, "page": page}
-                    response = self._make_request("events", params=params)
+                    response = self._make_request_with_params("events", base_params)
 
                     events = []
                     if isinstance(response, dict):
@@ -748,3 +748,59 @@ class KommoAPI:
         except Exception as e:
             logger.error(f"Failed to retrieve tasks: {str(e)}")
             raise
+
+    def _make_request_with_params(self, endpoint, base_params, retry_count=3):
+        """
+        Make request handling multiple parameters with same name
+        """
+        import urllib.parse
+
+        url = f"{self.api_url}/{endpoint}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Build query string manually to handle multiple filter[type] parameters
+        query_parts = []
+        for key, value in base_params.items():
+            if isinstance(value, list):
+                for item in value:
+                    query_parts.append(f"{urllib.parse.quote(key)}={urllib.parse.quote(str(item))}")
+            else:
+                query_parts.append(f"{urllib.parse.quote(key)}={urllib.parse.quote(str(value))}")
+
+        query_string = "&".join(query_parts)
+        full_url = f"{url}?{query_string}"
+
+        for attempt in range(retry_count):
+            try:
+                self.rate_monitor.enforce_rate_limit()
+
+                logger.info(f"Making API request to: {full_url}")
+                response = requests.get(full_url, headers=headers)
+
+                logger.info(f"Response status: {response.status_code}")
+                logger.debug(f"Response content: {response.text[:500]}")
+
+                response.raise_for_status()
+
+                if not response.text.strip():
+                    logger.warning("Empty response received from API")
+                    return {}
+
+                return response.json()
+
+            except requests.exceptions.RequestException as e:
+                status_code = e.response.status_code if hasattr(e, 'response') else 0
+
+                if status_code in (429, 403, 504):
+                    if not self.rate_monitor.handle_kommo_error(status_code, endpoint, attempt):
+                        logger.error(f"Stopping retries for {endpoint} due to {status_code}")
+                        raise
+                    self.rate_monitor.wait_before_retry(endpoint, attempt)
+                else:
+                    logger.warning(f"API request failed (attempt {attempt+1}/{retry_count}): {str(e)}")
+                    if attempt >= retry_count - 1:
+                        raise
+                    time.sleep(2)
