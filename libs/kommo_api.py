@@ -440,9 +440,9 @@ class KommoAPI:
                 "entity_tag_deleted", "entity_responsible_changed"
             ]
 
+            # Fazer requisições sem filtros específicos para capturar todos os eventos
             base_params = {
-                "limit": limits['page_size'],
-                "filter[type]": available_event_types
+                "limit": limits['page_size']
             }
 
             activities_data = []
@@ -457,9 +457,8 @@ class KommoAPI:
                     current_params = base_params.copy()
                     current_params["page"] = page
 
-                    # Fazer requisição com tratamento de erro robusto
-                    response = self._make_request_with_params(
-                        "events", current_params)
+                    # Fazer requisição sem filtros específicos para capturar todos os eventos
+                    response = self._make_request("events", params=current_params)
 
                     # Validação robusta da resposta
                     events = []
@@ -487,16 +486,21 @@ class KommoAPI:
                                 )
                                 events = []
 
-                    # Processar eventos encontrados
+                    # Processar eventos encontrados - filtrando pelos tipos desejados após receber todos
                     if events and len(events) > 0:
-                        # Filtrar apenas eventos válidos (dicionários)
-                        valid_events = [
-                            event for event in events
-                            if isinstance(event, dict)
-                        ]
-                        if len(valid_events) != len(events):
-                            logger.warning(
-                                f"Página {page}: {len(events) - len(valid_events)} eventos inválidos filtrados"
+                        # Filtrar apenas eventos válidos (dicionários) e pelos tipos que queremos
+                        valid_events = []
+                        for event in events:
+                            if isinstance(event, dict):
+                                event_type = event.get('type', '')
+                                # Filtrar apenas os tipos de eventos que nos interessam
+                                if event_type in available_event_types:
+                                    valid_events.append(event)
+                        
+                        if len(valid_events) != len([e for e in events if isinstance(e, dict)]):
+                            filtered_out = len([e for e in events if isinstance(e, dict)]) - len(valid_events)
+                            logger.info(
+                                f"Página {page}: {filtered_out} eventos filtrados por tipo não relevante"
                             )
 
                         if valid_events:
