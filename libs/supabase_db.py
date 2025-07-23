@@ -866,7 +866,7 @@ class SupabaseClient:
     def update_broker_points(self,
                              brokers=[],
                              leads=[],
-                             activities=[],```python
+                             activities=[],
                              company_id=None):
         """Update broker points based on current rules and data"""
         try:
