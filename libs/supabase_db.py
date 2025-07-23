@@ -973,30 +973,55 @@ class SupabaseClient:
                     broker_points_data[rule_name] = points
 
                 try:
-                    # Sempre verificar se o registro existe antes de inserir/atualizar
-                    existing_check = self.client.table("broker_points").select("id").eq(
+                    # Verificar se o registro existe e buscar dados atuais
+                    existing_check = self.client.table("broker_points").select("*").eq(
                         "id", broker_id
                     ).eq("company_id", company_id).execute()
                     
                     if existing_check.data:
-                        # Update existing record
-                        update_data = {k: v for k, v in broker_points_data.items() if k not in ['id', 'company_id']}
-                        result = self.client.table("broker_points").update(update_data).eq(
-                            "id", broker_id
-                        ).eq("company_id", company_id).execute()
+                        # Registro existe - comparar valores e atualizar apenas campos alterados
+                        existing_data = existing_check.data[0]
+                        update_data = {}
                         
-                        if hasattr(result, "error") and result.error:
-                            logger.error(f"Update error for broker {broker_id}: {result.error}")
-                            continue
+                        # Verificar cada campo para mudanças
+                        for key, new_value in broker_points_data.items():
+                            if key in ['id', 'company_id']:
+                                continue  # Não atualizar chaves primárias
+                            
+                            existing_value = existing_data.get(key)
+                            
+                            # Comparar valores considerando tipos diferentes
+                            if existing_value != new_value:
+                                # Verificar se são números equivalentes
+                                if isinstance(existing_value, (int, float)) and isinstance(new_value, (int, float)):
+                                    if existing_value != new_value:
+                                        update_data[key] = new_value
+                                else:
+                                    update_data[key] = new_value
+                        
+                        # Só fazer update se houver mudanças
+                        if update_data:
+                            result = self.client.table("broker_points").update(update_data).eq(
+                                "id", broker_id
+                            ).eq("company_id", company_id).execute()
+                            
+                            if hasattr(result, "error") and result.error:
+                                logger.error(f"Update error for broker {broker_id}: {result.error}")
+                                continue
+                            
+                            logger.info(f"Updated {len(update_data)} fields for {broker_name}: {total_points} total points")
+                        else:
+                            logger.info(f"No changes detected for {broker_name} - skipping update")
                     else:
-                        # Insert new record
+                        # Registro não existe - inserir novo
                         result = self.client.table("broker_points").insert(broker_points_data).execute()
                         
                         if hasattr(result, "error") and result.error:
                             logger.error(f"Insert error for broker {broker_id}: {result.error}")
                             continue
+                        
+                        logger.info(f"Inserted new record for {broker_name}: {total_points} total points")
 
-                    logger.info(f"Updated points for {broker_name}: {total_points} total points")
                 except Exception as db_error:
                     logger.error(f"Database error for broker {broker_id}: {str(db_error)}")
                     continue
