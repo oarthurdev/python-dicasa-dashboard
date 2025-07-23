@@ -801,7 +801,7 @@ class SupabaseClient:
     def initialize_broker_points(self, company_id=None):
         """
         Cria registros na tabela broker_points para todos os corretores cadastrados,
-        com os campos de pontuação zerados. Evita duplicações.
+        com os campos de pontuação zerados. Evita duplicações usando ON CONFLICT.
         """
         company_id = company_id or self.kommo_config.get('company_id')
         try:
@@ -818,23 +818,6 @@ class SupabaseClient:
                 logger.warning(
                     "Nenhum corretor encontrado para inicializar broker_points."
                 )
-                return
-
-            broker_ids = [b["id"] for b in brokers]
-
-            # Buscar IDs já existentes na tabela broker_points com company_id
-            existing_result = self.client.table("broker_points").select(
-                "id").in_("id", broker_ids).eq("company_id", company_id).execute()
-            existing_ids = {r["id"]
-                            for r in existing_result.data
-                            } if existing_result.data else set()
-
-            # Filtrar somente os que ainda não existem
-            new_brokers = [b for b in brokers if b["id"] not in existing_ids]
-
-            if not new_brokers:
-                logger.info(
-                    "Todos os corretores já possuem entrada em broker_points.")
                 return
 
             # Criar registros com pontuação zero e company_id
@@ -861,25 +844,38 @@ class SupabaseClient:
                 'leads_5_dias_sem_mudanca': 0,
                 "pontos": 0,
                 "updated_at": now
-            } for b in new_brokers]
+            } for b in brokers]
 
-            # Inserir no banco usando insert para evitar o erro de chave duplicada
+            # Usar upsert que funciona como ON CONFLICT DO UPDATE
             if new_records:
-                result = self.client.table("broker_points").insert(
-                    new_records).execute()
+                result = self.client.table("broker_points").upsert(
+                    new_records, 
+                    on_conflict="id,company_id",
+                    ignore_duplicates=True
+                ).execute()
 
                 if hasattr(result, "error") and result.error:
-                    raise Exception(
-                        f"Erro ao inserir broker_points: {result.error}")
+                    logger.warning(f"Aviso ao fazer upsert em broker_points: {result.error}")
+                    # Se upsert falhar, tentar com verificação manual
+                    for record in new_records:
+                        try:
+                            existing = self.client.table("broker_points").select("id").eq(
+                                "id", record["id"]).eq("company_id", company_id).execute()
+                            
+                            if not existing.data:
+                                self.client.table("broker_points").insert(record).execute()
+                        except Exception as individual_error:
+                            logger.debug(f"Record {record['id']} already exists or insert failed: {individual_error}")
 
                 logger.info(
-                    f"{len(new_records)} registros criados em broker_points com sucesso."
+                    f"Broker points inicializados para {len(new_records)} corretores."
                 )
-            return result
+            return True
 
         except Exception as e:
             logger.error(f"Erro ao inicializar broker_points: {str(e)}")
-            raise
+            # Não fazer raise para não quebrar o fluxo principal
+            return False
 
     def update_broker_points(self,
                              brokers=[],
