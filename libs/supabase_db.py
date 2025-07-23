@@ -880,7 +880,7 @@ class SupabaseClient:
 
             # Get existing broker points
             existing_points = self.client.table("broker_points").select("*").eq("company_id", company_id).execute()
-            points_dict = {point['broker_id']: point for point in existing_points.data}
+            points_dict = {point['id']: point for point in existing_points.data}
 
             # Calculate points for each broker
             for _, broker in brokers.iterrows():
@@ -919,7 +919,7 @@ class SupabaseClient:
                 current_time = datetime.now().isoformat()
 
                 broker_points_data = {
-                    'broker_id': broker_id,
+                    'id': broker_id,
                     'company_id': company_id,
                     'pontos': total_points,
                     'regras_detalhes': rule_results,
@@ -931,10 +931,9 @@ class SupabaseClient:
                     # Update existing record
                     self.client.table("broker_points").update(broker_points_data).eq(
                         "id", broker_id
-                    ).eq("company_id", company_id).execute()
+                    ).execute()
                 else:
                     # Insert new record
-                    broker_points_data['id'] = broker_id
                     broker_points_data['created_at'] = current_time
                     self.client.table("broker_points").insert(broker_points_data).execute()
 
@@ -949,7 +948,11 @@ class SupabaseClient:
     def _calculate_rule_points(self, rule_name, rule_config, broker_leads, broker_activities, all_leads, all_activities, company_id):
         """Calculate points for a specific rule with updated event mapping"""
         try:
-            points = rule_config.get('pontos', 0)
+            # Handle both dict and int rule_config formats
+            if isinstance(rule_config, dict):
+                points = rule_config.get('pontos', 0)
+            else:
+                points = rule_config  # rule_config is already the points value
 
             if rule_name == "leads_respondidos_1h":
                 # Leads respondidos em 1 hora - usando mensagens enviadas
