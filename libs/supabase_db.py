@@ -934,7 +934,6 @@ class SupabaseClient:
                     ).execute()
                 else:
                     # Insert new record
-                    broker_points_data['created_at'] = current_time
                     self.client.table("broker_points").insert(broker_points_data).execute()
 
                 logger.info(f"Updated points for {broker_name}: {total_points} total points")
@@ -959,7 +958,8 @@ class SupabaseClient:
                 if broker_activities.empty:
                     return 0
 
-                one_hour_ago = datetime.now() - timedelta(hours=1)
+                from datetime import timezone
+                one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
                 recent_responses = broker_activities[
                     (broker_activities['tipo'] == 'mensagem_enviada') &
                     (broker_activities['criado_em'] >= one_hour_ago)
@@ -1007,7 +1007,8 @@ class SupabaseClient:
                 if broker_leads.empty:
                     return 0
 
-                today = datetime.now().date()
+                from datetime import timezone
+                today = datetime.now(timezone.utc).date()
                 same_day_updates = broker_leads[
                     (broker_leads['criado_em'].dt.date == today) &
                     (broker_leads['atualizado_em'].dt.date == today) &
@@ -1020,7 +1021,8 @@ class SupabaseClient:
                 if broker_activities.empty:
                     return 0
 
-                three_hours_ago = datetime.now() - timedelta(hours=3)
+                from datetime import timezone
+                three_hours_ago = datetime.now(timezone.utc) - timedelta(hours=3)
                 quick_responses = broker_activities[
                     (broker_activities['tipo'] == 'mensagem_enviada') &
                     (broker_activities['criado_em'] >= three_hours_ago)
@@ -1033,7 +1035,8 @@ class SupabaseClient:
                 if broker_leads.empty or broker_activities.empty:
                     return 0
 
-                today = datetime.now().date()
+                from datetime import timezone
+                today = datetime.now(timezone.utc).date()
                 today_leads = broker_leads[broker_leads['criado_em'].dt.date == today]
 
                 if len(today_leads) == 0:
@@ -1093,7 +1096,8 @@ class SupabaseClient:
                 if broker_leads.empty:
                     return 0
 
-                cutoff_time = datetime.now() - timedelta(hours=24)
+                from datetime import timezone
+                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
 
                 # Buscar leads ativos sem atividades recentes
                 active_leads = broker_leads[broker_leads['status'] == 'Em progresso']
@@ -1114,7 +1118,8 @@ class SupabaseClient:
                 if broker_leads.empty:
                     return 0
 
-                cutoff_time = datetime.now() - timedelta(hours=48)
+                from datetime import timezone
+                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=48)
                 ignored_leads = broker_leads[
                     (broker_leads['criado_em'] < cutoff_time) &
                     (broker_leads['status'] == 'Em progresso')
