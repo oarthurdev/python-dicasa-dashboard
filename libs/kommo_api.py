@@ -426,11 +426,18 @@ class KommoAPI:
             # Get safe pagination limits
             limits = self._get_safe_pagination_limits()
 
-            # Eventos disponíveis na API da Kommo (validação prévia)
+            # Eventos disponíveis na API da Kommo - todos os eventos que retornam dados
             available_event_types = [
                 "lead_status_changed", "incoming_chat_message",
                 "outgoing_chat_message", "task_completed", "task_added",
-                "common_note_added", "outgoing_call"
+                "common_note_added", "outgoing_call", "incoming_call",
+                "lead_created", "lead_updated", "lead_deleted",
+                "contact_created", "contact_updated", "contact_deleted",
+                "company_created", "company_updated", "company_deleted",
+                "task_result_added", "custom_field_value_changed",
+                "sale_field_changed", "lead_linked", "lead_unlinked",
+                "incoming_sms", "outgoing_sms", "entity_tag_added",
+                "entity_tag_deleted", "entity_responsible_changed"
             ]
 
             base_params = {
@@ -604,7 +611,7 @@ class KommoAPI:
             # Usar valid_activities em vez de activities_data
             activities_data = valid_activities
 
-            # Mapeamento completo dos eventos da Kommo API
+            # Mapeamento completo dos eventos da Kommo API - todos os eventos sincronizados
             type_mapping = {
                 "lead_status_changed": "mudança_status",
                 "incoming_chat_message": "mensagem_recebida",
@@ -612,7 +619,27 @@ class KommoAPI:
                 "task_completed": "tarefa_concluida",
                 "task_added": "tarefa_criada",
                 "common_note_added": "nota_adicionada",
-                "outgoing_call": "chamada_realizada"
+                "outgoing_call": "chamada_realizada",
+                "incoming_call": "chamada_recebida",
+                "lead_created": "lead_criado",
+                "lead_updated": "lead_atualizado",
+                "lead_deleted": "lead_excluido",
+                "contact_created": "contato_criado",
+                "contact_updated": "contato_atualizado",
+                "contact_deleted": "contato_excluido",
+                "company_created": "empresa_criada",
+                "company_updated": "empresa_atualizada",
+                "company_deleted": "empresa_excluida",
+                "task_result_added": "resultado_tarefa_adicionado",
+                "custom_field_value_changed": "campo_personalizado_alterado",
+                "sale_field_changed": "campo_venda_alterado",
+                "lead_linked": "lead_vinculado",
+                "lead_unlinked": "lead_desvinculado",
+                "incoming_sms": "sms_recebido",
+                "outgoing_sms": "sms_enviado",
+                "entity_tag_added": "tag_adicionada",
+                "entity_tag_deleted": "tag_removida",
+                "entity_responsible_changed": "responsavel_alterado"
             }
 
             processed_activities = []
@@ -699,6 +726,40 @@ class KommoAPI:
                     if isinstance(value_after, dict):
                         note_text = value_after.get("text", "")
 
+                # Extrair informações de chamadas
+                call_duration = None
+                call_result = None
+                if activity_type in ["incoming_call", "outgoing_call"]:
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_after, dict):
+                        call_duration = value_after.get("duration")
+                        call_result = value_after.get("call_result")
+
+                # Extrair informações de SMS
+                sms_text = None
+                if activity_type in ["incoming_sms", "outgoing_sms"]:
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_after, dict):
+                        sms_text = value_after.get("text", "")
+
+                # Extrair informações de alterações de responsável
+                old_responsible = None
+                new_responsible = None
+                if activity_type == "entity_responsible_changed":
+                    value_before = activity.get("value_before", {})
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_before, dict):
+                        old_responsible = value_before.get("responsible_user_id")
+                    if isinstance(value_after, dict):
+                        new_responsible = value_after.get("responsible_user_id")
+
+                # Extrair informações de tags
+                tag_name = None
+                if activity_type in ["entity_tag_added", "entity_tag_deleted"]:
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_after, dict):
+                        tag_name = value_after.get("name", "")
+
                 processed_activity = {
                     "id":
                     activity.get("id"),
@@ -726,6 +787,18 @@ class KommoAPI:
                     task_type,
                     "texto_nota":
                     note_text,
+                    "duracao_chamada":
+                    call_duration,
+                    "resultado_chamada":
+                    call_result,
+                    "texto_sms":
+                    sms_text,
+                    "responsavel_anterior":
+                    old_responsible,
+                    "responsavel_novo":
+                    new_responsible,
+                    "nome_tag":
+                    tag_name,
                     "entity_type":
                     entity_type,
                     "entity_id":

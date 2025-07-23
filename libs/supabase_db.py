@@ -611,10 +611,27 @@ class SupabaseClient:
                         if isinstance(value, pd.Timestamp):
                             record[key] = value.isoformat()
 
-                # Realiza o upsert com os dados tratados
-                response = self.client.table("broker_points").upsert(
-                    records).execute()
-                all_responses.append(response)
+                # Verifica se os registros já existem e faz update ou insert
+                for record in records:
+                    broker_id = record.get('id')
+                    if broker_id:
+                        # Verifica se o registro já existe
+                        existing = self.client.table("broker_points").select("id").eq(
+                            "id", broker_id).eq("company_id", company_id).execute()
+                        
+                        if existing.data:
+                            # Update se existe
+                            response = self.client.table("broker_points").update(record).eq(
+                                "id", broker_id).eq("company_id", company_id).execute()
+                        else:
+                            # Insert se não existe
+                            response = self.client.table("broker_points").insert(record).execute()
+                        
+                        if hasattr(response, "error") and response.error:
+                            logger.error(f"Error updating broker points: {response.error}")
+                            raise Exception(f"Error updating broker points: {response.error}")
+                        
+                        all_responses.append(response)
 
             return all_responses
 
@@ -805,9 +822,9 @@ class SupabaseClient:
 
             broker_ids = [b["id"] for b in brokers]
 
-            # Buscar IDs já existentes na tabela broker_points
+            # Buscar IDs já existentes na tabela broker_points com company_id
             existing_result = self.client.table("broker_points").select(
-                "id").in_("id", broker_ids).execute()
+                "id").in_("id", broker_ids).eq("company_id", company_id).execute()
             existing_ids = {r["id"]
                             for r in existing_result.data
                             } if existing_result.data else set()
@@ -820,10 +837,11 @@ class SupabaseClient:
                     "Todos os corretores já possuem entrada em broker_points.")
                 return
 
-            # Criar registros com pontuação zero
+            # Criar registros com pontuação zero e company_id
             now = datetime.now().isoformat()
             new_records = [{
                 "id": b["id"],
+                "company_id": company_id,
                 "nome": b["nome"],
                 'leads_respondidos_1h': 0,
                 'leads_visitados': 0,
@@ -845,10 +863,10 @@ class SupabaseClient:
                 "updated_at": now
             } for b in new_brokers]
 
-            # Inserir no banco usando upsert para evitar duplicatas
+            # Inserir no banco usando insert para evitar o erro de chave duplicada
             if new_records:
-                result = self.client.table("broker_points").upsert(
-                    new_records, on_conflict="id").execute()
+                result = self.client.table("broker_points").insert(
+                    new_records).execute()
 
                 if hasattr(result, "error") and result.error:
                     raise Exception(
