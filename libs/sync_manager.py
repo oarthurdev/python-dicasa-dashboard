@@ -55,11 +55,34 @@ class SyncManager:
         for key, value in processed.items():
             if hasattr(value, 'isoformat'):
                 processed[key] = value.isoformat()
-            elif pd.isna(value):
+            elif value is None or value == '' or (hasattr(value, '__len__') and len(value) == 0):
                 processed[key] = None
-            elif key in ['lead_id', 'user_id'] and isinstance(
-                    value, (int, float)):
-                processed[key] = int(value) if pd.notna(value) else None
+            elif isinstance(value, (list, tuple, set)):
+                # Handle arrays/lists - convert to string or handle appropriately
+                processed[key] = str(value) if value else None
+            elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
+                # Handle other iterable types (like numpy arrays)
+                try:
+                    if pd.isna(value).all():
+                        processed[key] = None
+                    else:
+                        processed[key] = str(value)
+                except:
+                    processed[key] = str(value) if value is not None else None
+            else:
+                # Handle scalar values
+                try:
+                    if pd.isna(value):
+                        processed[key] = None
+                    elif key in ['lead_id', 'user_id'] and isinstance(value, (int, float)):
+                        processed[key] = int(value) if pd.notna(value) else None
+                    # Handle other scalar values normally
+                except (TypeError, ValueError):
+                    # If pd.isna fails, check manually
+                    if value is None or (isinstance(value, float) and value != value):  # NaN check
+                        processed[key] = None
+                    elif key in ['lead_id', 'user_id'] and isinstance(value, (int, float)):
+                        processed[key] = int(value) if value is not None else None
 
         return processed
 
