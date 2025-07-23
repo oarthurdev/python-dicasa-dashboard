@@ -891,7 +891,28 @@ class SupabaseClient:
                              company_id=None):
         """Update broker points based on current rules and data"""
         try:
+            company_id = company_id or self.kommo_config.get('company_id')
             logger.info(f"Starting broker points calculation for company {company_id}")
+
+            # Convert to DataFrames if needed
+            if not isinstance(brokers, pd.DataFrame):
+                if isinstance(brokers, list) and len(brokers) > 0:
+                    brokers = pd.DataFrame(brokers)
+                else:
+                    logger.warning("No broker data provided")
+                    return
+
+            if not isinstance(leads, pd.DataFrame):
+                if isinstance(leads, list):
+                    leads = pd.DataFrame(leads) if len(leads) > 0 else pd.DataFrame()
+                else:
+                    leads = pd.DataFrame()
+
+            if not isinstance(activities, pd.DataFrame):
+                if isinstance(activities, list):
+                    activities = pd.DataFrame(activities) if len(activities) > 0 else pd.DataFrame()
+                else:
+                    activities = pd.DataFrame()
 
             # Load current rules
             rules = self.load_rules()
@@ -943,27 +964,36 @@ class SupabaseClient:
                     'id': broker_id,
                     'company_id': company_id,
                     'pontos': total_points,
-                    'regras_detalhes': rule_results,
                     'nome': broker_name,
                     'updated_at': current_time
                 }
 
-                if broker_id in points_dict:
-                    # Update existing record
-                    self.client.table("broker_points").update(broker_points_data).eq(
-                        "id", broker_id
-                    ).execute()
-                else:
-                    # Insert new record
-                    self.client.table("broker_points").insert(broker_points_data).execute()
+                # Add individual rule columns
+                for rule_name, points in rule_results.items():
+                    broker_points_data[rule_name] = points
 
-                logger.info(f"Updated points for {broker_name}: {total_points} total points")
+                try:
+                    if broker_id in points_dict:
+                        # Update existing record
+                        update_data = {k: v for k, v in broker_points_data.items() if k not in ['id', 'company_id']}
+                        self.client.table("broker_points").update(update_data).eq(
+                            "id", broker_id
+                        ).eq("company_id", company_id).execute()
+                    else:
+                        # Insert new record
+                        self.client.table("broker_points").insert(broker_points_data).execute()
+
+                    logger.info(f"Updated points for {broker_name}: {total_points} total points")
+                except Exception as db_error:
+                    logger.error(f"Database error for broker {broker_id}: {str(db_error)}")
+                    continue
 
             logger.info("Broker points calculation completed successfully")
 
         except Exception as e:
             logger.error(f"Error updating broker points: {str(e)}")
-            raise
+            # Don't raise to avoid breaking the sync process
+            return
 
     def _calculate_rule_points(self, rule_name, rule_config, broker_leads, broker_activities, all_leads, all_activities, company_id):
         """Calculate points for a specific rule with updated event mapping"""
@@ -974,16 +1004,28 @@ class SupabaseClient:
             else:
                 points = rule_config  # rule_config is already the points value
 
+            # Ensure datetime columns are properly converted
+            if not broker_activities.empty and 'criado_em' in broker_activities.columns:
+                broker_activities['criado_em'] = pd.to_datetime(broker_activities['criado_em'], errors='coerce', utc=True)
+            
+            if not broker_leads.empty and 'criado_em' in broker_leads.columns:
+                broker_leads['criado_em'] = pd.to_datetime(broker_leads['criado_em'], errors='coerce', utc=True)
+                broker_leads['atualizado_em'] = pd.to_datetime(broker_leads['atualizado_em'], errors='coerce', utc=True)
+
             if rule_name == "leads_respondidos_1h":
                 # Leads respondidos em 1 hora - usando mensagens enviadas
-                if broker_activities.empty:
+                if broker_activities.empty or 'criado_em' not in broker_activities.columns:
                     return 0
 
                 from datetime import timezone
                 one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-                recent_responses = broker_activities[
-                    (broker_activities['tipo'] == 'mensagem_enviada') &
-                    (broker_activities['criado_em'] >= one_hour_ago)
+                
+                # Filter activities with valid dates
+                valid_activities = broker_activities.dropna(subset=['criado_em'])
+                
+                recent_responses = valid_activities[
+                    (valid_activities.get('tipo', '') == 'mensagem_enviada') &
+                    (valid_activities['criado_em'] >= one_hour_ago)
                 ]
                 unique_leads_responded = recent_responses['lead_id'].nunique() if not recent_responses.empty else 0
                 return unique_leads_responded * points
@@ -994,8 +1036,8 @@ class SupabaseClient:
                     return 0
 
                 visits = broker_activities[
-                    (broker_activities['tipo'] == 'mudança_status') &
-                    (broker_activities['status_novo'].notna())
+                    (broker_activities.get('tipo', '') == 'mudança_status') &
+                    (broker_activities.get('status_novo', pd.Series()).notna())
                 ]
                 unique_leads_visited = visits['lead_id'].nunique() if not visits.empty else 0
                 return unique_leads_visited * points
@@ -1005,19 +1047,28 @@ class SupabaseClient:
                 if broker_activities.empty:
                     return 0
 
-                # Buscar por mudanças de status para "Proposta" ou notas contendo "proposta"
-                proposal_activities = broker_activities[
-                    ((broker_activities['tipo'] == 'mudança_status') & 
-                     (broker_activities['valor_novo'].astype(str).str.contains('proposta', case=False, na=False))) |
-                    ((broker_activities['tipo'] == 'nota_adicionada') & 
-                     (broker_activities['texto_mensagem'].astype(str).str.contains('proposta', case=False, na=False)))
-                ]
-                unique_proposals = proposal_activities['lead_id'].nunique() if not proposal_activities.empty else 0
-                return unique_proposals * points
+                try:
+                    # Buscar por mudanças de status para "Proposta" ou notas contendo "proposta"
+                    status_proposals = broker_activities[
+                        (broker_activities.get('tipo', '') == 'mudança_status') & 
+                        (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('proposta', case=False, na=False))
+                    ]
+                    
+                    note_proposals = broker_activities[
+                        (broker_activities.get('tipo', '') == 'nota_adicionada') & 
+                        (broker_activities.get('texto_mensagem', pd.Series()).astype(str).str.contains('proposta', case=False, na=False))
+                    ]
+                    
+                    proposal_activities = pd.concat([status_proposals, note_proposals], ignore_index=True).drop_duplicates()
+                    unique_proposals = proposal_activities['lead_id'].nunique() if not proposal_activities.empty else 0
+                    return unique_proposals * points
+                except Exception as e:
+                    logger.warning(f"Error in propostas_enviadas calculation: {e}")
+                    return 0
 
             elif rule_name == "vendas_realizadas":
                 # Vendas realizadas - leads com status Ganho
-                if broker_leads.empty:
+                if broker_leads.empty or 'status' not in broker_leads.columns:
                     return 0
 
                 sales = broker_leads[broker_leads['status'] == 'Ganho']
@@ -1025,17 +1076,25 @@ class SupabaseClient:
 
             elif rule_name == "leads_atualizados_mesmo_dia":
                 # Leads atualizados no mesmo dia da criação
-                if broker_leads.empty:
+                if broker_leads.empty or 'criado_em' not in broker_leads.columns or 'atualizado_em' not in broker_leads.columns:
                     return 0
 
-                from datetime import timezone
-                today = datetime.now(timezone.utc).date()
-                same_day_updates = broker_leads[
-                    (broker_leads['criado_em'].dt.date == today) &
-                    (broker_leads['atualizado_em'].dt.date == today) &
-                    (broker_leads['criado_em'] != broker_leads['atualizado_em'])
-                ]
-                return len(same_day_updates) * points
+                try:
+                    from datetime import timezone
+                    today = datetime.now(timezone.utc).date()
+                    
+                    # Filter out null dates
+                    valid_leads = broker_leads.dropna(subset=['criado_em', 'atualizado_em'])
+                    
+                    same_day_updates = valid_leads[
+                        (valid_leads['criado_em'].dt.date == today) &
+                        (valid_leads['atualizado_em'].dt.date == today) &
+                        (valid_leads['criado_em'] != valid_leads['atualizado_em'])
+                    ]
+                    return len(same_day_updates) * points
+                except Exception as e:
+                    logger.warning(f"Error in leads_atualizados_mesmo_dia calculation: {e}")
+                    return 0
 
             elif rule_name == "resposta_rapida_3h":
                 # Resposta rápida em menos de 3 horas
@@ -1114,54 +1173,77 @@ class SupabaseClient:
 
             elif rule_name == "leads_sem_interacao_24h":
                 # Penalização para leads sem interação há 24 horas
-                if broker_leads.empty:
+                if broker_leads.empty or 'status' not in broker_leads.columns:
                     return 0
 
-                from datetime import timezone
-                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+                try:
+                    from datetime import timezone
+                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
 
-                # Buscar leads ativos sem atividades recentes
-                active_leads = broker_leads[broker_leads['status'] == 'Em progresso']
+                    # Buscar leads ativos sem atividades recentes
+                    active_leads = broker_leads[broker_leads['status'] == 'Em progresso']
 
-                inactive_count = 0
-                for _, lead in active_leads.iterrows():
-                    recent_activities = broker_activities[
-                        (broker_activities['lead_id'] == lead['id']) &
-                        (broker_activities['criado_em'] >= cutoff_time)
-                    ]
-                    if recent_activities.empty:
-                        inactive_count += 1
+                    inactive_count = 0
+                    for _, lead in active_leads.iterrows():
+                        if broker_activities.empty:
+                            inactive_count += 1
+                            continue
+                            
+                        valid_activities = broker_activities.dropna(subset=['criado_em'])
+                        recent_activities = valid_activities[
+                            (valid_activities['lead_id'] == lead['id']) &
+                            (valid_activities['criado_em'] >= cutoff_time)
+                        ]
+                        if recent_activities.empty:
+                            inactive_count += 1
 
-                return inactive_count * points  # Points should be negative
+                    return inactive_count * points  # Points should be negative
+                except Exception as e:
+                    logger.warning(f"Error in leads_sem_interacao_24h calculation: {e}")
+                    return 0
 
             elif rule_name == "leads_ignorados_48h":
                 # Penalização para leads ignorados há 48 horas
-                if broker_leads.empty:
+                if broker_leads.empty or 'criado_em' not in broker_leads.columns or 'status' not in broker_leads.columns:
                     return 0
 
-                from datetime import timezone
-                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=48)
-                ignored_leads = broker_leads[
-                    (broker_leads['criado_em'] < cutoff_time) &
-                    (broker_leads['status'] == 'Em progresso')
-                ]
+                try:
+                    from datetime import timezone
+                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=48)
+                    
+                    valid_leads = broker_leads.dropna(subset=['criado_em'])
+                    ignored_leads = valid_leads[
+                        (valid_leads['criado_em'] < cutoff_time) &
+                        (valid_leads['status'] == 'Em progresso')
+                    ]
 
-                # Verificar se nunca houve interação
-                ignored_count = 0
-                for _, lead in ignored_leads.iterrows():
-                    activities = broker_activities[broker_activities['lead_id'] == lead['id']]
-                    if activities.empty:
-                        ignored_count += 1
+                    # Verificar se nunca houve interação
+                    ignored_count = 0
+                    for _, lead in ignored_leads.iterrows():
+                        if broker_activities.empty:
+                            ignored_count += 1
+                            continue
+                            
+                        activities = broker_activities[broker_activities['lead_id'] == lead['id']]
+                        if activities.empty:
+                            ignored_count += 1
 
-                return ignored_count * points  # Points should be negative
+                    return ignored_count * points  # Points should be negative
+                except Exception as e:
+                    logger.warning(f"Error in leads_ignorados_48h calculation: {e}")
+                    return 0
 
             elif rule_name == "leads_perdidos":
                 # Penalização para leads perdidos
-                if broker_leads.empty:
+                if broker_leads.empty or 'status' not in broker_leads.columns:
                     return 0
 
-                lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
-                return len(lost_leads) * points  # Points should be negative
+                try:
+                    lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
+                    return len(lost_leads) * points  # Points should be negative
+                except Exception as e:
+                    logger.warning(f"Error in leads_perdidos calculation: {e}")
+                    return 0
 
             else:
                 logger.warning(f"Unknown rule: {rule_name}")
