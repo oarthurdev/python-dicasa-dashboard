@@ -5,7 +5,7 @@ from supabase import create_client
 import pandas as pd
 import numpy as np
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 import requests
 import time
 
@@ -664,56 +664,56 @@ class SupabaseClient:
     def link_webhook_message_to_broker(self, webhook_message):
         """
         Vincula uma mensagem de webhook ao broker responsável
-        
+
         Args:
             webhook_message (dict): Dados da mensagem do webhook
-            
+
         Returns:
             dict: Dados atualizados com broker_id e lead_id
         """
         try:
             broker_id = None
             lead_id = None
-            
+
             # 1. Se a mensagem tem author_id e é do tipo "outgoing", é do broker
             if (webhook_message.get('author_id') and 
                 webhook_message.get('message_type') == 'outgoing'):
-                
+
                 # Verificar se o author_id é um broker válido
                 broker_result = self.client.table("brokers").select("id, nome").eq(
                     "id", webhook_message['author_id']
                 ).execute()
-                
+
                 if broker_result.data:
                     broker_id = webhook_message['author_id']
                     logger.info(f"Mensagem vinculada ao broker {broker_id} (mensagem enviada)")
-            
+
             # 2. Para mensagens recebidas, buscar pelo lead responsável
             elif webhook_message.get('entity_id') and webhook_message.get('entity_type') == 'lead':
                 lead_result = self.client.table("leads").select(
                     "id, responsavel_id"
                 ).eq("id", webhook_message['entity_id']).execute()
-                
+
                 if lead_result.data:
                     lead_data = lead_result.data[0]
                     lead_id = lead_data['id']
                     broker_id = lead_data['responsavel_id']
                     logger.info(f"Mensagem vinculada ao broker {broker_id} via lead {lead_id}")
-            
+
             # 3. Se ainda não encontrou, tentar pelo contact_id
             elif webhook_message.get('contact_id'):
                 # Buscar leads que tenham esse contact como contato principal
                 contact_leads = self.client.table("leads").select(
                     "id, responsavel_id, contato_nome"
                 ).ilike("contato_nome", f"%{webhook_message.get('author_name', '')}%").execute()
-                
+
                 if contact_leads.data:
                     # Pegar o lead mais recente deste contato
                     latest_lead = contact_leads.data[0]
                     lead_id = latest_lead['id']
                     broker_id = latest_lead['responsavel_id']
                     logger.info(f"Mensagem vinculada ao broker {broker_id} via contact matching")
-            
+
             # Atualizar o registro do webhook com os IDs encontrados
             if broker_id or lead_id:
                 update_data = {}
@@ -721,18 +721,18 @@ class SupabaseClient:
                     update_data['broker_id'] = broker_id
                 if lead_id:
                     update_data['lead_id'] = lead_id
-                
+
                 # Atualizar na base de dados se temos o ID do webhook
                 if webhook_message.get('id'):
                     self.client.table("from_webhook").update(update_data).eq(
                         "payload_id", webhook_message.get('payload_id')
                     ).execute()
-                
+
                 webhook_message.update(update_data)
                 logger.info(f"Webhook atualizado com broker_id: {broker_id}, lead_id: {lead_id}")
-            
+
             return webhook_message
-            
+
         except Exception as e:
             logger.error(f"Erro ao vincular mensagem ao broker: {str(e)}")
             return webhook_message
@@ -740,11 +740,11 @@ class SupabaseClient:
     def get_broker_messages(self, broker_id, limit=50):
         """
         Busca mensagens de um broker específico
-        
+
         Args:
             broker_id (str): ID do broker
             limit (int): Limite de mensagens
-            
+
         Returns:
             list: Lista de mensagens do broker
         """
@@ -752,9 +752,9 @@ class SupabaseClient:
             result = self.client.table("from_webhook").select("*").eq(
                 "broker_id", broker_id
             ).order("inserted_at", desc=True).limit(limit).execute()
-            
+
             return result.data if result.data else []
-            
+
         except Exception as e:
             logger.error(f"Erro ao buscar mensagens do broker {broker_id}: {str(e)}")
             return []
@@ -762,11 +762,11 @@ class SupabaseClient:
     def get_lead_messages(self, lead_id, limit=50):
         """
         Busca mensagens de um lead específico
-        
+
         Args:
             lead_id (str): ID do lead
             limit (int): Limite de mensagens
-            
+
         Returns:
             list: Lista de mensagens do lead
         """
@@ -774,9 +774,9 @@ class SupabaseClient:
             result = self.client.table("from_webhook").select("*").eq(
                 "lead_id", lead_id
             ).order("inserted_at", desc=True).limit(limit).execute()
-            
+
             return result.data if result.data else []
-            
+
         except Exception as e:
             logger.error(f"Erro ao buscar mensagens do lead {lead_id}: {str(e)}")
             return []
@@ -866,354 +866,278 @@ class SupabaseClient:
     def update_broker_points(self,
                              brokers=[],
                              leads=[],
-                             activities=[],
+                             activities=[],```python
                              company_id=None):
-        """
-        Atualiza a tabela broker_points no Supabase com base nas regras de gamificação.
-        Aceita dados já obtidos para evitar chamadas API desnecessárias.
-        """
-        import logging
-        from gamification import calculate_broker_points
-        import time
-
-        logger = logging.getLogger(__name__)
-        max_retries = 3
-        retry_delay = 5  # segundos
-
+        """Update broker points based on current rules and data"""
         try:
-            logger.info("Iniciando atualização dos pontos dos corretores...")
+            logger.info(f"Starting broker points calculation for company {company_id}")
 
-            # Garante que temos um company_id
-            company_id = company_id or self.kommo_config.get('company_id')
-            if not company_id:
-                logger.error(
-                    "company_id é necessário para atualizar broker_points")
-                return
-
-            # Primeiro, garantir que os brokers existam no banco e filtrar por company_id
-            if brokers is not None and not brokers.empty:
-                brokers = brokers[brokers['company_id'] == company_id].copy()
-                if brokers.empty:
-                    logger.warning(
-                        f"Nenhum corretor encontrado para company_id {company_id}"
-                    )
-                    return
-                self.upsert_brokers(brokers)
-                time.sleep(1)  # Aguarda a conclusão do upsert de brokers
-
-            # Se não recebeu dados em cache, busca da API
-            if brokers is None or leads is None or activities is None:
-                from .kommo_api import KommoAPI
-                kommo_api = KommoAPI()
-
-                # Tenta buscar os dados com retry em caso de erro
-                max_retries = 3
-                retry_delay = 5  # segundos
-
-                for attempt in range(max_retries):
-                    try:
-                        brokers = kommo_api.get_users()
-                        leads = kommo_api.get_leads()
-                        activities = kommo_api.get_activities()
-                        break
-                    except Exception as e:
-                        if attempt == max_retries - 1:
-                            raise
-                        logger.warning(
-                            f"Tentativa {attempt + 1} falhou: {str(e)}. Tentando novamente em {retry_delay} segundos..."
-                        )
-                        time.sleep(retry_delay)
-
-            if brokers.empty or leads.empty or activities.empty:
-                logger.warning(
-                    "Dados insuficientes para cálculo de pontos. Verifique se todas as tabelas estão preenchidas."
-                )
-                return
-
-            # Filtra apenas corretores ativos da empresa específica
-            active_brokers = brokers[(brokers['cargo'] == 'Corretor')
-                                     & (brokers['company_id'] == company_id)]
-            if active_brokers.empty:
-                logger.warning("Nenhum corretor ativo encontrado.")
-                return
-
-            # Carrega as regras e calcula os pontos
+            # Load current rules
             rules = self.load_rules()
-            self.insert_log("INFO", "Iniciando cálculo de pontos")
-            points_df = calculate_broker_points(active_brokers,
-                                                leads,
-                                                activities,
-                                                rules,
-                                                company_id=company_id)
-            self.insert_log("INFO", "Cálculo de pontos concluído")
-
-            # Garante que todos os campos necessários existam
-            required_fields = [
-                'leads_respondidos_1h', 'leads_visitados',
-                'propostas_enviadas', 'vendas_realizadas',
-                'leads_atualizados_mesmo_dia', 'feedbacks_positivos',
-                'resposta_rapida_3h', 'todos_leads_respondidos',
-                'cadastro_completo', 'acompanhamento_pos_venda',
-                'leads_sem_interacao_24h', 'leads_ignorados_48h',
-                'leads_perdidos', 'leads_respondidos_apos_18h',
-                'leads_tempo_resposta_acima_12h', 'leads_5_dias_sem_mudanca'
-            ]
-
-            for field in required_fields:
-                if field not in points_df.columns:
-                    points_df[field] = 0
-
-            # Adiciona timestamp de atualização
-            points_df['updated_at'] = pd.Timestamp.now()
-
-            # Registra os pontos atualizados de cada corretor
-            for _, row in points_df.iterrows():
-                self.insert_log(
-                    "INFO", f"Pontos atualizados - Corretor: {row['nome']} | "
-                    f"Total: {row['pontos']} | "
-                    f"Leads 1h: {row['leads_respondidos_1h']} | "
-                    f"Leads visitados: {row['leads_visitados']} | "
-                    f"Propostas: {row['propostas_enviadas']} | "
-                    f"Vendas: {row['vendas_realizadas']}")
-
-            # Atualiza o banco com retry em caso de erro
-            for attempt in range(max_retries):
-                try:
-                    self.upsert_broker_points(points_df)
-                    msg = f"Tabela broker_points atualizada com sucesso. {len(points_df)} registros atualizados."
-                    logger.info(msg)
-                    self.insert_log("INFO", msg)
-                    break
-                except Exception as e:
-                    if attempt == max_retries - 1:
-                        raise
-                    logger.warning(
-                        f"Tentativa de upsert {attempt + 1} falhou: {str(e)}. Tentando novamente em {retry_delay} segundos..."
-                    )
-                    time.sleep(retry_delay)
-
-        except Exception as e:
-            logger.error(f"Erro ao atualizar pontos dos corretores: {e}")
-            raise
-
-    def calculate_ticket_medio(self, leads_df):
-        """
-        Calcula o ticket médio dos leads ganhos e atualiza apenas a coluna ticket_medio
-        dos brokers com base no responsavel_id.
-        """
-        try:
-            config = self.kommo_config
-            if not config:
-                logger.error("Kommo configuration not found")
-                return None
-
-            kommo_api = KommoAPI(api_url=config['api_url'],
-                                access_token=config['access_token'])
-
-            # Obter os brokers (usuários)
-            brokers_df = kommo_api.get_users()
-
-            brokers_df['cargo'] = 'Corretor'
-            
-            if brokers_df.empty:
-                logger.warning("Nenhum usuário retornado pela API Kommo.")
-                return None
-
-            # Filtrar leads ganhos (status_id = 142)
-            leads_ganhos = leads_df[leads_df['status_id'] == 142].copy()
-
-            # Limpar e converter 'valor'
-            leads_ganhos = leads_ganhos.dropna(subset=['valor'])
-            leads_ganhos['valor'] = leads_ganhos['valor'].astype(float)
-
-            # Calcular ticket médio por responsavel_id
-            ticket_medio_por_responsavel = (
-                leads_ganhos
-                .groupby('responsavel_id')['valor']
-                .mean()
-                .round(2)
-            )
-
-            brokers_df['ticket_medio'] = brokers_df['id'].map(ticket_medio_por_responsavel).fillna(0.0)
-
-            self.upsert_brokers(brokers_df)
-
-            logger.info(
-                f"Ticket médio atualizado para {len(brokers_df)} brokers."
-            )
-
-        except Exception as e:
-            logger.error(f"Erro ao calcular ticket médio e atualizar brokers: {str(e)}")
-            return None
-
-    def calculate_response_time(self, lead_id, created_at):
-        """
-        Calcula o tempo médio de resposta para um lead.
-        """
-        try:
-            # Buscar as interações (notes) com o endpoint
-            notes = self.get_lead_notes(lead_id)
-
-            if notes:
-                logger.info(
-                    f"Encontradas {len(notes)} notas para o lead {lead_id}")
-                # Encontrar a primeira nota criada por um usuário do time (excluindo notas automáticas, se possível).
-                first_note = next(
-                    (note for note in notes if note.get('created_by') and note.get('created_by') > 0),
-                    None
-                )
-
-                if first_note:
-                    logger.info(f"Primeira nota encontrada: {first_note}")
-                    first_note_created_at = datetime.fromtimestamp(
-                        first_note.get('created_at'))
-
-                    # Calcular o tempo entre created_at da lead e o created_at da primeira nota do usuário (em segundos ou minutos).
-                    response_time = (first_note_created_at -
-                                     created_at).total_seconds()
-                    return response_time
-
-            return None
-
-        except Exception as e:
-            logger.error(
-                f"Erro ao calcular o tempo médio de resposta para o lead {lead_id}: {str(e)}"
-            )
-            return None
-
-    def get_lead_notes(self, lead_id):
-        """
-        Busca as notas de um lead na API do Kommo.
-        """
-        try:
-            api_url = self.kommo_config['api_url']
-            access_token = self.kommo_config['access_token']
-
-            url = f"{api_url}/leads/{lead_id}/notes"
-            headers = {"Authorization": f"Bearer {access_token}"}
-
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-
-            # Check if response has content before parsing JSON
-            if response.content:
-                return response.json().get('_embedded', {}).get('notes', [])
-            return []
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Erro ao buscar notas do lead {lead_id}: {str(e)}")
-            return None
-
-    def upsert_leads(self, leads_df):
-        """
-        Insert or update lead data in the Supabase database
-
-        Args:
-            leads_df (pandas.DataFrame): DataFrame containing lead data
-        """
-        try:
-            if leads_df.empty:
-                logger.warning("No lead data to insert")
+            if not rules:
+                logger.warning("No rules found for point calculation")
                 return
 
-            logger.info(f"Upserting {len(leads_df)} leads to Supabase")
+            # Get existing broker points
+            existing_points = self.client.table("broker_points").select("*").eq("company_id", company_id).execute()
+            points_dict = {point['broker_id']: point for point in existing_points.data}
 
-            leads_df_clean = leads_df.copy()
+            # Calculate points for each broker
+            for _, broker in brokers.iterrows():
+                broker_id = broker['id']
+                broker_name = broker.get('nome', 'Unknown')
 
-            # Replace infinite values with None
-            numeric_cols = leads_df_clean.select_dtypes(
-                include=['float', 'int']).columns
-            for col in numeric_cols:
-                mask = ~np.isfinite(leads_df_clean[col])
-                if mask.any():
-                    leads_df_clean.loc[mask, col] = None
+                # Initialize points structure
+                total_points = 0
+                rule_results = {}
 
-            # Convert bigint-compatible columns
-            bigint_columns = [
-                'id', 'responsavel_id', 'status_id', 'pipeline_id'
-            ]
-            for col in bigint_columns:
-                if col in leads_df_clean.columns:
-                    mask = np.isfinite(leads_df_clean[col])
-                    if mask.any():
-                        leads_df_clean.loc[mask, col] = leads_df_clean.loc[
-                            mask, col].astype('Int64')
+                # Get broker's leads and activities
+                broker_leads = leads[leads['responsavel_id'] == broker_id] if not leads.empty else pd.DataFrame()
+                broker_activities = activities[activities['user_id'] == broker_id] if not activities.empty else pd.DataFrame()
 
-            # Get valid broker IDs from database
-            brokers_result = self.client.table("brokers").select(
-                "id").execute()
-            if hasattr(brokers_result, "error") and brokers_result.error:
-                raise Exception(
-                    f"Supabase error querying brokers: {brokers_result.error}")
+                logger.info(f"Calculating points for broker {broker_name} (ID: {broker_id})")
+                logger.info(f"  - {len(broker_leads)} leads")
+                logger.info(f"  - {len(broker_activities)} activities")
 
-            valid_broker_ids = {broker['id'] for broker in brokers_result.data}
+                # Apply each rule
+                for rule_name, rule_config in rules.items():
+                    try:
+                        points = self._calculate_rule_points(
+                            rule_name, rule_config, broker_leads, broker_activities, leads, activities, company_id
+                        )
+                        rule_results[rule_name] = points
+                        total_points += points
 
-            # No pipeline filtering
-            if leads_df_clean.empty:
-                logger.warning("No leads found")
-                return
+                        if points > 0:
+                            logger.info(f"  - {rule_name}: {points} points")
 
-            # Segundo filtro: responsavel_id válido
-            leads_df_clean = leads_df_clean[
-                leads_df_clean['responsavel_id'].isin(valid_broker_ids)
-                | leads_df_clean['responsavel_id'].isna()]
+                    except Exception as e:
+                        logger.error(f"Error calculating rule {rule_name} for broker {broker_id}: {str(e)}")
+                        rule_results[rule_name] = 0
 
-            logger.info(
-                f"Total de leads após filtragem: {len(leads_df_clean)}")
+                # Update or insert broker points
+                current_time = datetime.now().isoformat()
 
-            # Convert to dict format
-            leads_data = leads_df_clean.to_dict(orient="records")
+                broker_points_data = {
+                    'broker_id': broker_id,
+                    'company_id': company_id,
+                    'pontos': total_points,
+                    'regras_detalhes': rule_results,
+                    'nome': broker_name,
+                    'updated_at': current_time
+                }
 
-            # Calculate ticket médio first
-            self.calculate_ticket_medio(leads_df_clean)
+                if broker_id in points_dict:
+                    # Update existing record
+                    self.client.table("broker_points").update(broker_points_data).eq(
+                        "id", broker_id
+                    ).eq("company_id", company_id).execute()
+                else:
+                    # Insert new record
+                    broker_points_data['id'] = broker_id
+                    broker_points_data['created_at'] = current_time
+                    self.client.table("broker_points").insert(broker_points_data).execute()
 
-            processed_leads = []
-            for lead in leads_data:
-                responsavel_id = lead.get("responsible_user_id")
+                logger.info(f"Updated points for {broker_name}: {total_points} total points")
 
-                # Calculate tempo médio for this lead
-                created_at = datetime.fromtimestamp(lead.get(
-                    "created_at", 0)) if lead.get("created_at") else None
-                tempo_medio = None
-                if created_at:
-                    tempo_medio = self.calculate_response_time(
-                        lead.get("id"), created_at)
-
-                lead["updated_at"] = datetime.now().isoformat()
-
-                if "criado_em" in lead and lead["criado_em"] is not None:
-                    lead["criado_em"] = lead["criado_em"].isoformat()
-                if "atualizado_em" in lead and lead[
-                        "atualizado_em"] is not None:
-                    lead["atualizado_em"] = lead["atualizado_em"].isoformat()
-
-                for key, value in list(lead.items()):
-                    if isinstance(value, float) and (np.isnan(value)
-                                                     or np.isinf(value)):
-                        lead[key] = None
-                    elif key in bigint_columns and isinstance(
-                            value, float) and value.is_integer():
-                        lead[key] = int(value)
-
-                lead["status"] = ("Ganho" if lead.get("status_id") == 142 else
-                                  "Perdido" if lead.get("status_id") == 143
-                                  else "Em progresso")
-                lead["tempo_medio"] = tempo_medio
-
-                processed_leads.append(lead)
-
-            # No pipeline-based deletion
-
-            # Upsert to Supabase
-            result = self.client.table("leads").upsert(
-                processed_leads).execute()
-
-            if hasattr(result, "error") and result.error:
-                raise Exception(f"Supabase error: {result.error}")
-
-            logger.info("Leads upserted successfully")
-            return result
+            logger.info("Broker points calculation completed successfully")
 
         except Exception as e:
-            logger.error(f"Failed to upsert leads: {str(e)}")
+            logger.error(f"Error updating broker points: {str(e)}")
             raise
+
+    def _calculate_rule_points(self, rule_name, rule_config, broker_leads, broker_activities, all_leads, all_activities, company_id):
+        """Calculate points for a specific rule with updated event mapping"""
+        try:
+            points = rule_config.get('pontos', 0)
+
+            if rule_name == "leads_respondidos_1h":
+                # Leads respondidos em 1 hora - usando mensagens enviadas
+                if broker_activities.empty:
+                    return 0
+
+                one_hour_ago = datetime.now() - timedelta(hours=1)
+                recent_responses = broker_activities[
+                    (broker_activities['tipo'] == 'mensagem_enviada') &
+                    (broker_activities['criado_em'] >= one_hour_ago)
+                ]
+                unique_leads_responded = recent_responses['lead_id'].nunique() if not recent_responses.empty else 0
+                return unique_leads_responded * points
+
+            elif rule_name == "leads_visitados":
+                # Leads visitados - usando mudanças de status específicas
+                if broker_activities.empty:
+                    return 0
+
+                visits = broker_activities[
+                    (broker_activities['tipo'] == 'mudança_status') &
+                    (broker_activities['status_novo'].notna())
+                ]
+                unique_leads_visited = visits['lead_id'].nunique() if not visits.empty else 0
+                return unique_leads_visited * points
+
+            elif rule_name == "propostas_enviadas":
+                # Propostas enviadas - usando mudanças para status específico ou notas
+                if broker_activities.empty:
+                    return 0
+
+                # Buscar por mudanças de status para "Proposta" ou notas contendo "proposta"
+                proposal_activities = broker_activities[
+                    ((broker_activities['tipo'] == 'mudança_status') & 
+                     (broker_activities['valor_novo'].astype(str).str.contains('proposta', case=False, na=False))) |
+                    ((broker_activities['tipo'] == 'nota_adicionada') & 
+                     (broker_activities['texto_mensagem'].astype(str).str.contains('proposta', case=False, na=False)))
+                ]
+                unique_proposals = proposal_activities['lead_id'].nunique() if not proposal_activities.empty else 0
+                return unique_proposals * points
+
+            elif rule_name == "vendas_realizadas":
+                # Vendas realizadas - leads com status Ganho
+                if broker_leads.empty:
+                    return 0
+
+                sales = broker_leads[broker_leads['status'] == 'Ganho']
+                return len(sales) * points
+
+            elif rule_name == "leads_atualizados_mesmo_dia":
+                # Leads atualizados no mesmo dia da criação
+                if broker_leads.empty:
+                    return 0
+
+                today = datetime.now().date()
+                same_day_updates = broker_leads[
+                    (broker_leads['criado_em'].dt.date == today) &
+                    (broker_leads['atualizado_em'].dt.date == today) &
+                    (broker_leads['criado_em'] != broker_leads['atualizado_em'])
+                ]
+                return len(same_day_updates) * points
+
+            elif rule_name == "resposta_rapida_3h":
+                # Resposta rápida em menos de 3 horas
+                if broker_activities.empty:
+                    return 0
+
+                three_hours_ago = datetime.now() - timedelta(hours=3)
+                quick_responses = broker_activities[
+                    (broker_activities['tipo'] == 'mensagem_enviada') &
+                    (broker_activities['criado_em'] >= three_hours_ago)
+                ]
+                unique_quick_responses = quick_responses['lead_id'].nunique() if not quick_responses.empty else 0
+                return unique_quick_responses * points
+
+            elif rule_name == "todos_leads_respondidos":
+                # Todos os leads do dia foram respondidos
+                if broker_leads.empty or broker_activities.empty:
+                    return 0
+
+                today = datetime.now().date()
+                today_leads = broker_leads[broker_leads['criado_em'].dt.date == today]
+
+                if len(today_leads) == 0:
+                    return 0
+
+                # Leads que receberam mensagens enviadas hoje
+                today_responses = broker_activities[
+                    (broker_activities['tipo'] == 'mensagem_enviada') &
+                    (broker_activities['criado_em'].dt.date == today)
+                ]
+
+                responded_lead_ids = set(today_responses['lead_id'].dropna())
+                today_lead_ids = set(today_leads['id'])
+
+                if today_lead_ids.issubset(responded_lead_ids):
+                    return points
+
+                return 0
+
+            elif rule_name == "cadastro_completo":
+                # Lead com cadastro completo
+                if broker_leads.empty:
+                    return 0
+
+                complete_leads = broker_leads[
+                    (broker_leads['nome'].notna()) &
+                    (broker_leads['contato_nome'].notna()) &
+                    (broker_leads['valor'].notna()) &
+                    (broker_leads['valor'] > 0)
+                ]
+                return len(complete_leads) * points
+
+            elif rule_name == "acompanhamento_pos_venda":
+                # Acompanhamento pós-venda
+                if broker_activities.empty or broker_leads.empty:
+                    return 0
+
+                sold_leads = broker_leads[broker_leads['status'] == 'Ganho']
+                if sold_leads.empty:
+                    return 0
+
+                follow_ups = 0
+                for _, lead in sold_leads.iterrows():
+                    # Buscar atividades após a venda
+                    post_sale_activities = broker_activities[
+                        (broker_activities['lead_id'] == lead['id']) &
+                        (broker_activities['criado_em'] > lead['atualizado_em']) &
+                        (broker_activities['tipo'].isin(['mensagem_enviada', 'nota_adicionada', 'tarefa_concluida']))
+                    ]
+                    if not post_sale_activities.empty:
+                        follow_ups += 1
+
+                return follow_ups * points
+
+            elif rule_name == "leads_sem_interacao_24h":
+                # Penalização para leads sem interação há 24 horas
+                if broker_leads.empty:
+                    return 0
+
+                cutoff_time = datetime.now() - timedelta(hours=24)
+
+                # Buscar leads ativos sem atividades recentes
+                active_leads = broker_leads[broker_leads['status'] == 'Em progresso']
+
+                inactive_count = 0
+                for _, lead in active_leads.iterrows():
+                    recent_activities = broker_activities[
+                        (broker_activities['lead_id'] == lead['id']) &
+                        (broker_activities['criado_em'] >= cutoff_time)
+                    ]
+                    if recent_activities.empty:
+                        inactive_count += 1
+
+                return inactive_count * points  # Points should be negative
+
+            elif rule_name == "leads_ignorados_48h":
+                # Penalização para leads ignorados há 48 horas
+                if broker_leads.empty:
+                    return 0
+
+                cutoff_time = datetime.now() - timedelta(hours=48)
+                ignored_leads = broker_leads[
+                    (broker_leads['criado_em'] < cutoff_time) &
+                    (broker_leads['status'] == 'Em progresso')
+                ]
+
+                # Verificar se nunca houve interação
+                ignored_count = 0
+                for _, lead in ignored_leads.iterrows():
+                    activities = broker_activities[broker_activities['lead_id'] == lead['id']]
+                    if activities.empty:
+                        ignored_count += 1
+
+                return ignored_count * points  # Points should be negative
+
+            elif rule_name == "leads_perdidos":
+                # Penalização para leads perdidos
+                if broker_leads.empty:
+                    return 0
+
+                lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
+                return len(lost_leads) * points  # Points should be negative
+
+            else:
+                logger.warning(f"Unknown rule: {rule_name}")
+                return 0
+
+        except Exception as e:
+            logger.error(f"Error calculating rule {rule_name}: {str(e)}")
+            return 0

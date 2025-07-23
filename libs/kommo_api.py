@@ -383,7 +383,8 @@ class KommoAPI:
                 "limit": limits['page_size'],
                 "filter[type]": [
                     "lead_status_changed", "incoming_chat_message",
-                    "outgoing_chat_message", "task_completed"
+                    "outgoing_chat_message", "task_completed", "task_created",
+                    "note_added", "call_made", "lead_created", "lead_updated"
                 ]
             }
 
@@ -445,26 +446,86 @@ class KommoAPI:
             event_types = set(event.get('type') for event in activities_data)
             logger.info(f"Event types found: {event_types}")
 
-            # Processamento otimizado usando list comprehension
+            # Mapeamento correto dos eventos da Kommo API
             type_mapping = {
                 "lead_status_changed": "mudança_status",
-                "incoming_chat_message": "mensagem_recebida",
+                "incoming_chat_message": "mensagem_recebida", 
                 "outgoing_chat_message": "mensagem_enviada",
-                "task_completed": "tarefa_concluida"
+                "task_completed": "tarefa_concluida",
+                "task_created": "tarefa_criada",
+                "note_added": "nota_adicionada",
+                "call_made": "ligacao_realizada",
+                "lead_created": "lead_criado",
+                "lead_updated": "lead_atualizado"
             }
 
-            processed_activities = [{
-                "id": activity.get("id"),
-                "lead_id": activity.get("entity_id") if activity.get("entity_type") == "lead" else None,
-                "user_id": activity.get("created_by"),
-                "tipo": type_mapping.get(activity.get("type"), "outro"),
-                "valor_anterior": activity.get("value_before"),
-                "valor_novo": activity.get("value_after"),
-                "criado_em": (
-                    parse_datetime_sp(activity.get("created_at"))
-                    if activity.get("created_at") else None
-                ),
-            } for activity in activities_data]
+            processed_activities = []
+            for activity in activities_data:
+                # Extrair informações específicas baseado no tipo de evento
+                activity_type = activity.get("type", "")
+                entity_type = activity.get("entity_type", "")
+                entity_id = activity.get("entity_id")
+                
+                # Determinar lead_id baseado no tipo de entidade
+                lead_id = None
+                if entity_type == "lead":
+                    lead_id = entity_id
+                elif entity_type == "contact" and activity.get("value_after", {}).get("leads"):
+                    # Para eventos de contato, tentar extrair lead_id
+                    leads_data = activity.get("value_after", {}).get("leads", [])
+                    if leads_data and isinstance(leads_data, list) and len(leads_data) > 0:
+                        lead_id = leads_data[0].get("id")
+
+                # Extrair informações específicas para mensagens
+                message_text = None
+                message_source = None
+                if activity_type in ["incoming_chat_message", "outgoing_chat_message"]:
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_after, dict):
+                        message_text = value_after.get("text", "")
+                        message_source = value_after.get("source", "")
+
+                # Extrair informações de mudança de status
+                status_before = None
+                status_after = None
+                if activity_type == "lead_status_changed":
+                    value_before = activity.get("value_before", {})
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_before, dict):
+                        status_before = value_before.get("status_id")
+                    if isinstance(value_after, dict):
+                        status_after = value_after.get("status_id")
+
+                # Extrair informações de tarefas
+                task_text = None
+                task_type = None
+                if activity_type in ["task_completed", "task_created"]:
+                    value_after = activity.get("value_after", {})
+                    if isinstance(value_after, dict):
+                        task_text = value_after.get("text", "")
+                        task_type = value_after.get("task_type_id")
+
+                processed_activity = {
+                    "id": activity.get("id"),
+                    "lead_id": lead_id,
+                    "user_id": activity.get("created_by"),
+                    "tipo": type_mapping.get(activity_type, "outro"),
+                    "valor_anterior": activity.get("value_before"),
+                    "valor_novo": activity.get("value_after"),
+                    "status_anterior": status_before,
+                    "status_novo": status_after,
+                    "texto_mensagem": message_text,
+                    "fonte_mensagem": message_source,
+                    "texto_tarefa": task_text,
+                    "tipo_tarefa": task_type,
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "criado_em": (
+                        parse_datetime_sp(activity.get("created_at"))
+                        if activity.get("created_at") else None
+                    ),
+                }
+                processed_activities.append(processed_activity)
 
             # Criar DataFrame e processar datas de uma vez
             df = pd.DataFrame(processed_activities)
