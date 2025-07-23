@@ -941,17 +941,26 @@ class SupabaseClient:
                 logger.info(f"  - {len(broker_leads)} leads")
                 logger.info(f"  - {len(broker_activities)} activities")
 
-                # Apply each rule
+                # Apply each rule and calculate counts
                 for rule_name, rule_config in rules.items():
                     try:
-                        points = self._calculate_rule_points(
+                        # Get the count of occurrences for this rule
+                        count = self._calculate_rule_points(
                             rule_name, rule_config, broker_leads, broker_activities, leads, activities, company_id
                         )
-                        rule_results[rule_name] = points
-                        total_points += points
+                        rule_results[rule_name] = count
 
-                        if points > 0:
-                            logger.info(f"  - {rule_name}: {points} points")
+                        # Calculate points: count * points_per_occurrence from rules table
+                        if isinstance(rule_config, dict):
+                            points_per_occurrence = rule_config.get('pontos', 0)
+                        else:
+                            points_per_occurrence = rule_config
+
+                        rule_points = count * points_per_occurrence
+                        total_points += rule_points
+
+                        if count > 0:
+                            logger.info(f"  - {rule_name}: {count} occurrences × {points_per_occurrence} = {rule_points} points")
 
                     except Exception as e:
                         logger.error(f"Error calculating rule {rule_name} for broker {broker_id}: {str(e)}")
@@ -968,9 +977,9 @@ class SupabaseClient:
                     'updated_at': current_time
                 }
 
-                # Add individual rule columns
-                for rule_name, points in rule_results.items():
-                    broker_points_data[rule_name] = points
+                # Add individual rule columns with counts (not points)
+                for rule_name, count in rule_results.items():
+                    broker_points_data[rule_name] = count
 
                 try:
                     # Verificar se o registro existe e buscar dados atuais
@@ -1034,14 +1043,8 @@ class SupabaseClient:
             return
 
     def _calculate_rule_points(self, rule_name, rule_config, broker_leads, broker_activities, all_leads, all_activities, company_id):
-        """Calculate points for a specific rule with updated event mapping"""
+        """Calculate count for a specific rule - returns the number of occurrences, not points"""
         try:
-            # Handle both dict and int rule_config formats
-            if isinstance(rule_config, dict):
-                points = rule_config.get('pontos', 0)
-            else:
-                points = rule_config  # rule_config is already the points value
-
             # Ensure datetime columns are properly converted with better error handling
             try:
                 if not broker_activities.empty and 'criado_em' in broker_activities.columns:
@@ -1072,7 +1075,7 @@ class SupabaseClient:
                     (valid_activities['criado_em'] >= one_hour_ago)
                 ]
                 unique_leads_responded = recent_responses['lead_id'].nunique() if not recent_responses.empty else 0
-                return unique_leads_responded * points
+                return unique_leads_responded
 
             elif rule_name == "leads_visitados":
                 # Leads visitados - usando mudanças de status específicas
@@ -1084,7 +1087,7 @@ class SupabaseClient:
                     (broker_activities.get('status_novo', pd.Series()).notna())
                 ]
                 unique_leads_visited = visits['lead_id'].nunique() if not visits.empty else 0
-                return unique_leads_visited * points
+                return unique_leads_visited
 
             elif rule_name == "propostas_enviadas":
                 # Propostas enviadas - usando mudanças para status específico ou notas
@@ -1105,7 +1108,7 @@ class SupabaseClient:
                     
                     proposal_activities = pd.concat([status_proposals, note_proposals], ignore_index=True).drop_duplicates()
                     unique_proposals = proposal_activities['lead_id'].nunique() if not proposal_activities.empty else 0
-                    return unique_proposals * points
+                    return unique_proposals
                 except Exception as e:
                     logger.warning(f"Error in propostas_enviadas calculation: {e}")
                     return 0
@@ -1116,7 +1119,7 @@ class SupabaseClient:
                     return 0
 
                 sales = broker_leads[broker_leads['status'] == 'Ganho']
-                return len(sales) * points
+                return len(sales)
 
             elif rule_name == "leads_atualizados_mesmo_dia":
                 # Leads atualizados no mesmo dia da criação
@@ -1135,7 +1138,7 @@ class SupabaseClient:
                         (valid_leads['atualizado_em'].dt.date == today) &
                         (valid_leads['criado_em'] != valid_leads['atualizado_em'])
                     ]
-                    return len(same_day_updates) * points
+                    return len(same_day_updates)
                 except Exception as e:
                     logger.warning(f"Error in leads_atualizados_mesmo_dia calculation: {e}")
                     return 0
@@ -1152,7 +1155,7 @@ class SupabaseClient:
                     (broker_activities['criado_em'] >= three_hours_ago)
                 ]
                 unique_quick_responses = quick_responses['lead_id'].nunique() if not quick_responses.empty else 0
-                return unique_quick_responses * points
+                return unique_quick_responses
 
             elif rule_name == "todos_leads_respondidos":
                 # Todos os leads do dia foram respondidos
@@ -1176,7 +1179,7 @@ class SupabaseClient:
                 today_lead_ids = set(today_leads['id'])
 
                 if today_lead_ids.issubset(responded_lead_ids):
-                    return points
+                    return 1
 
                 return 0
 
@@ -1191,7 +1194,7 @@ class SupabaseClient:
                     (broker_leads['valor'].notna()) &
                     (broker_leads['valor'] > 0)
                 ]
-                return len(complete_leads) * points
+                return len(complete_leads)
 
             elif rule_name == "acompanhamento_pos_venda":
                 # Acompanhamento pós-venda
@@ -1213,7 +1216,7 @@ class SupabaseClient:
                     if not post_sale_activities.empty:
                         follow_ups += 1
 
-                return follow_ups * points
+                return follow_ups
 
             elif rule_name == "leads_sem_interacao_24h":
                 # Penalização para leads sem interação há 24 horas
@@ -1241,7 +1244,7 @@ class SupabaseClient:
                         if recent_activities.empty:
                             inactive_count += 1
 
-                    return inactive_count * points  # Points should be negative
+                    return inactive_count
                 except Exception as e:
                     logger.warning(f"Error in leads_sem_interacao_24h calculation: {e}")
                     return 0
@@ -1272,7 +1275,7 @@ class SupabaseClient:
                         if activities.empty:
                             ignored_count += 1
 
-                    return ignored_count * points  # Points should be negative
+                    return ignored_count
                 except Exception as e:
                     logger.warning(f"Error in leads_ignorados_48h calculation: {e}")
                     return 0
@@ -1284,7 +1287,7 @@ class SupabaseClient:
 
                 try:
                     lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
-                    return len(lost_leads) * points  # Points should be negative
+                    return len(lost_leads)
                 except Exception as e:
                     logger.warning(f"Error in leads_perdidos calculation: {e}")
                     return 0
