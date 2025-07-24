@@ -914,6 +914,57 @@ class SupabaseClient:
                 else:
                     activities = pd.DataFrame()
 
+            # Get date filter from component_filters table
+            date_filter_start = None
+            date_filter_end = None
+            
+            try:
+                filter_result = self.client.table("component_filters").select("*").eq(
+                    "component_name", "ranking_metrics"
+                ).eq("company_id", company_id).execute()
+                
+                if filter_result.data:
+                    filter_data = filter_result.data[0]
+                    filter_type = filter_data.get('filter_type')
+                    
+                    # Só usar as datas se filter_type for 'custom_range'
+                    if filter_type == 'custom_range':
+                        start_date = filter_data.get('start_date')
+                        end_date = filter_data.get('end_date')
+                        
+                        if start_date and end_date:
+                            date_filter_start = pd.to_datetime(start_date, utc=True)
+                            date_filter_end = pd.to_datetime(end_date, utc=True)
+                            logger.info(f"Using custom date range filter: {date_filter_start} to {date_filter_end}")
+                        else:
+                            logger.info(f"Filter type is custom_range but dates are null, using all data")
+                    else:
+                        logger.info(f"Filter type is {filter_type}, not using custom date range")
+                else:
+                    logger.info("No component_filters found for ranking_metrics, using all data")
+            except Exception as filter_error:
+                logger.warning(f"Error loading component filters: {filter_error}, using all data")
+
+            # Apply date filter to leads and activities if custom_range is set
+            if date_filter_start and date_filter_end:
+                # Filter leads by creation date
+                if not leads.empty and 'criado_em' in leads.columns:
+                    leads['criado_em'] = pd.to_datetime(leads['criado_em'], errors='coerce', utc=True)
+                    leads = leads[
+                        (leads['criado_em'] >= date_filter_start) & 
+                        (leads['criado_em'] <= date_filter_end)
+                    ]
+                    logger.info(f"Filtered leads to {len(leads)} records within date range")
+
+                # Filter activities by creation date
+                if not activities.empty and 'criado_em' in activities.columns:
+                    activities['criado_em'] = pd.to_datetime(activities['criado_em'], errors='coerce', utc=True)
+                    activities = activities[
+                        (activities['criado_em'] >= date_filter_start) & 
+                        (activities['criado_em'] <= date_filter_end)
+                    ]
+                    logger.info(f"Filtered activities to {len(activities)} records within date range")
+
             # Load current rules
             rules = self.load_rules()
             if not rules:
@@ -1060,22 +1111,24 @@ class SupabaseClient:
                 # Continue with original data if conversion fails
 
             if rule_name == "leads_respondidos_1h":
-                # Leads respondidos em 1 hora - usando mensagens enviadas
-                if broker_activities.empty or 'criado_em' not in broker_activities.columns:
+                # Leads respondidos em 1 hora - calcular baseado nas atividades e leads filtrados
+                if broker_activities.empty or broker_leads.empty:
                     return 0
 
-                from datetime import timezone
-                one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-                
-                # Filter activities with valid dates
-                valid_activities = broker_activities.dropna(subset=['criado_em'])
-                
-                recent_responses = valid_activities[
-                    (valid_activities.get('tipo', '') == 'mensagem_enviada') &
-                    (valid_activities['criado_em'] >= one_hour_ago)
-                ]
-                unique_leads_responded = recent_responses['lead_id'].nunique() if not recent_responses.empty else 0
-                return unique_leads_responded
+                leads_responded_1h = 0
+                for _, lead in broker_leads.iterrows():
+                    # Buscar primeira mensagem enviada pelo broker para este lead
+                    first_response = broker_activities[
+                        (broker_activities['lead_id'] == lead['id']) & 
+                        (broker_activities.get('tipo', '') == 'mensagem_enviada')
+                    ].sort_values('criado_em')
+                    
+                    if not first_response.empty and 'criado_em' in lead and pd.notna(lead['criado_em']):
+                        response_time = (first_response.iloc[0]['criado_em'] - lead['criado_em']).total_seconds()
+                        if response_time <= 3600:  # 1 hora = 3600 segundos
+                            leads_responded_1h += 1
+                            
+                return leads_responded_1h
 
             elif rule_name == "leads_visitados":
                 # Leads visitados - usando mudanças de status específicas
@@ -1123,62 +1176,73 @@ class SupabaseClient:
 
             elif rule_name == "leads_atualizados_mesmo_dia":
                 # Leads atualizados no mesmo dia da criação
-                if broker_leads.empty or 'criado_em' not in broker_leads.columns or 'atualizado_em' not in broker_leads.columns:
+                if broker_leads.empty or broker_activities.empty:
                     return 0
 
                 try:
-                    from datetime import timezone
-                    today = datetime.now(timezone.utc).date()
-                    
-                    # Filter out null dates
-                    valid_leads = broker_leads.dropna(subset=['criado_em', 'atualizado_em'])
-                    
-                    same_day_updates = valid_leads[
-                        (valid_leads['criado_em'].dt.date == today) &
-                        (valid_leads['atualizado_em'].dt.date == today) &
-                        (valid_leads['criado_em'] != valid_leads['atualizado_em'])
-                    ]
-                    return len(same_day_updates)
+                    same_day_updates = 0
+                    for _, lead in broker_leads.iterrows():
+                        if pd.notna(lead.get('criado_em')):
+                            # Verificar se houve atividade do broker no mesmo dia da criação
+                            lead_activities_same_day = broker_activities[
+                                (broker_activities['lead_id'] == lead['id']) &
+                                (broker_activities['criado_em'].dt.date == lead['criado_em'].date())
+                            ]
+                            if not lead_activities_same_day.empty:
+                                same_day_updates += 1
+                                
+                    return same_day_updates
                 except Exception as e:
                     logger.warning(f"Error in leads_atualizados_mesmo_dia calculation: {e}")
                     return 0
 
             elif rule_name == "resposta_rapida_3h":
-                # Resposta rápida em menos de 3 horas
-                if broker_activities.empty:
+                # Resposta rápida em menos de 3 horas - calcular baseado nas atividades filtradas
+                if broker_activities.empty or broker_leads.empty:
                     return 0
 
-                from datetime import timezone
-                three_hours_ago = datetime.now(timezone.utc) - timedelta(hours=3)
-                quick_responses = broker_activities[
-                    (broker_activities['tipo'] == 'mensagem_enviada') &
-                    (broker_activities['criado_em'] >= three_hours_ago)
-                ]
-                unique_quick_responses = quick_responses['lead_id'].nunique() if not quick_responses.empty else 0
-                return unique_quick_responses
+                quick_responses = 0
+                for _, lead in broker_leads.iterrows():
+                    # Buscar mensagens para este lead
+                    lead_messages = broker_activities[
+                        (broker_activities['lead_id'] == lead['id']) & 
+                        (broker_activities.get('tipo', '').isin(['mensagem_recebida', 'mensagem_enviada']))
+                    ].sort_values('criado_em')
+                    
+                    # Analisar sequências de mensagem recebida seguida de enviada
+                    for i in range(len(lead_messages) - 1):
+                        current_msg = lead_messages.iloc[i]
+                        next_msg = lead_messages.iloc[i + 1]
+                        
+                        if (current_msg.get('tipo') == 'mensagem_recebida' and 
+                            next_msg.get('tipo') == 'mensagem_enviada'):
+                            response_time_hours = (next_msg['criado_em'] - current_msg['criado_em']).total_seconds() / 3600
+                            if response_time_hours < 3:
+                                quick_responses += 1
+                                break  # Contar apenas uma vez por lead
+                                
+                return quick_responses
 
             elif rule_name == "todos_leads_respondidos":
-                # Todos os leads do dia foram respondidos
+                # Todos os leads (dentro do período filtrado) foram respondidos
                 if broker_leads.empty or broker_activities.empty:
                     return 0
 
-                from datetime import timezone
-                today = datetime.now(timezone.utc).date()
-                today_leads = broker_leads[broker_leads['criado_em'].dt.date == today]
-
-                if len(today_leads) == 0:
+                if len(broker_leads) == 0:
                     return 0
 
-                # Leads que receberam mensagens enviadas hoje
-                today_responses = broker_activities[
-                    (broker_activities['tipo'] == 'mensagem_enviada') &
-                    (broker_activities['criado_em'].dt.date == today)
-                ]
-
-                responded_lead_ids = set(today_responses['lead_id'].dropna())
-                today_lead_ids = set(today_leads['id'])
-
-                if today_lead_ids.issubset(responded_lead_ids):
+                # Verificar se todos os leads no período tiveram resposta
+                responded_count = 0
+                for _, lead in broker_leads.iterrows():
+                    responses = broker_activities[
+                        (broker_activities['lead_id'] == lead['id']) & 
+                        (broker_activities.get('tipo', '') == 'mensagem_enviada')
+                    ]
+                    if not responses.empty:
+                        responded_count += 1
+                
+                # Se todos os leads foram respondidos
+                if responded_count == len(broker_leads):
                     return 1
 
                 return 0
@@ -1219,29 +1283,21 @@ class SupabaseClient:
                 return follow_ups
 
             elif rule_name == "leads_sem_interacao_24h":
-                # Penalização para leads sem interação há 24 horas
-                if broker_leads.empty or 'status' not in broker_leads.columns:
+                # Penalização para leads sem interação (baseado nos dados filtrados)
+                if broker_leads.empty:
                     return 0
 
                 try:
-                    from datetime import timezone
-                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
-
-                    # Buscar leads ativos sem atividades recentes
-                    active_leads = broker_leads[broker_leads['status'] == 'Em progresso']
-
+                    # Contar leads que não tiveram nenhuma atividade no período
                     inactive_count = 0
-                    for _, lead in active_leads.iterrows():
-                        if broker_activities.empty:
-                            inactive_count += 1
-                            continue
+                    for _, lead in broker_leads.iterrows():
+                        if 'status' in lead and lead['status'] in ['Ganho', 'Perdido']:
+                            continue  # Pular leads já fechados
                             
-                        valid_activities = broker_activities.dropna(subset=['criado_em'])
-                        recent_activities = valid_activities[
-                            (valid_activities['lead_id'] == lead['id']) &
-                            (valid_activities['criado_em'] >= cutoff_time)
+                        lead_activities = broker_activities[
+                            broker_activities['lead_id'] == lead['id']
                         ]
-                        if recent_activities.empty:
+                        if lead_activities.empty:
                             inactive_count += 1
 
                     return inactive_count
@@ -1250,26 +1306,16 @@ class SupabaseClient:
                     return 0
 
             elif rule_name == "leads_ignorados_48h":
-                # Penalização para leads ignorados há 48 horas
-                if broker_leads.empty or 'criado_em' not in broker_leads.columns or 'status' not in broker_leads.columns:
+                # Penalização para leads ignorados (baseado nos dados filtrados)
+                if broker_leads.empty:
                     return 0
 
                 try:
-                    from datetime import timezone
-                    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=48)
-                    
-                    valid_leads = broker_leads.dropna(subset=['criado_em'])
-                    ignored_leads = valid_leads[
-                        (valid_leads['criado_em'] < cutoff_time) &
-                        (valid_leads['status'] == 'Em progresso')
-                    ]
-
-                    # Verificar se nunca houve interação
+                    # Verificar leads que nunca tiveram interação
                     ignored_count = 0
-                    for _, lead in ignored_leads.iterrows():
-                        if broker_activities.empty:
-                            ignored_count += 1
-                            continue
+                    for _, lead in broker_leads.iterrows():
+                        if 'status' in lead and lead['status'] in ['Ganho', 'Perdido']:
+                            continue  # Pular leads já fechados
                             
                         activities = broker_activities[broker_activities['lead_id'] == lead['id']]
                         if activities.empty:
