@@ -1,0 +1,27 @@
+Error in leads_sem_interacao_24h calculation: 'lead_id'
+2025-07-24 09:51:12,112 - libs.supabase_db - WARNING - Error in leads_ignorados_48h calculation: 'lead_id'
+2025-07-24 09:51:12,183 - httpx - INFO - HTTP Request: GET https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?select=%2A&id=eq.13336540&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,258 - httpx - INFO - HTTP Request: PATCH https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?id=eq.13336540&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,259 - libs.supabase_db - INFO - Updated 6 fields for Bruno Loewen: 0 total points
+2025-07-24 09:51:12,260 - libs.supabase_db - INFO - Calculating points for broker Alan Edúardo de Oliveira (ID: 13439916)
+2025-07-24 09:51:12,260 - libs.supabase_db - INFO -   - 0 leads
+2025-07-24 09:51:12,260 - libs.supabase_db - INFO -   - 0 activities
+2025-07-24 09:51:12,331 - httpx - INFO - HTTP Request: GET https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?select=%2A&id=eq.13439916&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,449 - httpx - INFO - HTTP Request: PATCH https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?id=eq.13439916&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,449 - libs.supabase_db - INFO - Updated 5 fields for Alan Edúardo de Oliveira: 0 total points
+2025-07-24 09:51:12,450 - libs.supabase_db - INFO - Calculating points for broker Daiane Maiara Gervaz do Nascimento (ID: 13439920)
+2025-07-24 09:51:12,451 - libs.supabase_db - INFO -   - 0 leads
+2025-07-24 09:51:12,451 - libs.supabase_db - INFO -   - 0 activities
+2025-07-24 09:51:12,516 - httpx - INFO - HTTP Request: GET https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?select=%2A&id=eq.13439920&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,589 - httpx - INFO - HTTP Request: PATCH https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?id=eq.13439920&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,590 - libs.supabase_db - INFO - Updated 5 fields for Daiane Maiara Gervaz do Nascimento: 0 total points
+2025-07-24 09:51:12,591 - libs.supabase_db - INFO - Calculating points for broker Felipe Magaldi (ID: 13439936)
+2025-07-24 09:51:12,591 - libs.supabase_db - INFO -   - 0 leads
+2025-07-24 09:51:12,591 - libs.supabase_db - INFO -   - 0 activities
+2025-07-24 09:51:12,652 - httpx - INFO - HTTP Request: GET https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?select=%2A&id=eq.13439936&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,717 - httpx - INFO - HTTP Request: PATCH https://atlimsuwbzvdrgjwbjyt.supabase.co/rest/v1/broker_points?id=eq.13439936&company_id=eq.8681ef3e-28d5-42d2-b0c5-c5b42041c436 "HTTP/2 200 OK"
+2025-07-24 09:51:12,719 - libs.supabase_db - INFO - Updated 5 fields for Felipe Magaldi: 0 total points
+2025-07-24 09:51:12,720 - libs.supabase_db - INFO - Calculating points for broker Ronald Takamassa Shimada (ID: 13439940)
+2025-07-24 09:51:12,720 - libs.supabase_db - INFO -   - 1 leads
+2025-07-24 09:51:12,720 - libs.supabase_db - INFO -   - 0 activities
+2025-07-24 09:51:12,723 - libs.supabase_db - WARNING - Error in leads_sem_interacao_24h calculation: 'lead_id'
