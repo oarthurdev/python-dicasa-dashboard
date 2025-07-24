@@ -1153,6 +1153,11 @@ class SupabaseClient:
                 if broker_activities.empty or broker_leads.empty:
                     return 0
 
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
+                    return 0
+
                 leads_responded_1h = 0
                 for _, lead in broker_leads.iterrows():
                     # Buscar primeira mensagem enviada pelo broker para este lead
@@ -1173,6 +1178,11 @@ class SupabaseClient:
                 if broker_activities.empty:
                     return 0
 
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
+                    return 0
+
                 visits = broker_activities[
                     (broker_activities.get('tipo', '') == 'mudança_status') &
                     (broker_activities.get('status_novo', pd.Series()).notna())
@@ -1183,6 +1193,11 @@ class SupabaseClient:
             elif rule_name == "propostas_enviadas":
                 # Propostas enviadas - usando mudanças para status específico ou notas (já filtradas por data)
                 if broker_activities.empty:
+                    return 0
+
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
                     return 0
 
                 try:
@@ -1207,6 +1222,19 @@ class SupabaseClient:
             elif rule_name == "vendas_realizadas":
                 # Vendas realizadas - buscar atividades de mudança para status "Ganho" no período filtrado
                 if broker_activities.empty:
+                    # Se não há atividades, usar fallback dos leads
+                    if not broker_leads.empty and 'status' in broker_leads.columns:
+                        sales = broker_leads[broker_leads['status'] == 'Ganho']
+                        return len(sales)
+                    return 0
+
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
+                    # Usar fallback dos leads
+                    if not broker_leads.empty and 'status' in broker_leads.columns:
+                        sales = broker_leads[broker_leads['status'] == 'Ganho']
+                        return len(sales)
                     return 0
 
                 try:
@@ -1236,6 +1264,11 @@ class SupabaseClient:
                 if broker_leads.empty or broker_activities.empty:
                     return 0
 
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
+                    return 0
+
                 try:
                     same_day_updates = 0
                     for _, lead in broker_leads.iterrows():
@@ -1256,6 +1289,11 @@ class SupabaseClient:
             elif rule_name == "resposta_rapida_3h":
                 # Resposta rápida em menos de 3 horas (já filtradas por data)
                 if broker_activities.empty or broker_leads.empty:
+                    return 0
+
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
                     return 0
 
                 quick_responses = 0
@@ -1286,6 +1324,11 @@ class SupabaseClient:
                     return 0
 
                 if len(broker_leads) == 0:
+                    return 0
+
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
                     return 0
 
                 # Verificar se todos os leads no período tiveram resposta
@@ -1320,6 +1363,11 @@ class SupabaseClient:
             elif rule_name == "acompanhamento_pos_venda":
                 # Acompanhamento pós-venda - buscar atividades de follow-up após vendas no período
                 if broker_activities.empty:
+                    return 0
+
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
                     return 0
 
                 try:
@@ -1421,6 +1469,19 @@ class SupabaseClient:
             elif rule_name == "leads_perdidos":
                 # Penalização para leads perdidos - buscar atividades de mudança para status "Perdido" no período
                 if broker_activities.empty:
+                    # Se não há atividades, usar fallback dos leads
+                    if not broker_leads.empty and 'status' in broker_leads.columns:
+                        lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
+                        return len(lost_leads)
+                    return 0
+
+                # Verificar se a coluna lead_id existe nas atividades
+                if 'lead_id' not in broker_activities.columns:
+                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
+                    # Usar fallback dos leads
+                    if not broker_leads.empty and 'status' in broker_leads.columns:
+                        lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
+                        return len(lost_leads)
                     return 0
 
                 try:
