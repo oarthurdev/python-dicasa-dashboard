@@ -927,7 +927,14 @@ class SupabaseClient:
                     filter_data = filter_result.data[0]
                     filter_type = filter_data.get('filter_type')
                     
-                    # Só usar as datas se filter_type for 'custom_range'
+                    # Calculate date ranges based on filter type
+                    from datetime import datetime, timedelta
+                    import pytz
+                    
+                    # Use São Paulo timezone for calculations
+                    sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
+                    now = datetime.now(sao_paulo_tz)
+                    
                     if filter_type == 'custom_range':
                         start_date = filter_data.get('start_date')
                         end_date = filter_data.get('end_date')
@@ -938,8 +945,37 @@ class SupabaseClient:
                             logger.info(f"Using custom date range filter: {date_filter_start} to {date_filter_end}")
                         else:
                             logger.info(f"Filter type is custom_range but dates are null, using all data")
+                    
+                    elif filter_type == 'current_month':
+                        # Current month from 1st day to today
+                        first_day_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        date_filter_start = pd.to_datetime(first_day_of_month, utc=True)
+                        date_filter_end = pd.to_datetime(now, utc=True)
+                        logger.info(f"Using current month filter: {date_filter_start} to {date_filter_end}")
+                    
+                    elif filter_type == 'last_month':
+                        # Last month from 1st to last day
+                        first_day_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        last_day_last_month = first_day_current_month - timedelta(days=1)
+                        first_day_last_month = last_day_last_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        
+                        date_filter_start = pd.to_datetime(first_day_last_month, utc=True)
+                        date_filter_end = pd.to_datetime(last_day_last_month.replace(hour=23, minute=59, second=59), utc=True)
+                        logger.info(f"Using last month filter: {date_filter_start} to {date_filter_end}")
+                    
+                    elif filter_type == 'current_week':
+                        # Current week from Monday to today
+                        days_since_monday = now.weekday()  # Monday is 0
+                        monday_this_week = now - timedelta(days=days_since_monday)
+                        monday_this_week = monday_this_week.replace(hour=0, minute=0, second=0, microsecond=0)
+                        
+                        date_filter_start = pd.to_datetime(monday_this_week, utc=True)
+                        date_filter_end = pd.to_datetime(now, utc=True)
+                        logger.info(f"Using current week filter: {date_filter_start} to {date_filter_end}")
+                    
                     else:
-                        logger.info(f"Filter type is {filter_type}, not using custom date range")
+                        logger.info(f"Unknown filter type: {filter_type}, using all data")
+                        
                 else:
                     logger.info("No component_filters found for ranking_metrics, using all data")
             except Exception as filter_error:
