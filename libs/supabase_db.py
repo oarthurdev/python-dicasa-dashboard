@@ -1354,6 +1354,19 @@ class SupabaseClient:
                     return 0
 
                 try:
+                    # Se não há atividades, todos os leads não tiveram interação
+                    if broker_activities.empty:
+                        # Contar apenas leads que não estão fechados
+                        inactive_leads = broker_leads[
+                            ~broker_leads.get('status', pd.Series()).isin(['Ganho', 'Perdido'])
+                        ]
+                        return len(inactive_leads)
+                    
+                    # Verificar se a coluna lead_id existe nas atividades
+                    if 'lead_id' not in broker_activities.columns:
+                        logger.warning("Column 'lead_id' not found in broker_activities")
+                        return len(broker_leads)
+                    
                     # Contar leads que não tiveram nenhuma atividade no período
                     inactive_count = 0
                     for _, lead in broker_leads.iterrows():
@@ -1377,6 +1390,19 @@ class SupabaseClient:
                     return 0
 
                 try:
+                    # Se não há atividades, todos os leads foram ignorados
+                    if broker_activities.empty:
+                        # Contar apenas leads que não estão fechados
+                        ignored_leads = broker_leads[
+                            ~broker_leads.get('status', pd.Series()).isin(['Ganho', 'Perdido'])
+                        ]
+                        return len(ignored_leads)
+                    
+                    # Verificar se a coluna lead_id existe nas atividades
+                    if 'lead_id' not in broker_activities.columns:
+                        logger.warning("Column 'lead_id' not found in broker_activities")
+                        return len(broker_leads)
+                    
                     # Verificar leads que nunca tiveram interação no período
                     ignored_count = 0
                     for _, lead in broker_leads.iterrows():
