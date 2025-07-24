@@ -140,11 +140,11 @@ class SyncManager:
     def get_safe_batch_size(self, data_type):
         """Get safe batch size based on data type to prevent overload"""
         batch_sizes = {
-            'brokers': 100,    # Brokers são poucos, batch maior
-            'leads': 250,      # Leads podem ser muitos, batch médio
-            'activities': 200  # Activities são muitas, batch controlado
+            'brokers': 50,     # Reduzido para sincronização contínua
+            'leads': 100,      # Reduzido para melhor performance
+            'activities': 75   # Reduzido para evitar sobrecarga
         }
-        return batch_sizes.get(data_type, 200)
+        return batch_sizes.get(data_type, 50)
 
     def create_data_snapshot(self, company_id, snapshot_type="manual"):
         """Create a snapshot of current data for archival purposes"""
@@ -205,6 +205,8 @@ class SyncManager:
                     batch_changes = self._process_batch_incremental(batch, 'brokers', existing_brokers)
                     if batch_changes:
                         changes_found = True
+                    # Small delay between batches for continuous sync
+                    time.sleep(0.1)
                 
                 changes_detected['brokers'] = changes_found
                 if changes_found:
@@ -246,6 +248,8 @@ class SyncManager:
                         batch_changes = self._process_batch_incremental(batch, 'leads', existing_leads)
                         if batch_changes:
                             changes_found = True
+                        # Small delay between batches for continuous sync
+                        time.sleep(0.1)
                     
                     changes_detected['leads'] = changes_found
                     if changes_found:
@@ -276,6 +280,8 @@ class SyncManager:
                         batch_changes = self._process_batch_incremental(batch, 'activities', existing_activities)
                         if batch_changes:
                             changes_found = True
+                        # Small delay between batches for continuous sync
+                        time.sleep(0.15)
                     
                     changes_detected['activities'] = changes_found
                     if changes_found:

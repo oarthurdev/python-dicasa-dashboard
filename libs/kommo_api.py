@@ -251,10 +251,10 @@ class KommoAPI:
     def _get_safe_pagination_limits(self):
         """Define limites seguros para paginação e evita processamento infinito"""
         return {
-            'max_pages_per_request': 100,  # Máximo 100 páginas por chamada
-            'max_total_records': 10000,  # Máximo 10k registros por empresa
-            'page_size': 50,  # Tamanho da página reduzido para evitar timeouts
-            'delay_between_pages': 0.2  # 200ms entre páginas
+            'max_pages_per_request': 150,  # Aumentado para sincronização completa
+            'max_total_records': 50000,   # Aumentado para capturar todos os dados
+            'page_size': 50,              # Mantido para estabilidade
+            'delay_between_pages': 0.15   # Otimizado para sync contínuo
         }
 
     def get_leads(self, company_id=None):
@@ -293,7 +293,7 @@ class KommoAPI:
 
             logger.info("Etapas carregadas com sucesso")
             logger.info(
-                "Retrieving ALL leads from Kommo CRM (no date filters)")
+                "Retrieving ALL leads from Kommo CRM (no date filters - continuous sync)")
 
             filtered_leads = []
             page = 1

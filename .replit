@@ -21,7 +21,7 @@ localPort = 8501
 externalPort = 80
 
 [workflows]
-runButton = "API Server"
+runButton = "Continuous Sync API"
 
 [[workflows.workflow]]
 name = "Flask Server"
@@ -53,6 +53,15 @@ args = "python sync_api.py"
 [[workflows.workflow]]
 name = "API Server"
 author = 43053875
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python sync_api.py"
+
+[[workflows.workflow]]
+name = "Continuous Sync API"
+author = 45458206
 mode = "sequential"
 
 [[workflows.workflow.tasks]]

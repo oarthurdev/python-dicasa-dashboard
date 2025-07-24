@@ -1,3 +1,4 @@
+
 from flask import Flask, jsonify, request
 import threading
 import logging
@@ -16,12 +17,22 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Global state
-threads_status = {}
+sync_threads = {}
+sync_status = {}
 supabase = SupabaseClient()
-COMPANY_LIST = []  # Atualizada no início e em cada ciclo
+COMPANY_LIST = []
 
-SYNC_INTERVAL_MINUTES = 90  # Aumentado para 90 minutos devido ao volume total de dados
-
+# Configurações otimizadas para sincronização contínua
+SYNC_CONFIG = {
+    'base_interval': 180,  # 3 minutos base entre sincronizações
+    'max_interval': 900,   # 15 minutos máximo
+    'min_interval': 60,    # 1 minuto mínimo
+    'health_check_interval': 30,  # 30 segundos para health check
+    'api_rate_limit': 0.15,  # 150ms entre requests para respeitar 7req/s da Kommo
+    'batch_delay': 0.2,      # 200ms entre batches
+    'max_retries': 3,
+    'backoff_multiplier': 1.5
+}
 
 def load_companies():
     """Load all companies from kommo_config"""
@@ -32,176 +43,307 @@ def load_companies():
         logger.error(f"Error loading companies: {e}")
         return []
 
+def adaptive_sync_interval(company_id, last_changes):
+    """Calculate adaptive sync interval based on recent activity"""
+    base = SYNC_CONFIG['base_interval']
+    
+    # Se houve mudanças recentes, sincronize mais frequentemente
+    if last_changes.get('total_changes', 0) > 0:
+        return max(SYNC_CONFIG['min_interval'], base // 2)
+    
+    # Se não houve mudanças, aumente gradualmente o intervalo
+    return min(SYNC_CONFIG['max_interval'], base)
 
-def sync_data(company_id):
-    """Execute sync function once for a specific company with incremental updates"""
+def continuous_sync_worker(company_id, config):
+    """Worker thread para sincronização contínua de uma empresa"""
+    thread_id = f"sync_{company_id}"
+    local_supabase = SupabaseClient()
+    
     try:
-        local_supabase = SupabaseClient()
-
-        local_supabase.check_config_changes();
+        logger.info(f"[{company_id}] Starting continuous sync worker")
         
-        company_result = local_supabase.client.table("companies").select(
-            "subdomain").eq("id", company_id).execute()
-        if not company_result.data:
-            logger.error(f"Company {company_id} not found")
-            return
-
-        subdomain = company_result.data[0]['subdomain']
-        logger.info(f"Starting incremental sync for company {company_id} (subdomain: {subdomain}) - syncing ALL data")
-
-        threads_status[company_id] = {
-            'status': 'running',
-            'last_sync': datetime.now(),
+        # Inicializar componentes
+        kommo_api = KommoAPI(api_config=config)
+        sync_manager = SyncManager(kommo_api, local_supabase, config)
+        
+        # Status inicial
+        sync_status[company_id] = {
+            'status': 'initializing',
+            'last_sync': None,
             'next_sync': None,
-            'subdomain': subdomain
+            'subdomain': config.get('subdomain', 'unknown'),
+            'total_syncs': 0,
+            'last_changes': {},
+            'errors': 0,
+            'thread_health': 'healthy'
         }
-
-        configs = local_supabase.load_kommo_config(company_id=company_id)
-
-        if isinstance(configs, list) and configs:
-            company_config = configs[0]
-        else:
-            logger.info(f"Nenhuma configuração encontrada para a empresa {company_id}")
-            return
-
-        kommo_api = KommoAPI(api_config=company_config)
-        sync_manager = SyncManager(kommo_api, local_supabase, company_config)
-
-        # Buscar dados da API na ordem correta (brokers primeiro)
-        logger.info("Fetching brokers data first...")
-        brokers = kommo_api.get_users()
         
-        logger.info("Fetching leads data...")
-        leads = kommo_api.get_leads()
+        consecutive_errors = 0
+        last_changes = {}
         
-        logger.info("Fetching activities data...")
-        activities = kommo_api.get_activities()
-
-        # Adicionar company_id aos DataFrames
-        if not brokers.empty:
-            brokers['company_id'] = company_id
-        if not leads.empty:
-            leads['company_id'] = company_id
-        if not activities.empty:
-            activities['company_id'] = company_id
-
-        # Sincronização incremental - apenas dados alterados
-        # A ordem é importante: brokers primeiro, depois leads, depois activities
-        changes_detected = sync_manager.sync_data_incremental(
-            brokers=brokers, 
-            leads=leads, 
-            activities=activities, 
-            company_id=company_id
-        )
-
-        if changes_detected['brokers'] or changes_detected['leads'] or changes_detected['activities']:
-            logger.info(f"Changes detected: {changes_detected}")
+        while sync_threads.get(company_id, {}).get('active', False):
+            cycle_start = time.time()
             
-            # Atualizar pontos apenas se houve mudanças relevantes
-            if not brokers.empty and (changes_detected['brokers'] or changes_detected['leads'] or changes_detected['activities']):
-                broker_data = brokers[(brokers['cargo'] == 'Corretor') & (brokers['company_id'] == company_id)].copy()
-                if not broker_data.empty:
-                    local_supabase.update_broker_points(
-                        brokers=broker_data,
-                        leads=leads,
-                        activities=activities,
-                        company_id=company_id
-                    )
+            try:
+                sync_status[company_id].update({
+                    'status': 'syncing',
+                    'last_health_check': datetime.now()
+                })
+                
+                logger.info(f"[{company_id}] Starting sync cycle #{sync_status[company_id]['total_syncs'] + 1}")
+                
+                # Fetch ALL data without date filters
+                logger.info(f"[{company_id}] Fetching ALL brokers...")
+                brokers = kommo_api.get_users(active_only=False)  # Include all users
+                
+                logger.info(f"[{company_id}] Fetching ALL leads...")
+                leads = kommo_api.get_leads()  # No date filters
+                
+                logger.info(f"[{company_id}] Fetching ALL activities...")
+                activities = kommo_api.get_activities()  # No date filters
+                
+                # Add company_id to all DataFrames
+                if not brokers.empty:
+                    brokers['company_id'] = company_id
+                if not leads.empty:
+                    leads['company_id'] = company_id
+                if not activities.empty:
+                    activities['company_id'] = company_id
+                
+                # Log data volumes
+                logger.info(f"[{company_id}] Data volumes - Brokers: {len(brokers)}, Leads: {len(leads)}, Activities: {len(activities)}")
+                
+                # Incremental sync with change detection
+                changes_detected = sync_manager.sync_data_incremental(
+                    brokers=brokers,
+                    leads=leads,
+                    activities=activities,
+                    company_id=company_id
+                )
+                
+                # Update broker points if there were changes
+                if any(changes_detected.values()):
+                    logger.info(f"[{company_id}] Changes detected: {changes_detected}")
+                    
+                    # Filter only brokers with 'Corretor' role for points calculation
+                    if not brokers.empty:
+                        broker_data = brokers[
+                            (brokers['cargo'] == 'Corretor') & 
+                            (brokers['company_id'] == company_id)
+                        ].copy()
+                        
+                        if not broker_data.empty:
+                            local_supabase.update_broker_points(
+                                brokers=broker_data,
+                                leads=leads,
+                                activities=activities,
+                                company_id=company_id
+                            )
+                            logger.info(f"[{company_id}] Broker points updated for {len(broker_data)} brokers")
+                        else:
+                            logger.warning(f"[{company_id}] No brokers with 'Corretor' role found")
                 else:
-                    logger.warning("No brokers with 'Corretor' role found for this company")
-        else:
-            logger.info(f"No changes detected for company {company_id}")
-
-        threads_status[company_id].update({
-            'status': 'waiting',
-            'last_sync': datetime.now(),
-            'next_sync': datetime.now() + timedelta(minutes=SYNC_INTERVAL_MINUTES)
+                    logger.info(f"[{company_id}] No changes detected, skipping points calculation")
+                
+                # Update status
+                last_changes = changes_detected
+                total_changes = sum(1 for changed in changes_detected.values() if changed)
+                consecutive_errors = 0  # Reset error counter on success
+                
+                sync_interval = adaptive_sync_interval(company_id, {'total_changes': total_changes})
+                next_sync_time = datetime.now() + timedelta(seconds=sync_interval)
+                
+                sync_status[company_id].update({
+                    'status': 'waiting',
+                    'last_sync': datetime.now(),
+                    'next_sync': next_sync_time,
+                    'total_syncs': sync_status[company_id]['total_syncs'] + 1,
+                    'last_changes': changes_detected,
+                    'thread_health': 'healthy',
+                    'last_interval': sync_interval
+                })
+                
+                cycle_duration = time.time() - cycle_start
+                logger.info(f"[{company_id}] Sync completed in {cycle_duration:.2f}s. Next sync in {sync_interval}s")
+                
+                # Intelligent waiting with health checks
+                wait_time = 0
+                while wait_time < sync_interval and sync_threads.get(company_id, {}).get('active', False):
+                    time.sleep(min(SYNC_CONFIG['health_check_interval'], sync_interval - wait_time))
+                    wait_time += SYNC_CONFIG['health_check_interval']
+                    
+                    # Update health check timestamp
+                    sync_status[company_id]['last_health_check'] = datetime.now()
+                
+            except Exception as e:
+                consecutive_errors += 1
+                sync_status[company_id].update({
+                    'status': 'error',
+                    'last_error': str(e),
+                    'errors': sync_status[company_id].get('errors', 0) + 1,
+                    'thread_health': 'unhealthy' if consecutive_errors >= 3 else 'degraded'
+                })
+                
+                logger.error(f"[{company_id}] Sync error (attempt {consecutive_errors}): {e}")
+                
+                # Exponential backoff for errors
+                error_delay = min(
+                    SYNC_CONFIG['base_interval'] * (SYNC_CONFIG['backoff_multiplier'] ** consecutive_errors),
+                    SYNC_CONFIG['max_interval']
+                )
+                
+                # If too many consecutive errors, increase delay significantly
+                if consecutive_errors >= SYNC_CONFIG['max_retries']:
+                    error_delay = SYNC_CONFIG['max_interval'] * 2
+                    logger.error(f"[{company_id}] Too many consecutive errors, backing off for {error_delay}s")
+                
+                time.sleep(error_delay)
+    
+    except Exception as fatal_error:
+        logger.critical(f"[{company_id}] Fatal error in sync worker: {fatal_error}")
+        sync_status[company_id].update({
+            'status': 'failed',
+            'thread_health': 'dead',
+            'fatal_error': str(fatal_error)
         })
+    
+    finally:
+        logger.info(f"[{company_id}] Sync worker terminated")
+        sync_status[company_id]['status'] = 'stopped'
 
-        logger.info(f"Incremental sync completed for company {company_id}.")
+def start_company_sync(company_id, config):
+    """Start continuous sync for a specific company"""
+    if company_id in sync_threads and sync_threads[company_id].get('active', False):
+        logger.info(f"[{company_id}] Sync already running")
+        return False
+    
+    # Create and start thread
+    sync_threads[company_id] = {
+        'active': True,
+        'thread': threading.Thread(
+            target=continuous_sync_worker,
+            args=(company_id, config),
+            name=f"sync_worker_{company_id}",
+            daemon=True
+        )
+    }
+    
+    sync_threads[company_id]['thread'].start()
+    logger.info(f"[{company_id}] Continuous sync started")
+    return True
 
-    except Exception as e:
-        logger.error(f"Error in sync for company {company_id}: {e}")
-        threads_status[company_id] = {'status': 'error'}
+def stop_company_sync(company_id):
+    """Stop continuous sync for a specific company"""
+    if company_id in sync_threads:
+        sync_threads[company_id]['active'] = False
+        logger.info(f"[{company_id}] Sync stop requested")
+        return True
+    return False
 
-
-def sync_cycle():
-    """Run sync for all companies once every SYNC_INTERVAL_MINUTES"""
-    global COMPANY_LIST
-
+def global_sync_manager():
+    """Global manager that ensures all companies are continuously syncing"""
+    logger.info("Starting global sync manager")
+    
     while True:
-        COMPANY_LIST = load_companies()
-        if not COMPANY_LIST:
-            logger.warning("No companies to sync. Retrying in 1 minute...")
-            time.sleep(60)
-            continue
-
-        logger.info("Starting sync cycle for all companies - syncing ALL data with safe pagination")
-        threads = []
-
-        for company in COMPANY_LIST:
-            company_id = str(company['company_id'])
-            t = threading.Thread(target=sync_data, args=(company_id,))
-            t.start()
-            threads.append(t)
-
-        for t in threads:
-            t.join()
-
-        logger.info(f"All companies have completed sync (ALL data). Sleeping {SYNC_INTERVAL_MINUTES} minutes...")
-        time.sleep(SYNC_INTERVAL_MINUTES * 60)
-
+        try:
+            # Load current companies
+            current_companies = load_companies()
+            current_company_ids = {str(company['company_id']) for company in current_companies}
+            
+            # Start sync for new companies
+            for company in current_companies:
+                company_id = str(company['company_id'])
+                
+                # Check if sync thread is running and healthy
+                if (company_id not in sync_threads or 
+                    not sync_threads[company_id].get('active', False) or
+                    not sync_threads[company_id]['thread'].is_alive()):
+                    
+                    logger.info(f"[{company_id}] Starting/restarting sync")
+                    start_company_sync(company_id, company)
+            
+            # Stop sync for removed companies
+            for company_id in list(sync_threads.keys()):
+                if company_id not in current_company_ids:
+                    logger.info(f"[{company_id}] Company removed, stopping sync")
+                    stop_company_sync(company_id)
+                    del sync_threads[company_id]
+                    if company_id in sync_status:
+                        del sync_status[company_id]
+            
+            # Health check and restart unhealthy threads
+            for company_id, thread_info in list(sync_threads.items()):
+                if not thread_info['thread'].is_alive():
+                    logger.warning(f"[{company_id}] Thread died, restarting...")
+                    company_config = next((c for c in current_companies if str(c['company_id']) == company_id), None)
+                    if company_config:
+                        stop_company_sync(company_id)
+                        start_company_sync(company_id, company_config)
+            
+            # Update global company list
+            global COMPANY_LIST
+            COMPANY_LIST = current_companies
+            
+        except Exception as e:
+            logger.error(f"Error in global sync manager: {e}")
+        
+        # Wait before next management cycle
+        time.sleep(SYNC_CONFIG['health_check_interval'])
 
 @app.route('/status')
 def get_status():
-    """Get status of all sync operations"""
-    status = {}
-    for company_id, info in threads_status.items():
-        status[company_id] = {
-            'status': info.get('status', 'unknown'),
-            'last_sync': info.get('last_sync'),
-            'next_sync': info.get('next_sync'),
-            'subdomain': info.get('subdomain')
+    """Get detailed status of all sync operations"""
+    global_status = {
+        'total_companies': len(COMPANY_LIST),
+        'active_syncs': len([s for s in sync_status.values() if s.get('status') not in ['stopped', 'failed']]),
+        'healthy_threads': len([s for s in sync_status.values() if s.get('thread_health') == 'healthy']),
+        'config': SYNC_CONFIG,
+        'companies': {}
+    }
+    
+    for company_id, status in sync_status.items():
+        global_status['companies'][company_id] = {
+            'status': status.get('status', 'unknown'),
+            'last_sync': status.get('last_sync'),
+            'next_sync': status.get('next_sync'),
+            'subdomain': status.get('subdomain'),
+            'total_syncs': status.get('total_syncs', 0),
+            'last_changes': status.get('last_changes', {}),
+            'errors': status.get('errors', 0),
+            'thread_health': status.get('thread_health', 'unknown'),
+            'last_health_check': status.get('last_health_check'),
+            'last_interval': status.get('last_interval')
         }
-    return jsonify(status)
-
+    
+    return jsonify(global_status)
 
 @app.route('/start', methods=['POST'])
-def start_sync():
-    """Start the global sync loop if not already running"""
-    global sync_thread
-    if sync_thread and sync_thread.is_alive():
-        return jsonify({'status': 'already_running'})
+def start_global_sync():
+    """Start the global sync manager (called automatically on startup)"""
+    return jsonify({'status': 'already_running', 'message': 'Continuous sync is always active'})
 
-    sync_thread = threading.Thread(target=sync_cycle, daemon=True)
-    sync_thread.start()
-    return jsonify({'status': 'started'})
+@app.route('/stop/<company_id>', methods=['POST'])
+def stop_specific_sync(company_id):
+    """Stop sync for a specific company"""
+    if stop_company_sync(company_id):
+        return jsonify({'status': 'stopped', 'company_id': company_id})
+    else:
+        return jsonify({'status': 'not_found', 'company_id': company_id}), 404
 
-
-@app.route('/stop', methods=['POST'])
-def stop_sync():
-    """Not implemented: Use process control to stop daemon thread"""
-    return jsonify({'status': 'not_implemented', 'message': 'Stop via system process control'})
-
-
-def validate_webhook_data(webhook_data):
-    """Validate webhook data structure and content"""
-    try:
-        if not isinstance(webhook_data, dict):
-            return False
-            
-        # Basic validation - check if required fields exist
-        required_fields = ['id']
-        if not any(field in webhook_data for field in required_fields):
-            logger.warning("Webhook data missing required fields")
-            return False
-            
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error validating webhook data: {str(e)}")
-        return False
-
+@app.route('/restart/<company_id>', methods=['POST'])
+def restart_specific_sync(company_id):
+    """Restart sync for a specific company"""
+    # Find company config
+    company_config = next((c for c in COMPANY_LIST if str(c['company_id']) == company_id), None)
+    if not company_config:
+        return jsonify({'status': 'company_not_found', 'company_id': company_id}), 404
+    
+    # Stop and restart
+    stop_company_sync(company_id)
+    if start_company_sync(company_id, company_config):
+        return jsonify({'status': 'restarted', 'company_id': company_id})
+    else:
+        return jsonify({'status': 'failed_to_restart', 'company_id': company_id}), 500
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -368,13 +510,6 @@ def webhook():
         first_object = data_objects[0] if isinstance(data_objects, list) else data_objects
         logger.info(f"Processing first object: {first_object}")
         
-        # Validate webhook data structure
-        if first_object and not validate_webhook_data(first_object):
-            logger.warning(f"Invalid webhook data structure, skipping processing")
-            return jsonify({'status': 'success', 'message': 'Invalid data structure, ignored'})
-        else:
-            logger.info(f"Webhook data validated successfully, continuing processing")
-        
         # Extract fields for from_webhook table
         webhook_record = {
             'webhook_type': webhook_type,
@@ -434,11 +569,19 @@ def webhook():
         logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
 if __name__ == '__main__':
     # Ensure webhook table exists
     supabase.ensure_webhook_table()
     
-    sync_thread = threading.Thread(target=sync_cycle, daemon=True)
-    sync_thread.start()
-    app.run(host='0.0.0.0', port=5002)
+    # Start global sync manager in background
+    global_manager_thread = threading.Thread(
+        target=global_sync_manager, 
+        name="global_sync_manager", 
+        daemon=True
+    )
+    global_manager_thread.start()
+    logger.info("Global sync manager started")
+    
+    # Start Flask app
+    logger.info("Starting Flask API server on port 5002")
+    app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)
