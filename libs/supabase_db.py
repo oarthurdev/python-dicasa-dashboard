@@ -1099,13 +1099,15 @@ class SupabaseClient:
             # Ensure datetime columns are properly converted with better error handling
             try:
                 if not broker_activities.empty and 'criado_em' in broker_activities.columns:
-                    broker_activities['criado_em'] = pd.to_datetime(broker_activities['criado_em'], errors='coerce', utc=True)
+                    broker_activities = broker_activities.copy()
+                    broker_activities.loc[:, 'criado_em'] = pd.to_datetime(broker_activities['criado_em'], errors='coerce', utc=True)
                 
                 if not broker_leads.empty:
+                    broker_leads = broker_leads.copy()
                     if 'criado_em' in broker_leads.columns:
-                        broker_leads['criado_em'] = pd.to_datetime(broker_leads['criado_em'], errors='coerce', utc=True)
+                        broker_leads.loc[:, 'criado_em'] = pd.to_datetime(broker_leads['criado_em'], errors='coerce', utc=True)
                     if 'atualizado_em' in broker_leads.columns:
-                        broker_leads['atualizado_em'] = pd.to_datetime(broker_leads['atualizado_em'], errors='coerce', utc=True)
+                        broker_leads.loc[:, 'atualizado_em'] = pd.to_datetime(broker_leads['atualizado_em'], errors='coerce', utc=True)
             except Exception as date_error:
                 logger.warning(f"Error converting datetime columns in rule {rule_name}: {date_error}")
                 # Continue with original data if conversion fails
@@ -1131,7 +1133,7 @@ class SupabaseClient:
                 return leads_responded_1h
 
             elif rule_name == "leads_visitados":
-                # Leads visitados - usando mudanças de status específicas
+                # Leads visitados - usando mudanças de status específicas (já filtradas por data)
                 if broker_activities.empty:
                     return 0
 
@@ -1143,7 +1145,7 @@ class SupabaseClient:
                 return unique_leads_visited
 
             elif rule_name == "propostas_enviadas":
-                # Propostas enviadas - usando mudanças para status específico ou notas
+                # Propostas enviadas - usando mudanças para status específico ou notas (já filtradas por data)
                 if broker_activities.empty:
                     return 0
 
@@ -1167,15 +1169,34 @@ class SupabaseClient:
                     return 0
 
             elif rule_name == "vendas_realizadas":
-                # Vendas realizadas - leads com status Ganho
-                if broker_leads.empty or 'status' not in broker_leads.columns:
+                # Vendas realizadas - buscar atividades de mudança para status "Ganho" no período filtrado
+                if broker_activities.empty:
                     return 0
 
-                sales = broker_leads[broker_leads['status'] == 'Ganho']
-                return len(sales)
+                try:
+                    # Buscar atividades de mudança de status para "Ganho" no período filtrado
+                    sales_activities = broker_activities[
+                        (broker_activities.get('tipo', '') == 'mudança_status') & 
+                        (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('ganho|won|vendido', case=False, na=False))
+                    ]
+                    
+                    # Se não encontrar por atividade, usar os leads com status Ganho que foram criados no período
+                    if sales_activities.empty and not broker_leads.empty:
+                        sales = broker_leads[broker_leads.get('status', '') == 'Ganho']
+                        return len(sales)
+                    
+                    unique_sales = sales_activities['lead_id'].nunique() if not sales_activities.empty else 0
+                    return unique_sales
+                except Exception as e:
+                    logger.warning(f"Error in vendas_realizadas calculation: {e}")
+                    # Fallback para leads com status Ganho
+                    if not broker_leads.empty and 'status' in broker_leads.columns:
+                        sales = broker_leads[broker_leads['status'] == 'Ganho']
+                        return len(sales)
+                    return 0
 
             elif rule_name == "leads_atualizados_mesmo_dia":
-                # Leads atualizados no mesmo dia da criação
+                # Leads atualizados no mesmo dia da criação (já filtrados por data)
                 if broker_leads.empty or broker_activities.empty:
                     return 0
 
@@ -1197,7 +1218,7 @@ class SupabaseClient:
                     return 0
 
             elif rule_name == "resposta_rapida_3h":
-                # Resposta rápida em menos de 3 horas - calcular baseado nas atividades filtradas
+                # Resposta rápida em menos de 3 horas (já filtradas por data)
                 if broker_activities.empty or broker_leads.empty:
                     return 0
 
@@ -1248,7 +1269,7 @@ class SupabaseClient:
                 return 0
 
             elif rule_name == "cadastro_completo":
-                # Lead com cadastro completo
+                # Lead com cadastro completo (já filtrados por data de criação)
                 if broker_leads.empty:
                     return 0
 
@@ -1261,26 +1282,35 @@ class SupabaseClient:
                 return len(complete_leads)
 
             elif rule_name == "acompanhamento_pos_venda":
-                # Acompanhamento pós-venda
-                if broker_activities.empty or broker_leads.empty:
+                # Acompanhamento pós-venda - buscar atividades de follow-up após vendas no período
+                if broker_activities.empty:
                     return 0
 
-                sold_leads = broker_leads[broker_leads['status'] == 'Ganho']
-                if sold_leads.empty:
-                    return 0
-
-                follow_ups = 0
-                for _, lead in sold_leads.iterrows():
-                    # Buscar atividades após a venda
-                    post_sale_activities = broker_activities[
-                        (broker_activities['lead_id'] == lead['id']) &
-                        (broker_activities['criado_em'] > lead['atualizado_em']) &
-                        (broker_activities['tipo'].isin(['mensagem_enviada', 'nota_adicionada', 'tarefa_concluida']))
+                try:
+                    # Buscar atividades de follow-up após mudanças de status para "Ganho"
+                    sales_activities = broker_activities[
+                        (broker_activities.get('tipo', '') == 'mudança_status') & 
+                        (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('ganho|won|vendido', case=False, na=False))
                     ]
-                    if not post_sale_activities.empty:
-                        follow_ups += 1
-
-                return follow_ups
+                    
+                    if sales_activities.empty:
+                        return 0
+                    
+                    follow_ups = 0
+                    for _, sale_activity in sales_activities.iterrows():
+                        # Buscar atividades de follow-up após esta venda
+                        post_sale_activities = broker_activities[
+                            (broker_activities['lead_id'] == sale_activity['lead_id']) &
+                            (broker_activities['criado_em'] > sale_activity['criado_em']) &
+                            (broker_activities['tipo'].isin(['mensagem_enviada', 'nota_adicionada', 'tarefa_concluida']))
+                        ]
+                        if not post_sale_activities.empty:
+                            follow_ups += 1
+                            
+                    return follow_ups
+                except Exception as e:
+                    logger.warning(f"Error in acompanhamento_pos_venda calculation: {e}")
+                    return 0
 
             elif rule_name == "leads_sem_interacao_24h":
                 # Penalização para leads sem interação (baseado nos dados filtrados)
@@ -1311,7 +1341,7 @@ class SupabaseClient:
                     return 0
 
                 try:
-                    # Verificar leads que nunca tiveram interação
+                    # Verificar leads que nunca tiveram interação no período
                     ignored_count = 0
                     for _, lead in broker_leads.iterrows():
                         if 'status' in lead and lead['status'] in ['Ganho', 'Perdido']:
@@ -1327,15 +1357,30 @@ class SupabaseClient:
                     return 0
 
             elif rule_name == "leads_perdidos":
-                # Penalização para leads perdidos
-                if broker_leads.empty or 'status' not in broker_leads.columns:
+                # Penalização para leads perdidos - buscar atividades de mudança para status "Perdido" no período
+                if broker_activities.empty:
                     return 0
 
                 try:
-                    lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
-                    return len(lost_leads)
+                    # Buscar atividades de mudança de status para "Perdido" no período filtrado
+                    lost_activities = broker_activities[
+                        (broker_activities.get('tipo', '') == 'mudança_status') & 
+                        (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('perdido|lost|fechado|cancelado', case=False, na=False))
+                    ]
+                    
+                    # Se não encontrar por atividade, usar os leads com status Perdido que foram criados no período
+                    if lost_activities.empty and not broker_leads.empty:
+                        lost_leads = broker_leads[broker_leads.get('status', '') == 'Perdido']
+                        return len(lost_leads)
+                    
+                    unique_lost = lost_activities['lead_id'].nunique() if not lost_activities.empty else 0
+                    return unique_lost
                 except Exception as e:
                     logger.warning(f"Error in leads_perdidos calculation: {e}")
+                    # Fallback para leads com status Perdido
+                    if not broker_leads.empty and 'status' in broker_leads.columns:
+                        lost_leads = broker_leads[broker_leads['status'] == 'Perdido']
+                        return len(lost_leads)
                     return 0
 
             else:
