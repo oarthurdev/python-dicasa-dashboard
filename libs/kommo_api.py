@@ -249,12 +249,12 @@ class KommoAPI:
             raise
 
     def _get_safe_pagination_limits(self):
-        """Define limites seguros para paginação e evita processamento infinito"""
+        """Define limites seguros para paginação respeitando 7 req/s da API Kommo"""
         return {
             'max_pages_per_request': 150,  # Aumentado para sincronização completa
             'max_total_records': 50000,   # Aumentado para capturar todos os dados
             'page_size': 50,              # Mantido para estabilidade
-            'delay_between_pages': 0.15   # Otimizado para sync contínuo
+            'delay_between_pages': 0.0    # Removido - rate limiting é feito no _make_request
         }
 
     def get_leads(self, company_id=None):

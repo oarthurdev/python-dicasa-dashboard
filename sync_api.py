@@ -22,14 +22,14 @@ sync_status = {}
 supabase = SupabaseClient()
 COMPANY_LIST = []
 
-# Configurações otimizadas para sincronização contínua
+# Configurações otimizadas para sincronização contínua respeitando 7 req/s
 SYNC_CONFIG = {
     'base_interval': 180,  # 3 minutos base entre sincronizações
     'max_interval': 900,   # 15 minutos máximo
     'min_interval': 60,    # 1 minuto mínimo
     'health_check_interval': 30,  # 30 segundos para health check
-    'api_rate_limit': 0.15,  # 150ms entre requests para respeitar 7req/s da Kommo
-    'batch_delay': 0.2,      # 200ms entre batches
+    'api_rate_limit': 0.143,  # ~143ms entre requests (7 req/s com margem)
+    'batch_delay': 0.0,      # Sem delay adicional - rate limiting é automático
     'max_retries': 3,
     'backoff_multiplier': 1.5
 }

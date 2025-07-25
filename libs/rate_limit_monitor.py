@@ -53,7 +53,7 @@ class RateLimitMonitor:
         time.sleep(backoff)
     
     def enforce_rate_limit(self):
-        """Aplica o rate limiting de 7 solicitações por segundo conforme documentação Kommo"""
+        """Aplica o rate limiting rigoroso de 7 solicitações por segundo conforme documentação Kommo"""
         with self.lock:
             now = time.time()
             
@@ -61,15 +61,32 @@ class RateLimitMonitor:
             while self.request_times and now - self.request_times[0] > 1.0:
                 self.request_times.popleft()
             
-            # Se já temos 7 requests no último segundo, espera
+            # Se já temos 7 requests no último segundo, espera obrigatoriamente
             if len(self.request_times) >= self.max_requests_per_second:
-                sleep_time = 1.0 - (now - self.request_times[0])
+                # Calcula o tempo necessário para esperar
+                oldest_request_time = self.request_times[0]
+                time_since_oldest = now - oldest_request_time
+                sleep_time = 1.0 - time_since_oldest + 0.01  # +10ms de margem de segurança
+                
                 if sleep_time > 0:
-                    logger.info(f"Rate limit: waiting {sleep_time:.2f}s to respect 7 req/s limit")
+                    logger.info(f"Rate limit: waiting {sleep_time:.3f}s to respect 7 req/s limit")
                     time.sleep(sleep_time)
-                    # Remove a request mais antiga após o sleep
-                    if self.request_times:
+                    # Atualiza o tempo atual após o sleep
+                    now = time.time()
+                    
+                    # Remove requests antigas novamente após o sleep
+                    while self.request_times and now - self.request_times[0] > 1.0:
                         self.request_times.popleft()
+            
+            # Adiciona delay mínimo entre requests para distribuir melhor
+            min_interval = 1.0 / self.max_requests_per_second  # ~0.143s entre requests
+            if self.request_times:
+                time_since_last = now - self.request_times[-1]
+                if time_since_last < min_interval:
+                    additional_sleep = min_interval - time_since_last
+                    logger.debug(f"Adding minimum interval delay: {additional_sleep:.3f}s")
+                    time.sleep(additional_sleep)
+                    now = time.time()
             
             # Registra a nova request
             self.request_times.append(now)
