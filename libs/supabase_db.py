@@ -361,13 +361,13 @@ class SupabaseClient:
             for broker in brokers_data:
                 broker["updated_at"] = datetime.now().isoformat()
 
-            # Upsert data to Supabase
-            result = self.client.table("brokers").upsert(brokers_data).execute()
+            # Upsert data to Supabase - inserir novos e atualizar existentes
+            result = self.client.table("brokers").upsert(brokers_data, on_conflict='id').execute()
 
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
 
-            logger.info("Brokers upserted successfully")
+            logger.info(f"Brokers upserted successfully: {len(brokers_data)} records processed")
             return result
 
         except Exception as e:
@@ -527,14 +527,14 @@ class SupabaseClient:
                             value, float) and value.is_integer():
                         activity[key] = int(value)
 
-            # Upsert data to Supabase
+            # Upsert data to Supabase - inserir novos e atualizar existentes
             result = self.client.table("activities").upsert(
-                activities_data).execute()
+                activities_data, on_conflict='id').execute()
 
             if hasattr(result, "error") and result.error:
                 raise Exception(f"Supabase error: {result.error}")
 
-            logger.info("Activities upserted successfully")
+            logger.info(f"Activities upserted successfully: {len(activities_data)} records processed")
             return result
 
         except Exception as e:

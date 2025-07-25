@@ -47,6 +47,10 @@ class SyncManager:
                 f"Error fetching existing records for {table}: {str(e)}")
             raise
 
+    def _record_exists(self, table: str, record_id: str, existing_records: Dict) -> bool:
+        """Verificar se um registro já existe na base de dados"""
+        return record_id in existing_records
+
     def _prepare_record(self, record: Dict) -> Dict:
         """Prepare record for database insertion/update"""
         processed = record.copy()
@@ -126,12 +130,17 @@ class SyncManager:
                 final_records = list(unique_records.values())
                 
                 if final_records:
+                    # Usar upsert com merge duplicates para garantir inserção e atualização
                     result = self.supabase.client.table(table).upsert(
-                        final_records).execute()
+                        final_records, on_conflict='id').execute()
                     if hasattr(result, "error") and result.error:
                         raise Exception(f"Supabase error: {result.error}")
 
-                    logger.info(f"Processed {len(final_records)} records for {table}")
+                    # Contar novos vs atualizados
+                    new_records = len([r for r in final_records if r.get('id') not in existing_records])
+                    updated_records = len(final_records) - new_records
+                    
+                    logger.info(f"Processed {len(final_records)} records for {table}: {new_records} new, {updated_records} updated")
 
         except Exception as e:
             logger.error(f"Error processing batch for {table}: {str(e)}")
@@ -350,11 +359,17 @@ class SyncManager:
                 final_records = list(unique_records.values())
                 
                 if final_records:
-                    result = self.supabase.client.table(table).upsert(final_records).execute()
+                    # Usar upsert com merge duplicates para garantir inserção e atualização
+                    result = self.supabase.client.table(table).upsert(
+                        final_records, on_conflict='id').execute()
                     if hasattr(result, "error") and result.error:
                         raise Exception(f"Supabase error: {result.error}")
 
-                    logger.info(f"Updated {len(final_records)} changed records in {table}")
+                    # Contar novos vs atualizados para melhor logging
+                    new_records = len([r for r in final_records if r.get('id') not in existing_records])
+                    updated_records = len(final_records) - new_records
+                    
+                    logger.info(f"Processed {len(final_records)} records in {table}: {new_records} new, {updated_records} updated")
 
             return changes_found
 
