@@ -259,7 +259,7 @@ class KommoAPI:
 
     def get_leads(self, company_id=None):
         """
-        Retrieve all leads from Kommo CRM for specific company with safe pagination
+        Retrieve leads from specific pipelines in Kommo CRM
         Args:
             company_id (str): Optional company ID to filter leads
         """
@@ -267,28 +267,33 @@ class KommoAPI:
             # Get company_id from config
             company_id = self.api_config.get('company_id')
 
+            # Define specific pipeline IDs to sync
+            target_pipeline_ids = [8865115, 8865067]
+
             # Get safe pagination limits
             limits = self._get_safe_pagination_limits()
 
-            logger.info("Buscando etapas de todos os pipelines")
+            logger.info(f"Buscando etapas dos pipelines específicos: {target_pipeline_ids}")
             pipeline_response = self._make_request("leads/pipelines")
             pipelines = pipeline_response.get("_embedded",
                                               {}).get("pipelines", [])
 
             status_map = {}
             for pipeline in pipelines:
-                # Get statuses from ALL pipelines
-                for status in pipeline.get("_embedded",
-                                           {}).get("statuses", []):
-                    status_id = status.get("id")
-                    status_name = status.get("name")
-                    pipeline_name = pipeline.get("name", "")
-                    # Include pipeline name in status for better identification
-                    status_map[status_id] = f"{status_name} ({pipeline_name})"
+                pipeline_id = pipeline.get("id")
+                # Only get statuses for target pipelines
+                if pipeline_id in target_pipeline_ids:
+                    for status in pipeline.get("_embedded",
+                                               {}).get("statuses", []):
+                        status_id = status.get("id")
+                        status_name = status.get("name")
+                        pipeline_name = pipeline.get("name", "")
+                        # Include pipeline name in status for better identification
+                        status_map[status_id] = f"{status_name} ({pipeline_name})"
 
-            logger.info("Etapas de todos os pipelines carregadas com sucesso")
+            logger.info(f"Etapas dos pipelines {target_pipeline_ids} carregadas com sucesso")
             logger.info(
-                "Retrieving ALL leads from ALL pipelines in Kommo CRM (no filters - continuous sync)")
+                f"Retrieving leads from pipelines {target_pipeline_ids} in Kommo CRM")
 
             filtered_leads = []
             page = 1
@@ -298,53 +303,63 @@ class KommoAPI:
 
             while page <= limits['max_pages_per_request'] and len(
                     filtered_leads) < limits['max_total_records']:
-                params = {
-                    "page":
-                    page,
-                    "limit":
-                    per_page,
-                    "with":
-                    "contacts,pipeline_id,loss_reason,catalog_elements,company"
-                }
+                
+                # Make separate requests for each target pipeline
+                for pipeline_id in target_pipeline_ids:
+                    params = {
+                        "page": page,
+                        "limit": per_page,
+                        "with": "contacts,pipeline_id,loss_reason,catalog_elements,company",
+                        "filter[pipeline_id]": pipeline_id
+                    }
 
-                # No pipeline filter - get leads from ALL pipelines
+                    try:
+                        logger.info(f"Fetching leads from pipeline {pipeline_id}, page {page}")
+                        response = self._make_request("leads", params=params)
+                        leads = response.get("_embedded", {}).get("leads", [])
 
-                try:
-                    response = self._make_request("leads", params=params)
-                    leads = response.get("_embedded", {}).get("leads", [])
-
-                    if leads:
-                        filtered_leads.extend(leads)
-                        empty_streak = 0
-                        logger.info(
-                            f"Página {page}: {len(leads)} leads encontrados (total: {len(filtered_leads)})"
-                        )
-                    else:
-                        empty_streak += 1
-                        logger.info(
-                            f"Página {page}: nenhum lead encontrado (streak: {empty_streak})"
-                        )
-
-                        if empty_streak >= max_empty_streak:
+                        if leads:
+                            filtered_leads.extend(leads)
                             logger.info(
-                                f"Parando: {max_empty_streak} páginas vazias consecutivas"
+                                f"Pipeline {pipeline_id}, Página {page}: {len(leads)} leads encontrados"
                             )
+                        else:
+                            logger.info(
+                                f"Pipeline {pipeline_id}, Página {page}: nenhum lead encontrado"
+                            )
+
+                        # Rate limiting delay between requests
+                        time.sleep(limits['delay_between_pages'])
+
+                    except Exception as e:
+                        logger.error(f"Erro no pipeline {pipeline_id}, página {page}: {str(e)}")
+                        continue
+
+                # Check if we hit limits after processing all pipelines for this page
+                if len(filtered_leads) >= limits['max_total_records']:
+                    logger.warning(f"Limite de registros atingido: {limits['max_total_records']}")
+                    break
+
+                page += 1
+                
+                # Simple pagination break - if no leads found in any pipeline for this page
+                page_had_leads = False
+                for pipeline_id in target_pipeline_ids:
+                    test_params = {
+                        "page": page,
+                        "limit": 1,
+                        "filter[pipeline_id]": pipeline_id
+                    }
+                    try:
+                        test_response = self._make_request("leads", params=test_params)
+                        if test_response.get("_embedded", {}).get("leads", []):
+                            page_had_leads = True
                             break
-
-                    # Check if we received less than per_page items (end of data)
-                    if len(leads) < per_page:
-                        logger.info(
-                            "Última página atingida (menos registros que o limite)"
-                        )
-                        break
-
-                    page += 1
-
-                    # Rate limiting delay between pages
-                    time.sleep(limits['delay_between_pages'])
-
-                except Exception as e:
-                    logger.error(f"Erro na página {page}: {str(e)}")
+                    except:
+                        continue
+                
+                if not page_had_leads:
+                    logger.info("Nenhum lead encontrado em nenhum pipeline para esta página - finalizando")
                     break
 
             # Check if we hit limits
