@@ -264,36 +264,31 @@ class KommoAPI:
             company_id (str): Optional company ID to filter leads
         """
         try:
-            # Get pipeline_id and company_id from config for proper filtering
-            pipeline_id = self.api_config.get('pipeline_id')
+            # Get company_id from config
             company_id = self.api_config.get('company_id')
 
             # Get safe pagination limits
             limits = self._get_safe_pagination_limits()
 
-            logger.info(
-                f"Buscando etapas do pipeline {pipeline_id if pipeline_id else 'all'}"
-            )
+            logger.info("Buscando etapas de todos os pipelines")
             pipeline_response = self._make_request("leads/pipelines")
             pipelines = pipeline_response.get("_embedded",
                                               {}).get("pipelines", [])
 
             status_map = {}
             for pipeline in pipelines:
-                # Only get statuses for configured pipeline if pipeline_id exists
-                if not pipeline_id or str(
-                        pipeline.get('id')) == str(pipeline_id):
-                    for status in pipeline.get("_embedded",
-                                               {}).get("statuses", []):
-                        status_id = status.get("id")
-                        status_name = status.get("name")
-                        status_map[status_id] = status_name
-                    if pipeline_id:  # If we found our pipeline, no need to continue
-                        break
+                # Get statuses from ALL pipelines
+                for status in pipeline.get("_embedded",
+                                           {}).get("statuses", []):
+                    status_id = status.get("id")
+                    status_name = status.get("name")
+                    pipeline_name = pipeline.get("name", "")
+                    # Include pipeline name in status for better identification
+                    status_map[status_id] = f"{status_name} ({pipeline_name})"
 
-            logger.info("Etapas carregadas com sucesso")
+            logger.info("Etapas de todos os pipelines carregadas com sucesso")
             logger.info(
-                "Retrieving ALL leads from Kommo CRM (no date filters - continuous sync)")
+                "Retrieving ALL leads from ALL pipelines in Kommo CRM (no filters - continuous sync)")
 
             filtered_leads = []
             page = 1
@@ -312,9 +307,7 @@ class KommoAPI:
                     "contacts,pipeline_id,loss_reason,catalog_elements,company"
                 }
 
-                # Add pipeline filter if configured
-                if pipeline_id:
-                    params["filter[pipeline_id]"] = pipeline_id
+                # No pipeline filter - get leads from ALL pipelines
 
                 try:
                     response = self._make_request("leads", params=params)
