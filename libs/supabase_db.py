@@ -949,211 +949,210 @@ class SupabaseClient:
                     filter_data = filter_result.data[0]
                     filter_type = filter_data.get('filter_type')
 
+                    # Calculate date ranges based on filter type
+                    from datetime import datetime, timedelta
+                    import pytz
+
+                    # Use São Paulo timezone for calculations
+                    sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
+                    now = datetime.now(sao_paulo_tz)
+
+                    if filter_type == 'custom_range':
+                        start_date = filter_data.get('start_date')
+                        end_date = filter_data.get('end_date')
+
+                        if start_date and end_date:
+                            date_filter_start = pd.to_datetime(start_date, utc=True)
+                            date_filter_end = pd.to_datetime(end_date, utc=True)
+                            logger.info(f"Using custom date range filter: {date_filter_start} to {date_filter_end}")
+                        else:
+                            logger.info(f"Filter type is custom_range but dates are null, using all data")
+
+                    elif filter_type == 'current_month':
+                        # Current month from 1st day to today
+                        first_day_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        date_filter_start = pd.to_datetime(first_day_of_month, utc=True)
+                        date_filter_end = pd.to_datetime(now, utc=True)
+                        logger.info(f"Using current month filter: {date_filter_start} to {date_filter_end}")
+
+                    elif filter_type == 'last_month':
+                        # Last month from 1st to last day
+                        first_day_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        last_day_last_month = first_day_current_month - timedelta(days=1)
+                        first_day_last_month = last_day_last_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+                        date_filter_start = pd.to_datetime(first_day_last_month, utc=True)
+                        date_filter_end = pd.to_datetime(last_day_last_month.replace(hour=23, minute=59, second=59), utc=True)
+                        logger.info(f"Using last month filter: {date_filter_start} to {date_filter_end}")
+
+                    elif filter_type == 'current_week':
+                        # Current week from Monday to today
+                        days_since_monday = now.weekday()  # Monday is 0
+                        monday_this_week = now - timedelta(days=days_since_monday)
+                        monday_this_week = monday_this_week.replace(hour=0, minute=0, second=0, microsecond=0)
+
+                        date_filter_start = pd.to_datetime(monday_this_week, utc=True)
+                        date_filter_end = pd.to_datetime(now, utc=True)
+                        logger.info(f"Using current week filter: {date_filter_start} to {date_filter_end}")
+
+                    else:
+                        logger.info(f"Unknown filter type: {filter_type}, using all data")
+                else:
+                    logger.info("No component_filters found for ranking_metrics, using all data")
             except Exception as inner_e:
                 logger.error(f"Erro ao buscar filtro de datas: {inner_e}")
-                    # Calculate date ranges based on filter type
-            from datetime import datetime, timedelta
-            import pytz
-
-            # Use São Paulo timezone for calculations
-            sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
-            now = datetime.now(sao_paulo_tz)
-
-            if filter_type == 'custom_range':
-                start_date = filter_data.get('start_date')
-                end_date = filter_data.get('end_date')
-
-                if start_date and end_date:
-                    date_filter_start = pd.to_datetime(start_date, utc=True)
-                    date_filter_end = pd.to_datetime(end_date, utc=True)
-                    logger.info(f"Using custom date range filter: {date_filter_start} to {date_filter_end}")
-                else:
-                    logger.info(f"Filter type is custom_range but dates are null, using all data")
-
-            elif filter_type == 'current_month':
-                # Current month from 1st day to today
-                first_day_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                date_filter_start = pd.to_datetime(first_day_of_month, utc=True)
-                date_filter_end = pd.to_datetime(now, utc=True)
-                logger.info(f"Using current month filter: {date_filter_start} to {date_filter_end}")
-
-            elif filter_type == 'last_month':
-                # Last month from 1st to last day
-                first_day_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                last_day_last_month = first_day_current_month - timedelta(days=1)
-                first_day_last_month = last_day_last_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-
-                date_filter_start = pd.to_datetime(first_day_last_month, utc=True)
-                date_filter_end = pd.to_datetime(last_day_last_month.replace(hour=23, minute=59, second=59), utc=True)
-                logger.info(f"Using last month filter: {date_filter_start} to {date_filter_end}")
-
-            elif filter_type == 'current_week':
-                # Current week from Monday to today
-                days_since_monday = now.weekday()  # Monday is 0
-                monday_this_week = now - timedelta(days=days_since_monday)
-                monday_this_week = monday_this_week.replace(hour=0, minute=0, second=0, microsecond=0)
-
-                date_filter_start = pd.to_datetime(monday_this_week, utc=True)
-                date_filter_end = pd.to_datetime(now, utc=True)
-                logger.info(f"Using current week filter: {date_filter_start} to {date_filter_end}")
-
-            else:
-                logger.info(f"Unknown filter type: {filter_type}, using all data")
-
-        else:
-            logger.info("No component_filters found for ranking_metrics, using all data")
-    except Exception as filter_error:
-        logger.warning(f"Error loading component filters: {filter_error}, using all data")
+        except Exception as filter_error:
+            logger.warning(f"Error loading component filters: {filter_error}, using all data")
 
     # Apply date filter to leads and activities if custom_range is set
-    if date_filter_start and date_filter_end:
-        # Filter leads by creation date
-        if not leads.empty and 'criado_em' in leads.columns:
-            leads['criado_em'] = pd.to_datetime(leads['criado_em'], errors='coerce', utc=True)
-            leads = leads[
-                (leads['criado_em'] >= date_filter_start) & 
-                (leads['criado_em'] <= date_filter_end)
-            ]
-            logger.info(f"Filtered leads to {len(leads)} records within date range")
+        if date_filter_start and date_filter_end:
+            # Filter leads by creation date
+            if not leads.empty and 'criado_em' in leads.columns:
+                leads['criado_em'] = pd.to_datetime(leads['criado_em'], errors='coerce', utc=True)
+                leads = leads[
+                    (leads['criado_em'] >= date_filter_start) & 
+                    (leads['criado_em'] <= date_filter_end)
+                ]
+                logger.info(f"Filtered leads to {len(leads)} records within date range")
 
-        # Filter activities by creation date
-        if not activities.empty and 'criado_em' in activities.columns:
-            activities['criado_em'] = pd.to_datetime(activities['criado_em'], errors='coerce', utc=True)
-            activities = activities[
-                (activities['criado_em'] >= date_filter_start) & 
-                (activities['criado_em'] <= date_filter_end)
-            ]
-            logger.info(f"Filtered activities to {len(activities)} records within date range")
+            # Filter activities by creation date
+            if not activities.empty and 'criado_em' in activities.columns:
+                activities['criado_em'] = pd.to_datetime(activities['criado_em'], errors='coerce', utc=True)
+                activities = activities[
+                    (activities['criado_em'] >= date_filter_start) & 
+                    (activities['criado_em'] <= date_filter_end)
+                ]
+                logger.info(f"Filtered activities to {len(activities)} records within date range")
 
-    # Load current rules for this company
-    rules = self.load_rules(company_id)
-    if not rules:
-        logger.warning(f"No rules found for point calculation for company {company_id}")
-        return
+        # Load current rules for this company
+        rules = self.load_rules(company_id)
+        if not rules:
+            logger.warning(f"No rules found for point calculation for company {company_id}")
+            return
 
-    # Get existing broker points
-    existing_points = self.client.table("broker_points").select("*").eq("company_id", company_id).execute()
-    points_dict = {point['id']: point for point in existing_points.data}
+        # Get existing broker points
+        existing_points = self.client.table("broker_points").select("*").eq("company_id", company_id).execute()
+        points_dict = {point['id']: point for point in existing_points.data}
 
-    # Calculate points for each broker
-    for _, broker in brokers.iterrows():
-        broker_id = broker['id']
-        broker_name = broker.get('nome', 'Unknown')
+        # Calculate points for each broker
+        for _, broker in brokers.iterrows():
+            broker_id = broker['id']
+            broker_name = broker.get('nome', 'Unknown')
 
-        # Initialize points structure
-        total_points = 0
-        rule_results = {}
+            # Initialize points structure
+            total_points = 0
+            rule_results = {}
 
-        # Get broker's leads and activities
-        broker_leads = leads[leads['responsavel_id'] == broker_id] if not leads.empty else pd.DataFrame()
-        broker_activities = activities[activities['user_id'] == broker_id] if not activities.empty else pd.DataFrame()
+            # Get broker's leads and activities
+            broker_leads = leads[leads['responsavel_id'] == broker_id] if not leads.empty else pd.DataFrame()
+            broker_activities = activities[activities['user_id'] == broker_id] if not activities.empty else pd.DataFrame()
 
-        logger.info(f"Calculating points for broker {broker_name} (ID: {broker_id})")
-        logger.info(f"  - {len(broker_leads)} leads")
-        logger.info(f"  - {len(broker_activities)} activities")
+            logger.info(f"Calculating points for broker {broker_name} (ID: {broker_id})")
+            logger.info(f"  - {len(broker_leads)} leads")
+            logger.info(f"  - {len(broker_activities)} activities")
 
-        # Apply each rule and calculate counts
-        for rule_name, rule_config in rules.items():
+            # Apply each rule and calculate counts
+            for rule_name, rule_config in rules.items():
+                try:
+                    # Get the count of occurrences for this rule
+                    count = self._calculate_rule_points(
+                        rule_name, rule_config, broker_leads, broker_activities, leads, activities, company_id
+                    )
+                    rule_results[rule_name] = count
+
+                    # Calculate points: count * points_per_occurrence from rules table
+                    if isinstance(rule_config, dict):
+                        points_per_occurrence = rule_config.get('pontos', 0)
+                    else:
+                        points_per_occurrence = rule_config
+
+                    rule_points = count * points_per_occurrence
+                    total_points += rule_points
+
+                    if count > 0:
+                        logger.info(f"  - {rule_name}: {count} occurrences × {points_per_occurrence} = {rule_points} points")
+
+                except Exception as e:
+                    logger.error(f"Error calculating rule {rule_name} for broker {broker_id}: {str(e)}")
+                    rule_results[rule_name] = 0
+
+            # Update or insert broker points
+            current_time = datetime.now().isoformat()
+
+            broker_points_data = {
+                'id': broker_id,
+                'company_id': company_id,
+                'pontos': total_points,
+                'nome': broker_name,
+                'updated_at': current_time
+            }
+
+            # Add only the columns that exist in the new schema
+            schema_fields = ['leads_visitados', 'propostas_enviadas', 'vendas_realizadas', 'leads_perdidos']
+            for rule_name, count in rule_results.items():
+                if rule_name in schema_fields:
+                    broker_points_data[rule_name] = count
+
             try:
-                # Get the count of occurrences for this rule
-                count = self._calculate_rule_points(
-                    rule_name, rule_config, broker_leads, broker_activities, leads, activities, company_id
-                )
-                rule_results[rule_name] = count
+                # Verificar se o registro existe e buscar dados atuais
+                existing_check = self.client.table("broker_points").select("*").eq(
+                    "id", broker_id
+                ).eq("company_id", company_id).execute()
 
-                # Calculate points: count * points_per_occurrence from rules table
-                if isinstance(rule_config, dict):
-                    points_per_occurrence = rule_config.get('pontos', 0)
-                else:
-                    points_per_occurrence = rule_config
+                if existing_check.data:
+                    # Registro existe - comparar valores e atualizar apenas campos alterados
+                    existing_data = existing_check.data[0]
+                    update_data = {}
 
-                rule_points = count * points_per_occurrence
-                total_points += rule_points
+                    # Verificar cada campo para mudanças
+                    for key, new_value in broker_points_data.items():
+                        if key in ['id', 'company_id']:
+                            continue  # Não atualizar chaves primárias
 
-                if count > 0:
-                    logger.info(f"  - {rule_name}: {count} occurrences × {points_per_occurrence} = {rule_points} points")
+                        existing_value = existing_data.get(key)
 
-            except Exception as e:
-                logger.error(f"Error calculating rule {rule_name} for broker {broker_id}: {str(e)}")
-                rule_results[rule_name] = 0
-
-        # Update or insert broker points
-        current_time = datetime.now().isoformat()
-
-        broker_points_data = {
-            'id': broker_id,
-            'company_id': company_id,
-            'pontos': total_points,
-            'nome': broker_name,
-            'updated_at': current_time
-        }
-
-        # Add only the columns that exist in the new schema
-        schema_fields = ['leads_visitados', 'propostas_enviadas', 'vendas_realizadas', 'leads_perdidos']
-        for rule_name, count in rule_results.items():
-            if rule_name in schema_fields:
-                broker_points_data[rule_name] = count
-
-        try:
-            # Verificar se o registro existe e buscar dados atuais
-            existing_check = self.client.table("broker_points").select("*").eq(
-                "id", broker_id
-            ).eq("company_id", company_id).execute()
-
-            if existing_check.data:
-                # Registro existe - comparar valores e atualizar apenas campos alterados
-                existing_data = existing_check.data[0]
-                update_data = {}
-
-                # Verificar cada campo para mudanças
-                for key, new_value in broker_points_data.items():
-                    if key in ['id', 'company_id']:
-                        continue  # Não atualizar chaves primárias
-
-                    existing_value = existing_data.get(key)
-
-                    # Comparar valores considerando tipos diferentes
-                    if existing_value != new_value:
-                        # Verificar se são números equivalentes
-                        if isinstance(existing_value, (int, float)) and isinstance(new_value, (int, float)):
-                            if existing_value != new_value:
+                        # Comparar valores considerando tipos diferentes
+                        if existing_value != new_value:
+                            # Verificar se são números equivalentes
+                            if isinstance(existing_value, (int, float)) and isinstance(new_value, (int, float)):
+                                if existing_value != new_value:
+                                    update_data[key] = new_value
+                            else:
                                 update_data[key] = new_value
-                        else:
-                            update_data[key] = new_value
 
-                # Só fazer update se houver mudanças
-                if update_data:
-                    result = self.client.table("broker_points").update(update_data).eq(
-                        "id", broker_id
-                    ).eq("company_id", company_id).execute()
+                    # Só fazer update se houver mudanças
+                    if update_data:
+                        result = self.client.table("broker_points").update(update_data).eq(
+                            "id", broker_id
+                        ).eq("company_id", company_id).execute()
+
+                        if hasattr(result, "error") and result.error:
+                            logger.error(f"Update error for broker {broker_id}: {result.error}")
+                            continue
+
+                        logger.info(f"Updated {len(update_data)} fields for {broker_name}: {total_points} total points")
+                    else:
+                        logger.info(f"No changes detected for {broker_name} - skipping update")
+                else:
+                    # Registro não existe - inserir novo
+                    result = self.client.table("broker_points").insert(broker_points_data).execute()
 
                     if hasattr(result, "error") and result.error:
-                        logger.error(f"Update error for broker {broker_id}: {result.error}")
+                        logger.error(f"Insert error for broker {broker_id}: {result.error}")
                         continue
 
-                    logger.info(f"Updated {len(update_data)} fields for {broker_name}: {total_points} total points")
-                else:
-                    logger.info(f"No changes detected for {broker_name} - skipping update")
-            else:
-                # Registro não existe - inserir novo
-                result = self.client.table("broker_points").insert(broker_points_data).execute()
+                    logger.info(f"Inserted new record for {broker_name}: {total_points} total points")
 
-                if hasattr(result, "error") and result.error:
-                    logger.error(f"Insert error for broker {broker_id}: {result.error}")
-                    continue
+            except Exception as db_error:
+                logger.error(f"Database error for broker {broker_id}: {str(db_error)}")
+                continue
 
-                logger.info(f"Inserted new record for {broker_name}: {total_points} total points")
+        logger.info("Broker points calculation completed successfully")
 
-        except Exception as db_error:
-            logger.error(f"Database error for broker {broker_id}: {str(db_error)}")
-            continue
-
-    logger.info("Broker points calculation completed successfully")
-
-    except Exception as e:
-        logger.error(f"Error updating broker points: {str(e)}")
-        # Don't raise to avoid breaking the sync process
-        return
+        except Exception as e:
+            logger.error(f"Error updating broker points: {str(e)}")
+            # Don't raise to avoid breaking the sync process
+            return
 
     def setup_company_rules(self, company_id, default_rules=None):
         """
