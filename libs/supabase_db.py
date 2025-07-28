@@ -187,6 +187,9 @@ class SupabaseClient:
                     'active': True
                 }).eq('id', new_config['id']).execute()
 
+                # Setup default rules for new company
+                self.setup_company_rules(company_id)
+
                 # Trigger sync through FastAPI endpoint
                 try:
                     response = requests.post("http://0.0.0.0:5002/start")
@@ -318,24 +321,51 @@ class SupabaseClient:
             logger.error(f"Failed to sync data: {str(e)}")
             raise
 
-    def load_rules(self):
-        """Load gamification rules from Supabase"""
+    def load_rules(self, company_id=None):
+        """Load gamification rules from Supabase for specific company"""
         try:
-            result = self.client.table("rules").select("*").execute()
-            if hasattr(result, "error") and result.error:
-                raise Exception(f"Supabase error: {result.error}")
+            company_id = company_id or self.kommo_config.get('company_id')
+            if not company_id:
+                logger.warning("No company_id provided for loading rules")
+                return {}
 
-            if not result.data:
-                raise ValueError("No gamification rules found")
+            # First try to load company-specific rules from company_rules table
+            company_rules_result = self.client.table("company_rules").select("""
+                rules!inner(coluna_nome, pontos),
+                pontos,
+                active
+            """).eq("company_id", company_id).eq("active", True).execute()
 
             rules_dict = {}
-            for rule in result.data:
-                rules_dict[rule['coluna_nome']] = rule['pontos']
+            
+            if company_rules_result.data:
+                # Use company-specific rule points
+                for rule in company_rules_result.data:
+                    rules_dict[rule['rules']['coluna_nome']] = rule['pontos']
+                logger.info(f"Loaded {len(rules_dict)} company-specific rules")
+            else:
+                # Fallback to default rules
+                result = self.client.table("rules").select("*").eq("company_id", company_id).execute()
+                if result.data:
+                    for rule in result.data:
+                        rules_dict[rule['coluna_nome']] = rule['pontos']
+                    logger.info(f"Loaded {len(rules_dict)} default rules")
+                else:
+                    logger.warning("No rules found for company")
+
+            # Also load custom rules
+            custom_rules_result = self.client.table("custom_rules").select("*").eq(
+                "company_id", company_id).eq("active", True).execute()
+            
+            if custom_rules_result.data:
+                for rule in custom_rules_result.data:
+                    rules_dict[rule['coluna_nome']] = rule['pontos']
+                logger.info(f"Added {len(custom_rules_result.data)} custom rules")
 
             return rules_dict
         except Exception as e:
             logger.error(f"Failed to load rules: {str(e)}")
-            raise
+            return {}
 
     def upsert_brokers(self, brokers_df):
         """
@@ -844,28 +874,16 @@ class SupabaseClient:
                 logger.info(f"Todos os corretores já têm registros em broker_points para company_id {company_id}")
                 return True
 
-            # Criar registros com pontuação zero e company_id
+            # Criar registros com pontuação zero e company_id (apenas campos do novo schema)
             now = datetime.now().isoformat()
             new_records = [{
                 "id": b["id"],
                 "company_id": company_id,
                 "nome": b["nome"],
-                'leads_respondidos_1h': 0,
-                'leads_visitados': 0,
-                'propostas_enviadas': 0,
-                'vendas_realizadas': 0,
-                'leads_atualizados_mesmo_dia': 0,
-                'feedbacks_positivos': 0,
-                'resposta_rapida_3h': 0,
-                'todos_leads_respondidos': 0,
-                'cadastro_completo': 0,
-                'acompanhamento_pos_venda': 0,
-                'leads_sem_interacao_24h': 0,
-                'leads_ignorados_48h': 0,
-                'leads_perdidos': 0,
-                'leads_respondidos_apos_18h': 0,
-                'leads_tempo_resposta_acima_12h': 0,
-                'leads_5_dias_sem_mudanca': 0,
+                "leads_visitados": 0,
+                "propostas_enviadas": 0,
+                "vendas_realizadas": 0,
+                "leads_perdidos": 0,
                 "pontos": 0,
                 "updated_at": now
             } for b in brokers_to_insert]
@@ -932,6 +950,83 @@ class SupabaseClient:
                     filter_type = filter_data.get('filter_type')
 
                     # Calculate date ranges based on filter type
+
+
+    def setup_company_rules(self, company_id, default_rules=None):
+        """
+        Setup default rules for a company if they don't exist
+        """
+        try:
+            if not default_rules:
+                default_rules = {
+                    'leads_visitados': 40,
+                    'propostas_enviadas': 8,
+                    'vendas_realizadas': 100,
+                    'leads_perdidos': -10
+                }
+
+            # Check if company already has rules
+            existing_rules = self.client.table("rules").select("*").eq("company_id", company_id).execute()
+            
+            if not existing_rules.data:
+                # Create default rules for company
+                rules_to_insert = []
+                for rule_name, points in default_rules.items():
+                    rules_to_insert.append({
+                        'nome': rule_name.replace('_', ' ').title(),
+                        'coluna_nome': rule_name,
+                        'pontos': points,
+                        'company_id': company_id,
+                        'descricao': f'Regra para {rule_name.replace("_", " ")}'
+                    })
+                
+                result = self.client.table("rules").insert(rules_to_insert).execute()
+                if hasattr(result, "error") and result.error:
+                    raise Exception(f"Error creating default rules: {result.error}")
+                
+                logger.info(f"Created {len(rules_to_insert)} default rules for company {company_id}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error setting up company rules: {str(e)}")
+            return False
+
+    def get_sync_status(self, company_id):
+        """
+        Get sync status from sync_control table
+        """
+        try:
+            result = self.client.table("sync_control").select("*").eq("company_id", company_id).execute()
+            if result.data:
+                return result.data[0]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting sync status: {str(e)}")
+            return None
+
+    def update_sync_status(self, company_id, status, error=None):
+        """
+        Update sync status in sync_control table
+        """
+        try:
+            update_data = {
+                'company_id': company_id,
+                'status': status,
+                'last_sync': datetime.now().isoformat()
+            }
+            
+            if error:
+                update_data['error'] = error
+            
+            result = self.client.table("sync_control").upsert(update_data, on_conflict='company_id').execute()
+            if hasattr(result, "error") and result.error:
+                raise Exception(f"Error updating sync status: {result.error}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Error updating sync status: {str(e)}")
+            return False
+
                     from datetime import datetime, timedelta
                     import pytz
 
@@ -1005,10 +1100,10 @@ class SupabaseClient:
                     ]
                     logger.info(f"Filtered activities to {len(activities)} records within date range")
 
-            # Load current rules
-            rules = self.load_rules()
+            # Load current rules for this company
+            rules = self.load_rules(company_id)
             if not rules:
-                logger.warning("No rules found for point calculation")
+                logger.warning(f"No rules found for point calculation for company {company_id}")
                 return
 
             # Get existing broker points
@@ -1068,9 +1163,11 @@ class SupabaseClient:
                     'updated_at': current_time
                 }
 
-                # Add individual rule columns with counts (not points)
+                # Add only the columns that exist in the new schema
+                schema_fields = ['leads_visitados', 'propostas_enviadas', 'vendas_realizadas', 'leads_perdidos']
                 for rule_name, count in rule_results.items():
-                    broker_points_data[rule_name] = count
+                    if rule_name in schema_fields:
+                        broker_points_data[rule_name] = count
 
                 try:
                     # Verificar se o registro existe e buscar dados atuais
@@ -1152,32 +1249,7 @@ class SupabaseClient:
                 logger.warning(f"Error converting datetime columns in rule {rule_name}: {date_error}")
                 # Continue with original data if conversion fails
 
-            if rule_name == "leads_respondidos_1h":
-                # Leads respondidos em 1 hora - calcular baseado nas atividades e leads filtrados
-                if broker_activities.empty or broker_leads.empty:
-                    return 0
-
-                # Verificar se a coluna lead_id existe nas atividades
-                if 'lead_id' not in broker_activities.columns:
-                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
-                    return 0
-
-                leads_responded_1h = 0
-                for _, lead in broker_leads.iterrows():
-                    # Buscar primeira mensagem enviada pelo broker para este lead
-                    first_response = broker_activities[
-                        (broker_activities['lead_id'] == lead['id']) & 
-                        (broker_activities.get('tipo', '') == 'mensagem_enviada')
-                    ].sort_values('criado_em')
-
-                    if not first_response.empty and 'criado_em' in lead and pd.notna(lead['criado_em']):
-                        response_time = (first_response.iloc[0]['criado_em'] - lead['criado_em']).total_seconds()
-                        if response_time <= 3600:  # 1 hora = 3600 segundos
-                            leads_responded_1h += 1
-
-                return leads_responded_1h
-
-            elif rule_name == "leads_visitados":
+            if rule_name == "leads_visitados":
                 # Leads visitados - usando mudanças de status específicas (já filtradas por data)
                 if broker_activities.empty:
                     return 0
@@ -1263,212 +1335,13 @@ class SupabaseClient:
                         return len(sales)
                     return 0
 
-            elif rule_name == "leads_atualizados_mesmo_dia":
-                # Leads atualizados no mesmo dia da criação (já filtrados por data)
-                if broker_leads.empty or broker_activities.empty:
-                    return 0
-
-                # Verificar se a coluna lead_id existe nas atividades
-                if 'lead_id' not in broker_activities.columns:
-                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
-                    return 0
-
-                try:
-                    same_day_updates = 0
-                    for _, lead in broker_leads.iterrows():
-                        if pd.notna(lead.get('criado_em')):
-                            # Verificar se houve atividade do broker no mesmo dia da criação
-                            lead_activities_same_day = broker_activities[
-                                (broker_activities['lead_id'] == lead['id']) &
-                                (broker_activities['criado_em'].dt.date == lead['criado_em'].date())
-                            ]
-                            if not lead_activities_same_day.empty:
-                                same_day_updates += 1
-
-                    return same_day_updates
-                except Exception as e:
-                    logger.warning(f"Error in leads_atualizados_mesmo_dia calculation: {e}")
-                    return 0
-
-            elif rule_name == "resposta_rapida_3h":
-                # Resposta rápida em menos de 3 horas (já filtradas por data)
-                if broker_activities.empty or broker_leads.empty:
-                    return 0
-
-                # Verificar se a coluna lead_id existe nas atividades
-                if 'lead_id' not in broker_activities.columns:
-                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
-                    return 0
-
-                quick_responses = 0
-                for _, lead in broker_leads.iterrows():
-                    # Buscar mensagens para este lead
-                    lead_messages = broker_activities[
-                        (broker_activities['lead_id'] == lead['id']) & 
-                        (broker_activities.get('tipo', '').isin(['mensagem_recebida', 'mensagem_enviada']))
-                    ].sort_values('criado_em')
-
-                    # Analisar sequências de mensagem recebida seguida de enviada
-                    for i in range(len(lead_messages) - 1):
-                        current_msg = lead_messages.iloc[i]
-                        next_msg = lead_messages.iloc[i + 1]
-
-                        if (current_msg.get('tipo') == 'mensagem_recebida' and 
-                            next_msg.get('tipo') == 'mensagem_enviada'):
-                            response_time_hours = (next_msg['criado_em'] - current_msg['criado_em']).total_seconds() / 3600
-                            if response_time_hours < 3:
-                                quick_responses += 1
-                                break  # Contar apenas uma vez por lead
-
-                return quick_responses
-
-            elif rule_name == "todos_leads_respondidos":
-                # Todos os leads (dentro do período filtrado) foram respondidos
-                if broker_leads.empty or broker_activities.empty:
-                    return 0
-
-                if len(broker_leads) == 0:
-                    return 0
-
-                # Verificar se a coluna lead_id existe nas atividades
-                if 'lead_id' not in broker_activities.columns:
-                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
-                    return 0
-
-                # Verificar se todos os leads no período tiveram resposta
-                responded_count = 0
-                for _, lead in broker_leads.iterrows():
-                    responses = broker_activities[
-                        (broker_activities['lead_id'] == lead['id']) & 
-                        (broker_activities.get('tipo', '') == 'mensagem_enviada')
-                    ]
-                    if not responses.empty:
-                        responded_count += 1
-
-                # Se todos os leads foram respondidos
-                if responded_count == len(broker_leads):
-                    return 1
-
+            # Remove legacy rules that don't exist in new schema
+            elif rule_name in ["leads_atualizados_mesmo_dia", "resposta_rapida_3h", "todos_leads_respondidos", 
+                              "cadastro_completo", "acompanhamento_pos_venda", "leads_sem_interacao_24h", 
+                              "leads_ignorados_48h", "leads_respondidos_1h", "feedbacks_positivos", 
+                              "leads_respondidos_apos_18h", "leads_tempo_resposta_acima_12h", "leads_5_dias_sem_mudanca"]:
+                logger.info(f"Skipping legacy rule {rule_name} - not in new schema")
                 return 0
-
-            elif rule_name == "cadastro_completo":
-                # Lead com cadastro completo (já filtrados por data de criação)
-                if broker_leads.empty:
-                    return 0
-
-                complete_leads = broker_leads[
-                    (broker_leads['nome'].notna()) &
-                    (broker_leads['contato_nome'].notna()) &
-                    (broker_leads['valor'].notna()) &
-                    (broker_leads['valor'] > 0)
-                ]
-                return len(complete_leads)
-
-            elif rule_name == "acompanhamento_pos_venda":
-                # Acompanhamento pós-venda - buscar atividades de follow-up após vendas no período
-                if broker_activities.empty:
-                    return 0
-
-                # Verificar se a coluna lead_id existe nas atividades
-                if 'lead_id' not in broker_activities.columns:
-                    logger.warning(f"Column 'lead_id' not found in broker_activities for rule {rule_name}")
-                    return 0
-
-                try:
-                    # Buscar atividades de follow-up após mudanças de status para "Ganho"
-                    sales_activities = broker_activities[
-                        (broker_activities.get('tipo', '') == 'mudança_status') & 
-                        (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('ganho|won|vendido', case=False, na=False))
-                    ]
-
-                    if sales_activities.empty:
-                        return 0
-
-                    follow_ups = 0
-                    for _, sale_activity in sales_activities.iterrows():
-                        # Buscar atividades de follow-up após esta venda
-                        post_sale_activities = broker_activities[
-                            (broker_activities['lead_id'] == sale_activity['lead_id']) &
-                            (broker_activities['criado_em'] > sale_activity['criado_em']) &
-                            (broker_activities['tipo'].isin(['mensagem_enviada', 'nota_adicionada', 'tarefa_concluida']))
-                        ]
-                        if not post_sale_activities.empty:
-                            follow_ups += 1
-
-                    return follow_ups
-                except Exception as e:
-                    logger.warning(f"Error in acompanhamento_pos_venda calculation: {e}")
-                    return 0
-
-            elif rule_name == "leads_sem_interacao_24h":
-                # Penalização para leads sem interação (baseado nos dados filtrados)
-                if broker_leads.empty:
-                    return 0
-
-                try:
-                    # Se não há atividades, todos os leads não tiveram interação
-                    if broker_activities.empty:
-                        # Contar apenas leads que não estão fechados
-                        inactive_leads = broker_leads[
-                            ~broker_leads.get('status', pd.Series()).isin(['Ganho', 'Perdido'])
-                        ]
-                        return len(inactive_leads)
-
-                    # Verificar se a coluna lead_id existe nas atividades
-                    if 'lead_id' not in broker_activities.columns:
-                        logger.warning("Column 'lead_id' not found in broker_activities")
-                        return len(broker_leads)
-
-                    # Contar leads que não tiveram nenhuma atividade no período
-                    inactive_count = 0
-                    for _, lead in broker_leads.iterrows():
-                        if 'status' in lead and lead['status'] in ['Ganho', 'Perdido']:
-                            continue  # Pular leads já fechados
-
-                        lead_activities = broker_activities[
-                            broker_activities['lead_id'] == lead['id']
-                        ]
-                        if lead_activities.empty:
-                            inactive_count += 1
-
-                    return inactive_count
-                except Exception as e:
-                    logger.warning(f"Error in leads_sem_interacao_24h calculation: {e}")
-                    return 0
-
-            elif rule_name == "leads_ignorados_48h":
-                # Penalização para leads ignorados (baseado nos dados filtrados)
-                if broker_leads.empty:
-                    return 0
-
-                try:
-                    # Se não há atividades, todos os leads foram ignorados
-                    if broker_activities.empty:
-                        # Contar apenas leads que não estão fechados
-                        ignored_leads = broker_leads[
-                            ~broker_leads.get('status', pd.Series()).isin(['Ganho', 'Perdido'])
-                        ]
-                        return len(ignored_leads)
-
-                    # Verificar se a coluna lead_id existe nas atividades
-                    if 'lead_id' not in broker_activities.columns:
-                        logger.warning("Column 'lead_id' not found in broker_activities")
-                        return len(broker_leads)
-
-                    # Verificar leads que nunca tiveram interação no período
-                    ignored_count = 0
-                    for _, lead in broker_leads.iterrows():
-                        if 'status' in lead and lead['status'] in ['Ganho', 'Perdido']:
-                            continue  # Pular leads já fechados
-
-                        activities = broker_activities[broker_activities['lead_id'] == lead['id']]
-                        if activities.empty:
-                            ignored_count += 1
-
-                    return ignored_count
-                except Exception as e:
-                    logger.warning(f"Error in leads_ignorados_48h calculation: {e}")
-                    return 0
 
             elif rule_name == "leads_perdidos":
                 # Penalização para leads perdidos - buscar atividades de mudança para status "Perdido" no período
