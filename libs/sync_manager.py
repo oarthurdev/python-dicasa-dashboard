@@ -100,12 +100,12 @@ class SyncManager:
             for record in records:
                 processed = self._prepare_record(record)
                 record_id = processed.get('id')
-                
+
                 # Skip if we already processed this ID in this batch
                 if record_id in processed_ids:
                     logger.debug(f"Skipping duplicate record ID {record_id} in {table}")
                     continue
-                
+
                 processed_ids.add(record_id)
                 new_hash = self._generate_hash(processed)
 
@@ -126,9 +126,9 @@ class SyncManager:
                         unique_records[record_id] = record
                     else:
                         logger.warning(f"Removing duplicate record with ID {record_id} from {table} batch")
-                
+
                 final_records = list(unique_records.values())
-                
+
                 if final_records:
                     # Usar upsert com merge duplicates para garantir inserção e atualização
                     result = self.supabase.client.table(table).upsert(
@@ -139,7 +139,7 @@ class SyncManager:
                     # Contar novos vs atualizados
                     new_records = len([r for r in final_records if r.get('id') not in existing_records])
                     updated_records = len(final_records) - new_records
-                    
+
                     logger.info(f"Processed {len(final_records)} records for {table}: {new_records} new, {updated_records} updated")
 
         except Exception as e:
@@ -208,7 +208,7 @@ class SyncManager:
             if isinstance(brokers, pd.DataFrame) and not brokers.empty:
                 existing_brokers = self._get_existing_records('brokers')
                 changes_found = False
-                
+
                 for i in range(0, len(brokers), self.batch_size):
                     batch = brokers.iloc[i:i + self.batch_size].to_dict('records')
                     batch_changes = self._process_batch_incremental(batch, 'brokers', existing_brokers)
@@ -216,7 +216,7 @@ class SyncManager:
                         changes_found = True
                     # Small delay between batches for continuous sync
                     time.sleep(0.1)
-                
+
                 changes_detected['brokers'] = changes_found
                 if changes_found:
                     logger.info(f"Changes detected in brokers data")
@@ -243,15 +243,15 @@ class SyncManager:
                 else:
                     # Se não há brokers, só manter leads sem responsavel_id
                     leads_filtered = leads[leads['responsavel_id'].isna()].copy()
-                
+
                 filtered_count = len(leads_filtered)
                 if filtered_count < original_count:
                     logger.warning(f"Filtered out {original_count - filtered_count} leads with invalid responsavel_id")
-                
+
                 if not leads_filtered.empty:
                     existing_leads = self._get_existing_records('leads')
                     changes_found = False
-                    
+
                     for i in range(0, len(leads_filtered), self.batch_size):
                         batch = leads_filtered.iloc[i:i + self.batch_size].to_dict('records')
                         batch_changes = self._process_batch_incremental(batch, 'leads', existing_leads)
@@ -259,7 +259,7 @@ class SyncManager:
                             changes_found = True
                         # Small delay between batches for continuous sync
                         time.sleep(0.1)
-                    
+
                     changes_detected['leads'] = changes_found
                     if changes_found:
                         logger.info(f"Changes detected in leads data")
@@ -283,7 +283,7 @@ class SyncManager:
                 if not filtered_activities.empty:
                     existing_activities = self._get_existing_records('activities')
                     changes_found = False
-                    
+
                     for i in range(0, len(filtered_activities), self.batch_size):
                         batch = filtered_activities.iloc[i:i + self.batch_size].to_dict('records')
                         batch_changes = self._process_batch_incremental(batch, 'activities', existing_activities)
@@ -291,7 +291,7 @@ class SyncManager:
                             changes_found = True
                         # Small delay between batches for continuous sync
                         time.sleep(0.15)
-                    
+
                     changes_detected['activities'] = changes_found
                     if changes_found:
                         logger.info(f"Changes detected in activities data")
@@ -301,7 +301,7 @@ class SyncManager:
                 now = datetime.now()
                 sync_interval = self.config.get('sync_interval', 60) if self.config else 60
                 next_sync = now + timedelta(minutes=sync_interval)
-                
+
                 self.supabase.client.table("kommo_config").update({
                     "last_sync": now.isoformat(),
                     "next_sync": next_sync.isoformat()
@@ -323,12 +323,12 @@ class SyncManager:
             for record in records:
                 processed = self._prepare_record(record)
                 record_id = processed.get('id')
-                
+
                 # Skip if we already processed this ID in this batch
                 if record_id in processed_ids:
                     logger.debug(f"Skipping duplicate record ID {record_id} in {table}")
                     continue
-                
+
                 processed_ids.add(record_id)
                 new_hash = self._generate_hash(processed)
 
@@ -355,9 +355,9 @@ class SyncManager:
                         unique_records[record_id] = record
                     else:
                         logger.warning(f"Removing duplicate record with ID {record_id} from {table} batch")
-                
+
                 final_records = list(unique_records.values())
-                
+
                 if final_records:
                     # Usar upsert com merge duplicates para garantir inserção e atualização
                     result = self.supabase.client.table(table).upsert(
@@ -368,7 +368,7 @@ class SyncManager:
                     # Contar novos vs atualizados para melhor logging
                     new_records = len([r for r in final_records if r.get('id') not in existing_records])
                     updated_records = len(final_records) - new_records
-                    
+
                     logger.info(f"Processed {len(final_records)} records in {table}: {new_records} new, {updated_records} updated")
 
             return changes_found
@@ -435,7 +435,7 @@ class SyncManager:
                 logger.error(
                     f"No configuration found for company {company_id}")
                 return
-            
+
             # Carregar dados, se não fornecidos
             if brokers is None:
                 brokers = self.kommo_api.get_users()
@@ -449,14 +449,14 @@ class SyncManager:
                 brokers['company_id'] = company_id
                 broker_batch_size = self.get_safe_batch_size('brokers')
                 existing_brokers = self._get_existing_records('brokers')
-                
+
                 logger.info(f"Processing {len(brokers)} brokers in batches of {broker_batch_size}")
                 for i in range(0, len(brokers), broker_batch_size):
                     batch = brokers.iloc[i:i + broker_batch_size].to_dict('records')
                     self._process_batch(batch, 'brokers', existing_brokers)
                     # Small delay between batches
                     time.sleep(0.1)
-                    
+
                 logger.info(f"Processed {len(brokers)} brokers")
                 self.supabase.initialize_broker_points(company_id)
             else:
@@ -475,7 +475,7 @@ class SyncManager:
             # Processar Leads com validação de foreign key
             if isinstance(leads, pd.DataFrame) and not leads.empty:
                 leads['company_id'] = company_id
-                
+
                 # Filtrar leads apenas com responsavel_id válido
                 original_count = len(leads)
                 if valid_broker_ids:
@@ -486,22 +486,22 @@ class SyncManager:
                 else:
                     # Se não há brokers, só manter leads sem responsavel_id
                     leads_filtered = leads[leads['responsavel_id'].isna()].copy()
-                
+
                 filtered_count = len(leads_filtered)
                 if filtered_count < original_count:
                     logger.warning(f"Filtered out {original_count - filtered_count} leads with invalid responsavel_id")
-                
+
                 if not leads_filtered.empty:
                     leads_batch_size = self.get_safe_batch_size('leads')
                     existing_leads = self._get_existing_records('leads')
-                    
+
                     logger.info(f"Processing {len(leads_filtered)} leads in batches of {leads_batch_size}")
                     for i in range(0, len(leads_filtered), leads_batch_size):
                         batch = leads_filtered.iloc[i:i + leads_batch_size].to_dict('records')
                         self._process_batch(batch, 'leads', existing_leads)
                         # Small delay between batches
                         time.sleep(0.1)
-                        
+
                     logger.info(f"Processed {len(leads_filtered)} leads")
                 else:
                     logger.warning("No valid leads found after filtering by responsavel_id")
@@ -530,14 +530,14 @@ class SyncManager:
                 else:
                     activities_batch_size = self.get_safe_batch_size('activities')
                     existing_activities = self._get_existing_records('activities')
-                    
+
                     logger.info(f"Processing {len(filtered_activities)} activities in batches of {activities_batch_size}")
                     for i in range(0, len(filtered_activities), activities_batch_size):
                         batch = filtered_activities.iloc[i:i + activities_batch_size].to_dict('records')
                         self._process_batch(batch, 'activities', existing_activities)
                         # Small delay between batches
                         time.sleep(0.1)
-                        
+
                     logger.info(f"Processed {len(filtered_activities)} activities")
 
             # Atualizar timestamps de sincronização
@@ -562,22 +562,22 @@ class SyncManager:
             config_result = self.supabase.client.table("kommo_config").select(
                 "last_sync, sync_interval"
             ).eq("active", True).execute()
-            
+
             if not config_result.data:
                 return True  # Sem configuração, force sync
-                
+
             config = config_result.data[0]
             last_sync_str = config.get('last_sync')
             sync_interval = config.get('sync_interval', 30)  # Default 30 min
-            
+
             if not last_sync_str:
                 return True  # Nunca sincronizou
-                
+
             last_sync = datetime.fromisoformat(last_sync_str)
             time_since_sync = (datetime.now() - last_sync).total_seconds() / 60  # em minutos
-            
+
             return time_since_sync >= sync_interval
-            
+
         except Exception as e:
             logger.error(f"Error checking sync necessity: {e}")
             return True  # Em caso de erro, force sync

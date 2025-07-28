@@ -248,6 +248,47 @@ class KommoAPI:
             logger.error(f"Failed to retrieve users: {str(e)}")
             raise
 
+    def _get_pipeline_ids_for_company(self, company_id):
+        """
+        Get pipeline IDs for a specific company
+        Returns list of pipeline IDs to sync for the given company
+        """
+        # Try to get from database first if supabase is available
+        if hasattr(self, 'supabase_client') and self.supabase_client:
+            try:
+                pipeline_ids = self.supabase_client.get_pipeline_ids_for_company(company_id)
+                if pipeline_ids:
+                    return pipeline_ids
+            except Exception as e:
+                logger.warning(f"Could not get pipeline IDs from database: {e}")
+        
+        # Fallback to static mapping
+        company_pipeline_mapping = {
+            # Add your actual company IDs here
+            "your_company_1_id": [8865115, 8865067],
+            "your_company_2_id": [8846055],
+            # You can add more mappings as needed
+        }
+        
+        # Try to get from mapping first
+        pipeline_ids = company_pipeline_mapping.get(str(company_id))
+        
+        if pipeline_ids:
+            logger.info(f"Found pipeline mapping for company {company_id}: {pipeline_ids}")
+            return pipeline_ids
+        
+        # If no mapping found, try to get all pipelines from API
+        try:
+            logger.info(f"No pipeline mapping found for company {company_id}, fetching all pipelines")
+            pipeline_response = self._make_request("leads/pipelines")
+            pipelines = pipeline_response.get("_embedded", {}).get("pipelines", [])
+            all_pipeline_ids = [p.get("id") for p in pipelines if p.get("id")]
+            logger.info(f"Found {len(all_pipeline_ids)} pipelines for company {company_id}")
+            return all_pipeline_ids
+        except Exception as e:
+            logger.error(f"Error fetching pipelines for company {company_id}: {e}")
+            return []
+
     def _get_safe_pagination_limits(self):
         """Define limites seguros para paginação respeitando 7 req/s da API Kommo"""
         return {
@@ -267,8 +308,14 @@ class KommoAPI:
             # Get company_id from config
             company_id = self.api_config.get('company_id')
 
-            # Define specific pipeline IDs to sync
-            target_pipeline_ids = [8865115, 8865067]
+            # Get target pipeline IDs for this company dynamically
+            target_pipeline_ids = self._get_pipeline_ids_for_company(company_id)
+            
+            if not target_pipeline_ids:
+                logger.error(f"No pipeline IDs found for company {company_id}")
+                return pd.DataFrame()
+            
+            logger.info(f"Company {company_id} - Target pipeline IDs: {target_pipeline_ids}")
 
             # Get safe pagination limits
             limits = self._get_safe_pagination_limits()

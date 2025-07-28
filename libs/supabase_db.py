@@ -242,6 +242,45 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to insert log: {str(e)}")
 
+    def get_pipeline_ids_for_company(self, company_id):
+        """
+        Get pipeline IDs for a specific company from database or config
+        """
+        try:
+            # Try to get from kommo_config table if pipeline_ids field exists
+            result = self.client.table("kommo_config").select("pipeline_ids").eq(
+                "company_id", company_id).eq("active", True).execute()
+            
+            if result.data and result.data[0].get('pipeline_ids'):
+                pipeline_ids = result.data[0]['pipeline_ids']
+                if isinstance(pipeline_ids, list):
+                    logger.info(f"Found pipeline IDs from config for company {company_id}: {pipeline_ids}")
+                    return pipeline_ids
+                elif isinstance(pipeline_ids, str):
+                    # Try to parse as JSON array
+                    import json
+                    try:
+                        parsed_ids = json.loads(pipeline_ids)
+                        if isinstance(parsed_ids, list):
+                            return parsed_ids
+                    except:
+                        pass
+            
+            # Fallback to hardcoded mapping based on company_id
+            pipeline_mapping = {
+                # Add your actual company IDs here - replace with real values
+                "your_company_1_id": [8865115, 8865067],
+                "your_company_2_id": [8846055],
+            }
+            
+            pipeline_ids = pipeline_mapping.get(str(company_id), [])
+            logger.info(f"Using hardcoded pipeline mapping for company {company_id}: {pipeline_ids}")
+            return pipeline_ids
+            
+        except Exception as e:
+            logger.error(f"Error getting pipeline IDs for company {company_id}: {e}")
+            return []
+
     def load_kommo_config(self, company_id=None):
         """Load Kommo API configuration from Supabase"""
         try:
