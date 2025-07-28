@@ -1,0 +1,190 @@
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model activities {
+  id             String     @id
+  lead_id        BigInt?
+  user_id        BigInt?
+  tipo           String?
+  valor_anterior String?
+  valor_novo     String?
+  criado_em      DateTime?  @db.Timestamp(6)
+  dia_semana     String?
+  hora           Int?
+  updated_at     DateTime?  @default(now()) @db.Timestamp(6)
+  company_id     String?    @db.Uuid
+  companies      companies? @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  leads          leads?     @relation(fields: [lead_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  brokers        brokers?   @relation(fields: [user_id], references: [id], onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model broker_points {
+  id                             BigInt     @id
+  nome                           String
+  pontos                         Int?       @default(0)
+  leads_visitados                Int?       @default(0)
+  propostas_enviadas             Int?       @default(0)
+  vendas_realizadas              Int?       @default(0)
+  leads_perdidos                 Int?       @default(0)
+  updated_at                     DateTime?  @default(now()) @db.Timestamp(6)
+  company_id                     String?    @db.Uuid
+  companies                      companies? @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  brokers                        brokers    @relation(fields: [id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model brokers {
+  id            BigInt         @id
+  nome          String
+  email         String?
+  foto_url      String?
+  cargo         String?
+  criado_em     DateTime?      @db.Timestamp(6)
+  updated_at    DateTime?      @default(now()) @db.Timestamp(6)
+  active        Boolean?       @default(true)
+  company_id    String?        @db.Uuid
+  activities    activities[]
+  broker_points broker_points?
+  companies     companies?     @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  leads         leads[]
+}
+
+model companies {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  created_at        DateTime?           @default(now()) @db.Timestamp(6)
+  activities        activities[]
+  broker_points     broker_points[]
+  brokers           brokers[]
+  component_filters component_filters[]
+  kommo_config      kommo_config[]
+  leads             leads[]
+  rules             rules[]
+  sync_logs         sync_logs[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model kommo_config {
+  id              BigInt     @id @default(autoincrement())
+  api_url         String?    @default("http://dicasaindaial.kommo.com/") @db.VarChar
+  access_token    String?    @db.VarChar
+  custom_endpoint String?    @db.VarChar
+  sync_interval   Int?
+  last_sync       DateTime?  @db.Timestamp(6)
+  next_sync       DateTime?  @db.Timestamp(6)
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+  sync_start_date Decimal?   @db.Decimal
+  sync_end_date   Decimal?   @db.Decimal
+  active          Boolean?   @default(true)
+  company_id      String?    @db.Uuid
+  pipeline_id     Json?
+  companies       companies? @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model leads {
+  id             BigInt       @id
+  nome           String
+  responsavel_id BigInt?
+  contato_nome   String?
+  valor          Decimal?     @db.Decimal
+  status_id      BigInt?
+  pipeline_id    BigInt?
+  etapa          String?
+  criado_em      DateTime?    @db.Timestamp(6)
+  atualizado_em  DateTime?    @db.Timestamp(6)
+  fechado        Boolean?     @default(false)
+  status         String?
+  updated_at     DateTime?    @default(now()) @db.Timestamp(6)
+  company_id     String?      @db.Uuid
+  activities     activities[]
+  companies      companies?   @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  brokers        brokers?     @relation(fields: [responsavel_id], references: [id], onUpdate: NoAction)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model rules {
+  id          Int        @id @default(autoincrement())
+  nome        String     @default("") @db.VarChar(255)
+  pontos      Int
+  coluna_nome String     @default("") @db.VarChar(255)
+  created_at  DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at  DateTime?  @default(now()) @db.Timestamp(6)
+  descricao   String?    @db.VarChar
+  company_id  String?    @db.Uuid
+  companies   companies? @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+
+// Table for company-specific rule configurations
+export const companyRules = pgTable("company_rules", {
+  id: integer("id").primaryKey(),
+  company_id: uuid("company_id")
+    .references(() => companies.id)
+    .notNull(),
+  rule_id: integer("rule_id")
+    .references(() => rules.id)
+    .notNull(),
+  pontos: integer("pontos").notNull(),
+  active: boolean("active").default(true),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+// Table for company-specific custom rules
+export const customRules = pgTable("custom_rules", {
+  id: integer("id").primaryKey(),
+  company_id: uuid("company_id")
+    .references(() => companies.id)
+    .notNull(),
+  nome: text("nome").notNull(),
+  coluna_nome: text("coluna_nome").notNull(),
+  pontos: integer("pontos").notNull(),
+  descricao: text("descricao"),
+  active: boolean("active").default(true),
+  created_at: timestamp("created_at").defaultNow(),
+  updated_at: timestamp("updated_at").defaultNow(),
+});
+
+model sync_control {
+  company_id String    @id
+  last_sync  DateTime? @db.Timestamptz(6)
+  next_sync  DateTime? @db.Timestamptz(6)
+  status     String?
+  error      String?
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model sync_logs {
+  id         BigInt     @id @default(autoincrement())
+  timestamp  DateTime?  @db.Timestamp(6)
+  type       String?    @db.VarChar
+  message    String?    @db.VarChar
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  company_id String?    @db.Uuid
+  companies  companies? @relation(fields: [company_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model weekly_logs {
+  id           String    @id @db.Uuid
+  week_start   DateTime? @db.Timestamp(6)
+  week_end     DateTime? @db.Timestamp(6)
+  company_id   String?   @db.Uuid
+  total_leads  Int?
+  total_points Int?
+  created_at   DateTime? @db.Timestamp(6)
+}
+
+model component_filters {
+  id             Int        @id @default(autoincrement())
+  company_id     String     @db.Uuid
+  component_name String     @db.VarChar(100)
+  filter_type    String     @db.VarChar(50)
+  start_date     DateTime?  @db.Timestamp(6)
+  end_date       DateTime?  @db.Timestamp(6)
+  created_at     DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?  @default(now()) @db.Timestamp(6)
+  companies      companies  @relation(fields: [company_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([company_id, component_name], map: "component_filters_company_component_unique")
+}
