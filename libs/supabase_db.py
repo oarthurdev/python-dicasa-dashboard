@@ -137,7 +137,8 @@ class SupabaseClient:
         try:
             logger.info(f"Starting sync thread for company {company_id}")
             kommo_api = KommoAPI(api_url=config['api_url'],
-                                 access_token=config['access_token'])
+                                 access_token=config['access_token'],
+                                 supabase_client=self)
             sync_manager = SyncManager(kommo_api, self, config)
 
             brokers = kommo_api.get_users()
@@ -242,7 +243,7 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Failed to insert log: {str(e)}")
 
-    
+
 
     def load_kommo_config(self, company_id=None):
         """Load Kommo API configuration from Supabase"""
@@ -294,7 +295,8 @@ class SupabaseClient:
         """Trigger sync for all tables with company_id"""
         try:
             kommo_api = KommoAPI(api_url=config['api_url'],
-                                 access_token=config['access_token'])
+                                 access_token=config['access_token'],
+                                 supabase_client=self)
             brokers = kommo_api.get_users()
             leads = kommo_api.get_leads()
             activities = kommo_api.get_activities()
@@ -621,7 +623,7 @@ class SupabaseClient:
                             # Verifica se o registro já existe
                             existing = self.client.table("broker_points").select("id").eq(
                                 "id", broker_id).eq("company_id", company_id).execute()
-                            
+
                             if existing.data:
                                 # Update se existe - remove campos que não devem ser atualizados na condição
                                 update_record = {k: v for k, v in record.items() if k not in ['id', 'company_id']}
@@ -630,11 +632,11 @@ class SupabaseClient:
                             else:
                                 # Insert se não existe
                                 response = self.client.table("broker_points").insert(record).execute()
-                            
+
                             if hasattr(response, "error") and response.error:
                                 logger.error(f"Error updating broker points: {response.error}")
                                 raise Exception(f"Error updating broker points: {response.error}")
-                            
+
                             all_responses.append(response)
                         except Exception as individual_error:
                             logger.warning(f"Error processing record for broker {broker_id}: {individual_error}")
@@ -830,14 +832,14 @@ class SupabaseClient:
             # Buscar registros existentes para evitar duplicatas
             existing_result = self.client.table("broker_points").select(
                 "id").eq("company_id", company_id).execute()
-            
+
             existing_ids = set()
             if existing_result.data:
                 existing_ids = {record['id'] for record in existing_result.data}
 
             # Filtrar apenas corretores que não têm registros
             brokers_to_insert = [b for b in brokers if b['id'] not in existing_ids]
-            
+
             if not brokers_to_insert:
                 logger.info(f"Todos os corretores já têm registros em broker_points para company_id {company_id}")
                 return True
@@ -919,65 +921,65 @@ class SupabaseClient:
             # Get date filter from component_filters table
             date_filter_start = None
             date_filter_end = None
-            
+
             try:
                 filter_result = self.client.table("component_filters").select("*").eq(
                     "component_name", "ranking_metrics"
                 ).eq("company_id", company_id).execute()
-                
+
                 if filter_result.data:
                     filter_data = filter_result.data[0]
                     filter_type = filter_data.get('filter_type')
-                    
+
                     # Calculate date ranges based on filter type
                     from datetime import datetime, timedelta
                     import pytz
-                    
+
                     # Use São Paulo timezone for calculations
                     sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
                     now = datetime.now(sao_paulo_tz)
-                    
+
                     if filter_type == 'custom_range':
                         start_date = filter_data.get('start_date')
                         end_date = filter_data.get('end_date')
-                        
+
                         if start_date and end_date:
                             date_filter_start = pd.to_datetime(start_date, utc=True)
                             date_filter_end = pd.to_datetime(end_date, utc=True)
                             logger.info(f"Using custom date range filter: {date_filter_start} to {date_filter_end}")
                         else:
                             logger.info(f"Filter type is custom_range but dates are null, using all data")
-                    
+
                     elif filter_type == 'current_month':
                         # Current month from 1st day to today
                         first_day_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                         date_filter_start = pd.to_datetime(first_day_of_month, utc=True)
                         date_filter_end = pd.to_datetime(now, utc=True)
                         logger.info(f"Using current month filter: {date_filter_start} to {date_filter_end}")
-                    
+
                     elif filter_type == 'last_month':
                         # Last month from 1st to last day
                         first_day_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
                         last_day_last_month = first_day_current_month - timedelta(days=1)
                         first_day_last_month = last_day_last_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                        
+
                         date_filter_start = pd.to_datetime(first_day_last_month, utc=True)
                         date_filter_end = pd.to_datetime(last_day_last_month.replace(hour=23, minute=59, second=59), utc=True)
                         logger.info(f"Using last month filter: {date_filter_start} to {date_filter_end}")
-                    
+
                     elif filter_type == 'current_week':
                         # Current week from Monday to today
                         days_since_monday = now.weekday()  # Monday is 0
                         monday_this_week = now - timedelta(days=days_since_monday)
                         monday_this_week = monday_this_week.replace(hour=0, minute=0, second=0, microsecond=0)
-                        
+
                         date_filter_start = pd.to_datetime(monday_this_week, utc=True)
                         date_filter_end = pd.to_datetime(now, utc=True)
                         logger.info(f"Using current week filter: {date_filter_start} to {date_filter_end}")
-                    
+
                     else:
                         logger.info(f"Unknown filter type: {filter_type}, using all data")
-                        
+
                 else:
                     logger.info("No component_filters found for ranking_metrics, using all data")
             except Exception as filter_error:
@@ -1075,19 +1077,19 @@ class SupabaseClient:
                     existing_check = self.client.table("broker_points").select("*").eq(
                         "id", broker_id
                     ).eq("company_id", company_id).execute()
-                    
+
                     if existing_check.data:
                         # Registro existe - comparar valores e atualizar apenas campos alterados
                         existing_data = existing_check.data[0]
                         update_data = {}
-                        
+
                         # Verificar cada campo para mudanças
                         for key, new_value in broker_points_data.items():
                             if key in ['id', 'company_id']:
                                 continue  # Não atualizar chaves primárias
-                            
+
                             existing_value = existing_data.get(key)
-                            
+
                             # Comparar valores considerando tipos diferentes
                             if existing_value != new_value:
                                 # Verificar se são números equivalentes
@@ -1096,28 +1098,28 @@ class SupabaseClient:
                                         update_data[key] = new_value
                                 else:
                                     update_data[key] = new_value
-                        
+
                         # Só fazer update se houver mudanças
                         if update_data:
                             result = self.client.table("broker_points").update(update_data).eq(
                                 "id", broker_id
                             ).eq("company_id", company_id).execute()
-                            
+
                             if hasattr(result, "error") and result.error:
                                 logger.error(f"Update error for broker {broker_id}: {result.error}")
                                 continue
-                            
+
                             logger.info(f"Updated {len(update_data)} fields for {broker_name}: {total_points} total points")
                         else:
                             logger.info(f"No changes detected for {broker_name} - skipping update")
                     else:
                         # Registro não existe - inserir novo
                         result = self.client.table("broker_points").insert(broker_points_data).execute()
-                        
+
                         if hasattr(result, "error") and result.error:
                             logger.error(f"Insert error for broker {broker_id}: {result.error}")
                             continue
-                        
+
                         logger.info(f"Inserted new record for {broker_name}: {total_points} total points")
 
                 except Exception as db_error:
@@ -1139,7 +1141,7 @@ class SupabaseClient:
                 if not broker_activities.empty and 'criado_em' in broker_activities.columns:
                     broker_activities = broker_activities.copy()
                     broker_activities.loc[:, 'criado_em'] = pd.to_datetime(broker_activities['criado_em'], errors='coerce', utc=True)
-                
+
                 if not broker_leads.empty:
                     broker_leads = broker_leads.copy()
                     if 'criado_em' in broker_leads.columns:
@@ -1167,12 +1169,12 @@ class SupabaseClient:
                         (broker_activities['lead_id'] == lead['id']) & 
                         (broker_activities.get('tipo', '') == 'mensagem_enviada')
                     ].sort_values('criado_em')
-                    
+
                     if not first_response.empty and 'criado_em' in lead and pd.notna(lead['criado_em']):
                         response_time = (first_response.iloc[0]['criado_em'] - lead['criado_em']).total_seconds()
                         if response_time <= 3600:  # 1 hora = 3600 segundos
                             leads_responded_1h += 1
-                            
+
                 return leads_responded_1h
 
             elif rule_name == "leads_visitados":
@@ -1208,12 +1210,12 @@ class SupabaseClient:
                         (broker_activities.get('tipo', '') == 'mudança_status') & 
                         (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('proposta', case=False, na=False))
                     ]
-                    
+
                     note_proposals = broker_activities[
                         (broker_activities.get('tipo', '') == 'nota_adicionada') & 
                         (broker_activities.get('texto_mensagem', pd.Series()).astype(str).str.contains('proposta', case=False, na=False))
                     ]
-                    
+
                     proposal_activities = pd.concat([status_proposals, note_proposals], ignore_index=True).drop_duplicates()
                     unique_proposals = proposal_activities['lead_id'].nunique() if not proposal_activities.empty else 0
                     return unique_proposals
@@ -1245,12 +1247,12 @@ class SupabaseClient:
                         (broker_activities.get('tipo', '') == 'mudança_status') & 
                         (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('ganho|won|vendido', case=False, na=False))
                     ]
-                    
+
                     # Se não encontrar por atividade, usar os leads com status Ganho que foram criados no período
                     if sales_activities.empty and not broker_leads.empty:
                         sales = broker_leads[broker_leads.get('status', '') == 'Ganho']
                         return len(sales)
-                    
+
                     unique_sales = sales_activities['lead_id'].nunique() if not sales_activities.empty else 0
                     return unique_sales
                 except Exception as e:
@@ -1282,7 +1284,7 @@ class SupabaseClient:
                             ]
                             if not lead_activities_same_day.empty:
                                 same_day_updates += 1
-                                
+
                     return same_day_updates
                 except Exception as e:
                     logger.warning(f"Error in leads_atualizados_mesmo_dia calculation: {e}")
@@ -1305,19 +1307,19 @@ class SupabaseClient:
                         (broker_activities['lead_id'] == lead['id']) & 
                         (broker_activities.get('tipo', '').isin(['mensagem_recebida', 'mensagem_enviada']))
                     ].sort_values('criado_em')
-                    
+
                     # Analisar sequências de mensagem recebida seguida de enviada
                     for i in range(len(lead_messages) - 1):
                         current_msg = lead_messages.iloc[i]
                         next_msg = lead_messages.iloc[i + 1]
-                        
+
                         if (current_msg.get('tipo') == 'mensagem_recebida' and 
                             next_msg.get('tipo') == 'mensagem_enviada'):
                             response_time_hours = (next_msg['criado_em'] - current_msg['criado_em']).total_seconds() / 3600
                             if response_time_hours < 3:
                                 quick_responses += 1
                                 break  # Contar apenas uma vez por lead
-                                
+
                 return quick_responses
 
             elif rule_name == "todos_leads_respondidos":
@@ -1342,7 +1344,7 @@ class SupabaseClient:
                     ]
                     if not responses.empty:
                         responded_count += 1
-                
+
                 # Se todos os leads foram respondidos
                 if responded_count == len(broker_leads):
                     return 1
@@ -1378,10 +1380,10 @@ class SupabaseClient:
                         (broker_activities.get('tipo', '') == 'mudança_status') & 
                         (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('ganho|won|vendido', case=False, na=False))
                     ]
-                    
+
                     if sales_activities.empty:
                         return 0
-                    
+
                     follow_ups = 0
                     for _, sale_activity in sales_activities.iterrows():
                         # Buscar atividades de follow-up após esta venda
@@ -1392,7 +1394,7 @@ class SupabaseClient:
                         ]
                         if not post_sale_activities.empty:
                             follow_ups += 1
-                            
+
                     return follow_ups
                 except Exception as e:
                     logger.warning(f"Error in acompanhamento_pos_venda calculation: {e}")
@@ -1411,18 +1413,18 @@ class SupabaseClient:
                             ~broker_leads.get('status', pd.Series()).isin(['Ganho', 'Perdido'])
                         ]
                         return len(inactive_leads)
-                    
+
                     # Verificar se a coluna lead_id existe nas atividades
                     if 'lead_id' not in broker_activities.columns:
                         logger.warning("Column 'lead_id' not found in broker_activities")
                         return len(broker_leads)
-                    
+
                     # Contar leads que não tiveram nenhuma atividade no período
                     inactive_count = 0
                     for _, lead in broker_leads.iterrows():
                         if 'status' in lead and lead['status'] in ['Ganho', 'Perdido']:
                             continue  # Pular leads já fechados
-                            
+
                         lead_activities = broker_activities[
                             broker_activities['lead_id'] == lead['id']
                         ]
@@ -1447,18 +1449,18 @@ class SupabaseClient:
                             ~broker_leads.get('status', pd.Series()).isin(['Ganho', 'Perdido'])
                         ]
                         return len(ignored_leads)
-                    
+
                     # Verificar se a coluna lead_id existe nas atividades
                     if 'lead_id' not in broker_activities.columns:
                         logger.warning("Column 'lead_id' not found in broker_activities")
                         return len(broker_leads)
-                    
+
                     # Verificar leads que nunca tiveram interação no período
                     ignored_count = 0
                     for _, lead in broker_leads.iterrows():
                         if 'status' in lead and lead['status'] in ['Ganho', 'Perdido']:
                             continue  # Pular leads já fechados
-                            
+
                         activities = broker_activities[broker_activities['lead_id'] == lead['id']]
                         if activities.empty:
                             ignored_count += 1
@@ -1492,12 +1494,12 @@ class SupabaseClient:
                         (broker_activities.get('tipo', '') == 'mudança_status') & 
                         (broker_activities.get('valor_novo', pd.Series()).astype(str).str.contains('perdido|lost|fechado|cancelado', case=False, na=False))
                     ]
-                    
+
                     # Se não encontrar por atividade, usar os leads com status Perdido que foram criados no período
                     if lost_activities.empty and not broker_leads.empty:
                         lost_leads = broker_leads[broker_leads.get('status', '') == 'Perdido']
                         return len(lost_leads)
-                    
+
                     unique_lost = lost_activities['lead_id'].nunique() if not lost_activities.empty else 0
                     return unique_lost
                 except Exception as e:

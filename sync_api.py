@@ -1,4 +1,3 @@
-
 from flask import Flask, jsonify, request
 import threading
 import logging
@@ -46,11 +45,11 @@ def load_companies():
 def adaptive_sync_interval(company_id, last_changes):
     """Calculate adaptive sync interval based on recent activity"""
     base = SYNC_CONFIG['base_interval']
-    
+
     # Se houve mudanças recentes, sincronize mais frequentemente
     if last_changes.get('total_changes', 0) > 0:
         return max(SYNC_CONFIG['min_interval'], base // 2)
-    
+
     # Se não houve mudanças, aumente gradualmente o intervalo
     return min(SYNC_CONFIG['max_interval'], base)
 
@@ -58,14 +57,14 @@ def continuous_sync_worker(company_id, config):
     """Worker thread para sincronização contínua de uma empresa"""
     thread_id = f"sync_{company_id}"
     local_supabase = SupabaseClient()
-    
+
     try:
         logger.info(f"[{company_id}] Starting continuous sync worker")
-        
+
         # Inicializar componentes
-        kommo_api = KommoAPI(api_config=config)
+        kommo_api = KommoAPI(api_config=config, supabase_client=supabase)
         sync_manager = SyncManager(kommo_api, local_supabase, config)
-        
+
         # Status inicial
         sync_status[company_id] = {
             'status': 'initializing',
@@ -77,31 +76,31 @@ def continuous_sync_worker(company_id, config):
             'errors': 0,
             'thread_health': 'healthy'
         }
-        
+
         consecutive_errors = 0
         last_changes = {}
-        
+
         while sync_threads.get(company_id, {}).get('active', False):
             cycle_start = time.time()
-            
+
             try:
                 sync_status[company_id].update({
                     'status': 'syncing',
                     'last_health_check': datetime.now()
                 })
-                
+
                 logger.info(f"[{company_id}] Starting sync cycle #{sync_status[company_id]['total_syncs'] + 1}")
-                
+
                 # Fetch ALL data without date filters
                 logger.info(f"[{company_id}] Fetching ALL brokers...")
                 brokers = kommo_api.get_users(active_only=False)  # Include all users
-                
+
                 logger.info(f"[{company_id}] Fetching ALL leads...")
                 leads = kommo_api.get_leads()  # No date filters
-                
+
                 logger.info(f"[{company_id}] Fetching ALL activities...")
                 activities = kommo_api.get_activities()  # No date filters
-                
+
                 # Add company_id to all DataFrames
                 if not brokers.empty:
                     brokers['company_id'] = company_id
@@ -109,10 +108,10 @@ def continuous_sync_worker(company_id, config):
                     leads['company_id'] = company_id
                 if not activities.empty:
                     activities['company_id'] = company_id
-                
+
                 # Log data volumes
                 logger.info(f"[{company_id}] Data volumes - Brokers: {len(brokers)}, Leads: {len(leads)}, Activities: {len(activities)}")
-                
+
                 # Incremental sync with change detection
                 changes_detected = sync_manager.sync_data_incremental(
                     brokers=brokers,
@@ -120,18 +119,18 @@ def continuous_sync_worker(company_id, config):
                     activities=activities,
                     company_id=company_id
                 )
-                
+
                 # Update broker points if there were changes
                 if any(changes_detected.values()):
                     logger.info(f"[{company_id}] Changes detected: {changes_detected}")
-                    
+
                     # Filter only brokers with 'Corretor' role for points calculation
                     if not brokers.empty:
                         broker_data = brokers[
                             (brokers['cargo'] == 'Corretor') & 
                             (brokers['company_id'] == company_id)
                         ].copy()
-                        
+
                         if not broker_data.empty:
                             local_supabase.update_broker_points(
                                 brokers=broker_data,
@@ -144,15 +143,15 @@ def continuous_sync_worker(company_id, config):
                             logger.warning(f"[{company_id}] No brokers with 'Corretor' role found")
                 else:
                     logger.info(f"[{company_id}] No changes detected, skipping points calculation")
-                
+
                 # Update status
                 last_changes = changes_detected
                 total_changes = sum(1 for changed in changes_detected.values() if changed)
                 consecutive_errors = 0  # Reset error counter on success
-                
+
                 sync_interval = adaptive_sync_interval(company_id, {'total_changes': total_changes})
                 next_sync_time = datetime.now() + timedelta(seconds=sync_interval)
-                
+
                 sync_status[company_id].update({
                     'status': 'waiting',
                     'last_sync': datetime.now(),
@@ -162,19 +161,19 @@ def continuous_sync_worker(company_id, config):
                     'thread_health': 'healthy',
                     'last_interval': sync_interval
                 })
-                
+
                 cycle_duration = time.time() - cycle_start
                 logger.info(f"[{company_id}] Sync completed in {cycle_duration:.2f}s. Next sync in {sync_interval}s")
-                
+
                 # Intelligent waiting with health checks
                 wait_time = 0
                 while wait_time < sync_interval and sync_threads.get(company_id, {}).get('active', False):
                     time.sleep(min(SYNC_CONFIG['health_check_interval'], sync_interval - wait_time))
                     wait_time += SYNC_CONFIG['health_check_interval']
-                    
+
                     # Update health check timestamp
                     sync_status[company_id]['last_health_check'] = datetime.now()
-                
+
             except Exception as e:
                 consecutive_errors += 1
                 sync_status[company_id].update({
@@ -183,22 +182,22 @@ def continuous_sync_worker(company_id, config):
                     'errors': sync_status[company_id].get('errors', 0) + 1,
                     'thread_health': 'unhealthy' if consecutive_errors >= 3 else 'degraded'
                 })
-                
+
                 logger.error(f"[{company_id}] Sync error (attempt {consecutive_errors}): {e}")
-                
+
                 # Exponential backoff for errors
                 error_delay = min(
                     SYNC_CONFIG['base_interval'] * (SYNC_CONFIG['backoff_multiplier'] ** consecutive_errors),
                     SYNC_CONFIG['max_interval']
                 )
-                
+
                 # If too many consecutive errors, increase delay significantly
                 if consecutive_errors >= SYNC_CONFIG['max_retries']:
                     error_delay = SYNC_CONFIG['max_interval'] * 2
                     logger.error(f"[{company_id}] Too many consecutive errors, backing off for {error_delay}s")
-                
+
                 time.sleep(error_delay)
-    
+
     except Exception as fatal_error:
         logger.critical(f"[{company_id}] Fatal error in sync worker: {fatal_error}")
         sync_status[company_id].update({
@@ -206,7 +205,7 @@ def continuous_sync_worker(company_id, config):
             'thread_health': 'dead',
             'fatal_error': str(fatal_error)
         })
-    
+
     finally:
         logger.info(f"[{company_id}] Sync worker terminated")
         sync_status[company_id]['status'] = 'stopped'
@@ -216,7 +215,7 @@ def start_company_sync(company_id, config):
     if company_id in sync_threads and sync_threads[company_id].get('active', False):
         logger.info(f"[{company_id}] Sync already running")
         return False
-    
+
     # Create and start thread
     sync_threads[company_id] = {
         'active': True,
@@ -227,7 +226,7 @@ def start_company_sync(company_id, config):
             daemon=True
         )
     }
-    
+
     sync_threads[company_id]['thread'].start()
     logger.info(f"[{company_id}] Continuous sync started")
     return True
@@ -243,25 +242,25 @@ def stop_company_sync(company_id):
 def global_sync_manager():
     """Global manager that ensures all companies are continuously syncing"""
     logger.info("Starting global sync manager")
-    
+
     while True:
         try:
             # Load current companies
             current_companies = load_companies()
             current_company_ids = {str(company['company_id']) for company in current_companies}
-            
+
             # Start sync for new companies
             for company in current_companies:
                 company_id = str(company['company_id'])
-                
+
                 # Check if sync thread is running and healthy
                 if (company_id not in sync_threads or 
                     not sync_threads[company_id].get('active', False) or
                     not sync_threads[company_id]['thread'].is_alive()):
-                    
+
                     logger.info(f"[{company_id}] Starting/restarting sync")
                     start_company_sync(company_id, company)
-            
+
             # Stop sync for removed companies
             for company_id in list(sync_threads.keys()):
                 if company_id not in current_company_ids:
@@ -270,7 +269,7 @@ def global_sync_manager():
                     del sync_threads[company_id]
                     if company_id in sync_status:
                         del sync_status[company_id]
-            
+
             # Health check and restart unhealthy threads
             for company_id, thread_info in list(sync_threads.items()):
                 if not thread_info['thread'].is_alive():
@@ -279,14 +278,14 @@ def global_sync_manager():
                     if company_config:
                         stop_company_sync(company_id)
                         start_company_sync(company_id, company_config)
-            
+
             # Update global company list
             global COMPANY_LIST
             COMPANY_LIST = current_companies
-            
+
         except Exception as e:
             logger.error(f"Error in global sync manager: {e}")
-        
+
         # Wait before next management cycle
         time.sleep(SYNC_CONFIG['health_check_interval'])
 
@@ -300,7 +299,7 @@ def get_status():
         'config': SYNC_CONFIG,
         'companies': {}
     }
-    
+
     for company_id, status in sync_status.items():
         global_status['companies'][company_id] = {
             'status': status.get('status', 'unknown'),
@@ -314,7 +313,7 @@ def get_status():
             'last_health_check': status.get('last_health_check'),
             'last_interval': status.get('last_interval')
         }
-    
+
     return jsonify(global_status)
 
 @app.route('/start', methods=['POST'])
@@ -337,7 +336,7 @@ def restart_specific_sync(company_id):
     company_config = next((c for c in COMPANY_LIST if str(c['company_id']) == company_id), None)
     if not company_config:
         return jsonify({'status': 'company_not_found', 'company_id': company_id}), 404
-    
+
     # Stop and restart
     stop_company_sync(company_id)
     if start_company_sync(company_id, company_config):
@@ -353,15 +352,15 @@ def webhook():
         raw_data = request.get_data(as_text=True)
         content_type = request.content_type
         headers = dict(request.headers)
-        
+
         logger.info(f"=== WEBHOOK RECEIVED ===")
         logger.info(f"Content-Type: {content_type}")
         logger.info(f"Headers: {headers}")
         logger.info(f"Raw data (first 500 chars): {raw_data[:500]}")
-        
+
         # Handle different content types
         payload = None
-        
+
         if content_type and 'application/json' in content_type:
             payload = request.get_json()
             logger.info("Parsed as JSON from content-type")
@@ -370,7 +369,7 @@ def webhook():
             form_data = request.form.to_dict()
             logger.info(f"Form data keys: {list(form_data.keys())}")
             logger.info(f"Form data sample: {dict(list(form_data.items())[:5])}")
-            
+
             if 'payload' in form_data:
                 import json
                 payload = json.loads(form_data['payload'])
@@ -388,36 +387,36 @@ def webhook():
             except Exception as json_err:
                 logger.error(f"Failed to parse as JSON: {json_err}")
                 payload = None
-        
+
         if not payload:
             logger.error(f"Could not parse webhook payload from any method")
             return jsonify({'status': 'error', 'message': 'Could not parse payload'}), 400
-        
+
         logger.info(f"Parsed payload structure: {type(payload)}")
         logger.info(f"Payload keys (first 10): {list(payload.keys())[:10] if isinstance(payload, dict) else 'Not a dict'}")
-        
+
         # Detect webhook type and format
         webhook_type = None
         webhook_data = {}
-        
+
         # Check if this is Kommo flat format (form data with keys like "account[subdomain]", "message[add][0][id]")
         if isinstance(payload, dict) and any('[' in key and ']' in key for key in payload.keys()):
             logger.info("Detected Kommo flat format")
-            
+
             # Parse flat format keys to extract webhook type and data
             for key, value in payload.items():
                 if '[' not in key:
                     continue
-                    
+
                 # Extract the main type (account, message, leads, etc.)
                 main_type = key.split('[')[0]
                 if not webhook_type:
                     webhook_type = main_type
-                
+
                 # Skip account-level keys for now, focus on the actual data
                 if main_type == 'account':
                     continue
-                
+
                 # Parse nested structure from flat keys
                 # Example: "message[add][0][id]" -> message.add[0].id
                 parts = key.replace(main_type, '').strip('[]').split('][')
@@ -425,20 +424,20 @@ def webhook():
                     action = parts[0]  # add, update, delete
                     index = int(parts[1]) if parts[1].isdigit() else 0
                     field = parts[2]
-                    
+
                     # Handle nested fields like author[id]
                     if len(parts) > 3:
                         nested_field = parts[3]
                         field = f"{field}.{nested_field}"
-                    
+
                     # Initialize structure
                     if action not in webhook_data:
                         webhook_data[action] = []
-                    
+
                     # Ensure we have enough objects in the array
                     while len(webhook_data[action]) <= index:
                         webhook_data[action].append({})
-                    
+
                     # Set the field value, handling nested fields
                     if '.' in field:
                         main_field, sub_field = field.split('.', 1)
@@ -447,26 +446,26 @@ def webhook():
                         webhook_data[action][index][main_field][sub_field] = value
                     else:
                         webhook_data[action][index][field] = value
-            
+
             logger.info(f"Parsed webhook type: {webhook_type}")
             logger.info(f"Parsed webhook data structure: {list(webhook_data.keys())}")
-            
+
         else:
             # Standard format
             webhook_type = next(iter(payload.keys()))
             webhook_data = payload[webhook_type]
             logger.info(f"Standard format - Webhook type: {webhook_type}")
-        
+
         if not webhook_type:
             logger.error("Could not determine webhook type")
             return jsonify({'status': 'error', 'message': 'Could not determine webhook type'}), 400
-        
+
         logger.info(f"Final webhook type: {webhook_type}")
         logger.info(f"Final webhook data: {webhook_data}")
-        
+
         # Extract data objects
         data_objects = []
-        
+
         if isinstance(webhook_data, dict):
             if 'add' in webhook_data:
                 data_objects = webhook_data['add']
@@ -488,7 +487,7 @@ def webhook():
         elif isinstance(webhook_data, list):
             data_objects = webhook_data
             logger.info(f"Webhook data is already a list with {len(data_objects)} objects")
-        
+
         if not data_objects:
             logger.warning(f"No data objects found in webhook. Saving raw webhook for debugging.")
             # Still save the webhook for debugging purposes
@@ -497,19 +496,19 @@ def webhook():
                 'payload_id': None,
                 'raw_payload': payload
             }
-            
+
             try:
                 result = supabase.client.table("from_webhook").insert(webhook_record).execute()
                 logger.info("Empty webhook saved for debugging")
             except Exception as db_err:
                 logger.error(f"Failed to save empty webhook: {db_err}")
-                
+
             return jsonify({'status': 'success', 'message': 'No data to process, but webhook logged'})
-        
+
         # Process the first object
         first_object = data_objects[0] if isinstance(data_objects, list) else data_objects
         logger.info(f"Processing first object: {first_object}")
-        
+
         # Extract fields for from_webhook table
         webhook_record = {
             'webhook_type': webhook_type,
@@ -527,7 +526,7 @@ def webhook():
             'origin': first_object.get('origin') if isinstance(first_object, dict) else None,
             'raw_payload': payload
         }
-        
+
         # Extract author information if present
         if isinstance(first_object, dict):
             author = first_object.get('author', {})
@@ -538,22 +537,22 @@ def webhook():
                     'author_name': author.get('name'),
                     'author_avatar_url': author.get('avatar_url')
                 })
-        
+
         logger.info(f"Prepared webhook record for database:")
         for key, value in webhook_record.items():
             if key != 'raw_payload':  # Don't log the full payload again
                 logger.info(f"  {key}: {value}")
-        
+
         # Link message to broker before saving
         linked_record = supabase.link_webhook_message_to_broker(webhook_record)
-        
+
         # Save to database
         result = supabase.client.table("from_webhook").insert(linked_record).execute()
-        
+
         if hasattr(result, "error") and result.error:
             logger.error(f"Error saving webhook to database: {result.error}")
             return jsonify({'status': 'error', 'message': 'Database error'}), 500
-        
+
         logger.info(f"Webhook {webhook_type} saved successfully")
         if linked_record.get('broker_id'):
             logger.info(f"Message linked to broker: {linked_record['broker_id']}")
@@ -561,7 +560,7 @@ def webhook():
             logger.info(f"Message linked to lead: {linked_record['lead_id']}")
         logger.info(f"=== WEBHOOK PROCESSING COMPLETE ===")
         return jsonify({'status': 'success'})
-        
+
     except Exception as e:
         logger.error(f"Error processing webhook: {str(e)}")
         logger.error(f"Exception type: {type(e)}")
@@ -572,7 +571,7 @@ def webhook():
 if __name__ == '__main__':
     # Ensure webhook table exists
     supabase.ensure_webhook_table()
-    
+
     # Start global sync manager in background
     global_manager_thread = threading.Thread(
         target=global_sync_manager, 
@@ -581,7 +580,7 @@ if __name__ == '__main__':
     )
     global_manager_thread.start()
     logger.info("Global sync manager started")
-    
+
     # Start Flask app
     logger.info("Starting Flask API server on port 5002")
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)

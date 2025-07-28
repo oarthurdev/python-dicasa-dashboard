@@ -50,12 +50,14 @@ def background_data_loader():
     """
     try:
         global supabase
-        
+
         # Initialize components only when configuration exists
         while True:
             supabase._load_initial_config()  # Recarrega a configuração
             if supabase.kommo_config:
-                kommo_api = KommoAPI(supabase_client=supabase)
+                kommo_api = KommoAPI(api_url=supabase.kommo_config['api_url'],
+                                     access_token=supabase.kommo_config['access_token'],
+                                     supabase_client=supabase)
                 sync_manager = SyncManager(kommo_api, supabase)
                 break
             time.sleep(5)  # Wait for configuration to be added
@@ -70,7 +72,7 @@ def background_data_loader():
         while True:
             try:
                 supabase.check_config_changes()  # Check for config changes
-                
+
                 if sync_manager.needs_sync('brokers') or sync_manager.needs_sync('leads') or sync_manager.needs_sync('activities'):
                     brokers = kommo_api.get_users()
                     leads = kommo_api.get_leads()
@@ -86,7 +88,7 @@ def background_data_loader():
                                                 leads=leads,
                                                 activities=activities,
                                                 force=True)
-                
+
                 logger.info("Aguardando próximo ciclo de sincronização...")
                 time.sleep(300)  # Wait 5 minutes before next check
 
@@ -110,7 +112,7 @@ def auto_update_broker_points(brokers=None, leads=None, activities=None, force=F
                                           leads=leads,
                                           activities=activities)
             logger.info("[Auto Update] Pontos atualizados com sucesso")
-            
+
             if not force:
                 logger.info("[Auto Update] Aguardando 5 minutos para a próxima atualização")
                 time.sleep(300)
@@ -130,16 +132,23 @@ def sync_data():
     try:
         supabase = SupabaseClient(url=os.getenv("VITE_SUPABASE_URL"),
                                 key=os.getenv("VITE_SUPABASE_ANON_KEY"))
-        kommo_api = KommoAPI(supabase_client=supabase)
+        config = supabase.load_kommo_config()
+        if not config:
+            return {"status": "error", "message": "No Kommo configuration found"}
+        config = config[0]
+        kommo_api = KommoAPI(api_url=config['api_url'],
+                            access_token=config['access_token'],
+                            supabase_client=supabase)
+
         sync_manager = SyncManager(kommo_api, supabase)
-        
+
         # Reset last sync times to force immediate sync
         sync_manager.last_sync = {k: None for k in sync_manager.last_sync.keys()}
-        
+
         brokers = kommo_api.get_users()
         leads = kommo_api.get_leads()
         activities = kommo_api.get_activities()
-        
+
         if not brokers.empty and not leads.empty and not activities.empty:
             # Using original sync_from_cache but with reset last_sync times
             sync_manager.sync_from_cache(brokers, leads, activities)
