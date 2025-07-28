@@ -41,30 +41,7 @@ def parse_datetime_sp(value):
 
 class KommoAPI:
 
-    def __init__(self, api_url=None, access_token=None, api_config=None):
-        try:
-            logger.info("Initializing KommoAPI")
-
-            self.api_config = api_config
-            self.api_url = api_url or (api_config.get('api_url') if api_config
-                                       else None) or os.getenv("KOMMO_API_URL")
-            self.access_token = access_token or (
-                api_config.get('access_token')
-                if api_config else None) or os.getenv("ACCESS_TOKEN_KOMMO")
-            self.start_date = None
-            self.end_date = None
-
-            if not self.api_url or not self.access_token:
-                raise ValueError("API URL and access token must be provided")
-
-            # Ensure API URL does not end with slash
-            if self.api_url.endswith('/'):
-                self.api_url = self.api_url[:-1]
-
-            logger.info("KommoAPI initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing KommoAPI: {str(e)}")
-            raise
+    
 
     def set_date_range(self, start_date, end_date):
         """Set date range for API queries"""
@@ -75,7 +52,7 @@ class KommoAPI:
         if isinstance(end_date, datetime):
             self.api_config['sync_end_date'] = int(end_date.timestamp())
 
-    def __init__(self, api_url=None, access_token=None, api_config=None):
+    def __init__(self, api_url=None, access_token=None, api_config=None, supabase_client=None):
         try:
             logger.info("Initializing KommoAPI")
 
@@ -83,6 +60,7 @@ class KommoAPI:
             self.rate_monitor = RateLimitMonitor()
 
             self.api_config = api_config
+            self.supabase_client = supabase_client
             self.api_url = api_url or (api_config.get('api_url') if api_config
                                        else None) or os.getenv("KOMMO_API_URL")
             self.access_token = access_token or (
