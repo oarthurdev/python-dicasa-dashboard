@@ -1286,7 +1286,7 @@ class SupabaseClient:
             logger.info(f"Starting dynamic metrics calculation for company {company_id}")
             
             # Buscar métricas dinâmicas da empresa
-            dynamic_metrics_result = self.client.table("dynamic_metric").select("*").eq(
+            dynamic_metrics_result = self.client.table("dynamic_metrics").select("*").eq(
                 "company_id", company_id
             ).execute()
             
