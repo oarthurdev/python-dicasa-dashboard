@@ -1183,6 +1183,9 @@ class SupabaseClient:
                     continue
 
             logger.info("Broker points calculation completed successfully")
+            
+            # Calculate dynamic metrics after broker points
+            self.calculate_dynamic_metrics(company_id)
 
         except Exception as e:
             logger.error(f"Error updating broker points: {str(e)}")
@@ -1274,6 +1277,180 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Error updating sync status: {str(e)}")
             return False
+
+    def calculate_dynamic_metrics(self, company_id):
+        """
+        Calcula as métricas dinâmicas da empresa e salva na tabela metric_results
+        """
+        try:
+            logger.info(f"Starting dynamic metrics calculation for company {company_id}")
+            
+            # Buscar métricas dinâmicas da empresa
+            dynamic_metrics_result = self.client.table("dynamic_metric").select("*").eq(
+                "company_id", company_id
+            ).execute()
+            
+            if not dynamic_metrics_result.data:
+                logger.info(f"No dynamic metrics found for company {company_id}")
+                return
+                
+            dynamic_metrics = dynamic_metrics_result.data
+            logger.info(f"Found {len(dynamic_metrics)} dynamic metrics for company {company_id}")
+            
+            # Buscar todos os leads da empresa para cálculo
+            leads_result = self.client.table("leads").select("*").eq(
+                "company_id", company_id
+            ).execute()
+            
+            if not leads_result.data:
+                logger.warning(f"No leads found for company {company_id}")
+                return
+                
+            all_leads = pd.DataFrame(leads_result.data)
+            
+            # Apply date filter if configured
+            date_filter_start = None
+            date_filter_end = None
+            
+            try:
+                filter_result = self.client.table("component_filters").select("*").eq(
+                    "component_name", "ranking_metrics"
+                ).eq("company_id", company_id).execute()
+                
+                if filter_result.data:
+                    filter_data = filter_result.data[0]
+                    filter_type = filter_data.get('filter_type')
+                    
+                    from datetime import datetime, timedelta
+                    import pytz
+                    
+                    sao_paulo_tz = pytz.timezone('America/Sao_Paulo')
+                    now = datetime.now(sao_paulo_tz)
+                    
+                    if filter_type == 'custom_range':
+                        start_date = filter_data.get('start_date')
+                        end_date = filter_data.get('end_date')
+                        
+                        if start_date and end_date:
+                            date_filter_start = pd.to_datetime(start_date, utc=True)
+                            date_filter_end = pd.to_datetime(end_date, utc=True)
+                            
+                    elif filter_type == 'current_month':
+                        first_day_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        date_filter_start = pd.to_datetime(first_day_of_month, utc=True)
+                        date_filter_end = pd.to_datetime(now, utc=True)
+                        
+                    elif filter_type == 'last_month':
+                        first_day_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        last_day_last_month = first_day_current_month - timedelta(days=1)
+                        first_day_last_month = last_day_last_month.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                        
+                        date_filter_start = pd.to_datetime(first_day_last_month, utc=True)
+                        date_filter_end = pd.to_datetime(last_day_last_month.replace(hour=23, minute=59, second=59), utc=True)
+                        
+                    elif filter_type == 'current_week':
+                        days_since_monday = now.weekday()
+                        monday_this_week = now - timedelta(days=days_since_monday)
+                        monday_this_week = monday_this_week.replace(hour=0, minute=0, second=0, microsecond=0)
+                        
+                        date_filter_start = pd.to_datetime(monday_this_week, utc=True)
+                        date_filter_end = pd.to_datetime(now, utc=True)
+                        
+            except Exception as filter_error:
+                logger.warning(f"Error applying date filter: {filter_error}")
+            
+            # Apply date filter to leads if configured
+            if date_filter_start and date_filter_end:
+                if 'criado_em' in all_leads.columns:
+                    all_leads['criado_em'] = pd.to_datetime(all_leads['criado_em'], errors='coerce', utc=True)
+                    all_leads = all_leads[
+                        (all_leads['criado_em'] >= date_filter_start) &
+                        (all_leads['criado_em'] <= date_filter_end)
+                    ]
+                    logger.info(f"Filtered leads to {len(all_leads)} records within date range")
+            
+            # Calcular cada métrica dinâmica
+            for metric in dynamic_metrics:
+                try:
+                    metric_id = metric['id']
+                    pipeline_stage_id = metric['pipeline_stage_id']
+                    valor_minimo = metric['valor_minimo']
+                    
+                    logger.info(f"Calculating metric {metric_id}: stage {pipeline_stage_id}, minimum {valor_minimo}")
+                    
+                    # Contar leads que atingiram a etapa especificada
+                    leads_count = 0
+                    if not all_leads.empty and 'status_id' in all_leads.columns:
+                        leads_that_reached_stage = all_leads[all_leads['status_id'] == pipeline_stage_id]
+                        leads_count = len(leads_that_reached_stage)
+                    
+                    # Verificar se atingiu o valor mínimo
+                    atingiu_meta = leads_count >= valor_minimo
+                    
+                    logger.info(f"Metric {metric_id}: {leads_count} leads reached stage {pipeline_stage_id}, target: {valor_minimo}, achieved: {atingiu_meta}")
+                    
+                    # Preparar dados para salvar
+                    current_time = datetime.now().isoformat()
+                    
+                    # Usar periodo_referencia se disponível na tabela de filtros
+                    periodo_referencia = "periodo_atual"
+                    if date_filter_start and date_filter_end:
+                        periodo_referencia = f"{date_filter_start.strftime('%Y-%m-%d')} a {date_filter_end.strftime('%Y-%m-%d')}"
+                    
+                    metric_result_data = {
+                        'dynamic_metric_id': metric_id,
+                        'company_id': company_id,
+                        'valor_atual': leads_count,
+                        'status': 'ativo',
+                        'periodo_referencia': periodo_referencia,
+                        'leads_count': leads_count,
+                        'atingiu_meta': atingiu_meta,
+                        'calculado_em': current_time,
+                        'created_at': current_time,
+                        'updated_at': current_time
+                    }
+                    
+                    # Verificar se já existe resultado para esta métrica
+                    existing_result = self.client.table("metric_results").select("*").eq(
+                        "dynamic_metric_id", metric_id
+                    ).eq("company_id", company_id).execute()
+                    
+                    if existing_result.data:
+                        # Atualizar resultado existente
+                        existing_id = existing_result.data[0]['id']
+                        update_data = {
+                            'valor_atual': leads_count,
+                            'leads_count': leads_count,
+                            'atingiu_meta': atingiu_meta,
+                            'calculado_em': current_time,
+                            'updated_at': current_time
+                        }
+                        
+                        result = self.client.table("metric_results").update(update_data).eq(
+                            "id", existing_id
+                        ).execute()
+                        
+                        if hasattr(result, "error") and result.error:
+                            logger.error(f"Error updating metric result {existing_id}: {result.error}")
+                        else:
+                            logger.info(f"Updated metric result for metric {metric_id}")
+                    else:
+                        # Inserir novo resultado
+                        result = self.client.table("metric_results").insert(metric_result_data).execute()
+                        
+                        if hasattr(result, "error") and result.error:
+                            logger.error(f"Error inserting metric result for metric {metric_id}: {result.error}")
+                        else:
+                            logger.info(f"Inserted new metric result for metric {metric_id}")
+                            
+                except Exception as metric_error:
+                    logger.error(f"Error calculating metric {metric.get('id', 'unknown')}: {str(metric_error)}")
+                    continue
+                    
+            logger.info(f"Dynamic metrics calculation completed for company {company_id}")
+            
+        except Exception as e:
+            logger.error(f"Error calculating dynamic metrics for company {company_id}: {str(e)}")
 
     def _calculate_rule_points(self, rule_name, rule_config, broker_leads,
                                broker_activities, all_leads, all_activities,
